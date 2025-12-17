@@ -1,0 +1,1621 @@
+### COMMODITY FUTURES ###
+ZW:
+  contrcode: 3272
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 2442
+  calcseriesname: CBT-WHEAT COMPOSITE FUTURES CONT.
+  name: Chicago Wheat
+  asset_class: commodity
+  cftc_code: "001"
+  cftc_names:
+    - "WHEAT - CHICAGO BOARD OF TRADE"
+    - "WHEAT-SRW - CHICAGO BOARD OF TRADE"
+  ric: W
+  settlement_start: "13:14:00"
+  settlement_end: "13:15:00"
+  # round: 0.25
+KE:
+  contrcode: 3623
+  exchange: 9191
+  exchange_name: Kansas City Board of Trade
+  clscode: 2709
+  calcseriesname: KCBT-HRW WHEAT COMP CONTINUOUS
+  name: Kansas Wheat
+  asset_class: commodity
+  cftc_code: "001"
+  cftc_names:
+    - "WHEAT - KANSAS CITY BOARD OF TRADE"
+    - "WHEAT-HRW - CHICAGO BOARD OF TRADE"
+  ric: KW
+  settlement_start: "13:14:00"
+  settlement_end: "13:15:00"
+  # round: 0.25
+ZC:
+  contrcode: 3247
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 2420
+  calcseriesname: CBT-CORN COMP. CONTINUOUS
+  name: Corn
+  asset_class: commodity
+  cftc_code: "002"
+  cftc_names:
+    - "CORN - CHICAGO BOARD OF TRADE"
+  ric: C
+  settlement_start: "13:14:00"
+  settlement_end: "13:15:00"
+ZS:
+  contrcode: 3376
+  exchange: 9144
+  exchange_name: eCBOT
+  clscode: 2522
+  calcseriesname: CBT-SOYBEANS COMP. CONT.
+  name: Soybeans
+  asset_class: commodity
+  cftc_code: "005"
+  cftc_names:
+    - "SOYBEANS - CHICAGO BOARD OF TRADE"
+  ric: S
+  settlement_start: "13:14:00"
+  settlement_end: "13:15:00"
+  # round: 0.25
+KC:
+  contrcode: 2038
+  exchange: 1012
+  exchange_name: New York Board of Trade (NYBOT)
+  clscode: 3289
+  calcseriesname: CSCE-COFFEE 'C' CONTINUOUS
+  name: Coffee
+  asset_class: commodity
+  cftc_code: "083"
+  cftc_names:
+    - "COFFEE C - COFFEE, SUGAR & COCOA EXCHANGE"
+    - "COFFEE C - COFFEE,COCOA AND SUGAR EXCHANG"
+    - "COFFEE C - COFFEE,SUGAR AND COCOA EXCHANG"
+    - "COFFEE C - COFFEE, SUGAR AND COCOA EXCHANGE"
+    - "COFFEE C - NEW YORK BOARD OF TRADE"
+    - "COFFEE C - ICE FUTURES U.S."
+  ric: KC
+  settlement_start: "12:23:00"
+  settlement_end: "12:25:00"
+  # round: 0.25
+SB:
+  contrcode: 2104
+  exchange: 1012
+  exchange_name: New York Board of Trade (NYBOT)
+  clscode: 3299
+  calcseriesname: "CSCE-SUGAR #11 CONTINUOUS"
+  name: Sugar
+  asset_class: commodity
+  cftc_code: "080"
+  cftc_names:
+    - "SUGAR NO. 11 - COFFEE, SUGAR & COCOA EXCHANGE"
+    - "SUGAR NO. 11 - COFFEE,COCOA AND SUGAR EXCHANG"
+    - "SUGAR NO. 11 - COFFEE,SUGAR AND COCOA EXCHANG"
+    - "SUGAR NO. 11 - COFFEE, SUGAR AND COCOA EXCHANGE"
+    - "SUGAR NO. 11 - NEW YORK BOARD OF TRADE"
+    - "SUGAR NO. 11 - ICE FUTURES U.S."
+  ric: SB
+  settlement_start: "12:53:00"
+  settlement_end: "12:55:00"        
+CC:
+  contrcode: 1980
+  exchange: 1012
+  exchange_name: New York Board of Trade (NYBOT)
+  clscode: 1478
+  calcseriesname: CSCE-COCOA CONTINUOUS
+  name: Cocoa
+  asset_class: commodity
+  cftc_code: "073"
+  cftc_names:
+    - "COCOA - COFFEE, SUGAR & COCOA EXCHANGE"
+    - "COCOA - COFFEE,COCOA AND SUGAR EXCHANG"
+    - "COCOA - COFFEE,SUGAR AND COCOA EXCHANG"
+    - "COCOA - COFFEE, SUGAR AND COCOA EXCHANGE"
+    - "COCOA - NEW YORK BOARD OF TRADE"
+    - "COCOA - ICE FUTURES U.S."
+  ric: CC
+  settlement_start: "11:48:00"
+  settlement_end: "11:50:00"
+  # round: 1
+CT:
+  contrcode: 1992
+  exchange: 1012
+  exchange_name: New York Board of Trade (NYBOT)
+  clscode: 1487
+  calcseriesname: "CSCE-COTTON #2 CONTINUOUS"
+  name: Cotton
+  asset_class: commodity
+  cftc_code: "033"
+  cftc_names:
+    - "COTTON NO. 2 - NEW YORK COTTON EXCHANGE"
+    - "COTTON NO. 2 - NEW YORK BOARD OF TRADE"
+    - "COTTON NO. 2 - ICE FUTURES U.S."
+  ric: CT
+  settlement_start: "14:14:00"
+  settlement_end: "14:15:00"
+HE:
+  contrcode: 2676
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3893
+  calcseriesname: CME-LEAN HOGS COMP. CONTINUOUS
+  name: Lean Hogs
+  asset_class: commodity
+  cftc_code: "054"
+  cftc_names:
+    - "LIVE HOGS - CHICAGO MERCANTILE EXCHANGE"
+    - "LEAN HOGS - CHICAGO MERCANTILE EXCHANGE"
+  ric: LH
+  settlement_start: "12:59:30"
+  settlement_end: "13:00:00"
+  # round: 0.025
+# TODO: by looking at the data, 
+# it seems that CME lists contracts for months [1, 3, 4, 5, 8, 9, 10, 11]
+LE:
+  contrcode: 2675 
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1996
+  calcseriesname: CME-LIVE CATTLE COMP. CONTINUOUS
+  name: Live Cattle
+  asset_class: commodity
+  cftc_code: "057"
+  cftc_names:
+    - "LIVE CATTLE - CHICAGO MERCANTILE EXCHANGE"
+  ric: LC
+  settlement_start: "12:59:30"
+  settlement_end: "13:00:00"
+GF:
+  contrcode: 3250
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2423
+  calcseriesname: CME-FEEDER CATTLE COMP. CONTINUOUS
+  name: Feeder Cattle
+  asset_class: commodity
+  cftc_code: "061"
+  cftc_names:
+    - "FEEDER CATTLE - CHICAGO MERCANTILE EXCHANGE"
+  ric: FC
+  settlement_start: "12:59:30"
+  settlement_end: "13:00:00"
+CL:
+  contrcode: 1986
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 1482
+  calcseriesname: NYM-LIGHT CRUDE OIL CONTINUOUS
+  name: WTI Crude Oil
+  asset_class: commodity
+  cftc_code: "067"
+  cftc_names:
+    - "CRUDE OIL, LIGHT 'SWEET' - NEW YORK MERCANTILE EXCHANGE"
+    - "CRUDE OIL, LIGHT SWEET - NEW YORK MERCANTILE EXCHANGE"
+    - "WTI-PHYSICAL - NEW YORK MERCANTILE EXCHANGE"
+  ric: CL
+  settlement_start: "14:28:00"
+  settlement_end: "14:30:00"
+HO:
+  contrcode: 2029
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 1514
+  calcseriesname: NYM-NY HARBOR ULSD CONTINUOUS
+  name: Heating Oil
+  asset_class: commodity
+  cftc_code: "022"
+  cftc_names:
+    - "NO. 2 HEATING OIL, N.Y. HARBOR - NEW YORK MERCANTILE EXCHANGE"
+    - "#2 HEATING OIL, NY HARBOR-ULSD - NEW YORK MERCANTILE EXCHANGE"
+    - "#2 HEATING OIL- NY HARBOR-ULSD - NEW YORK MERCANTILE EXCHANGE"
+    - "NY HARBOR USLD - NEW YORK MERCANTILE EXCHANGE"
+    - "NY HARBOR ULSD - NEW YORK MERCANTILE EXCHANGE"
+  ric: HO
+  settlement_start: "14:28:00"  
+  settlement_end: "14:30:00"
+  adjustments:
+    - threshold: 10
+      divisor: 10000
+# Replaced by RBOB Gasoline in 2006; stitch together
+HU:
+  contrcode: 2032
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 1516
+  calcseriesname: NYM-NY UNLEADED GAS. CONT. DEAD
+  name: Unleaded Gasoline
+  asset_class: [commodity, historical]
+  cftc_code: "111"
+  cftc_names:
+    - "UNLEADED GASOLINE, N.Y. HARBOR - NEW YORK MERCANTILE EXCHANGE"
+  ric: HU
+RB:
+  contrcode: 2091
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 1562
+  calcseriesname: NYMEX-RBOB GASOLINE CONTINUOUS
+  name: RBOB Gasoline
+  asset_class: commodity
+  cftc_code: "111"
+  cftc_names:
+    - "GASOLINE BLENDSTOCK (RBOB) - NEW YORK MERCANTILE EXCHANGE"
+    - "GASOLINE RBOB - NEW YORK MERCANTILE EXCHANGE"
+  ric: RB
+  settlement_start: "14:28:00"
+  settlement_end: "14:30:00"
+GG: # 1981-04-06 to 2005-04-07
+  contrcode: 1582
+  exchange: 9175
+  exchange_name: ICE Futures Europe
+  clscode: 1181
+  calcseriesname: IPE-GAS OIL CONTINUOUS DEAD
+  name: Gas Oil (Dead)
+  asset_class: commodity
+G: # 2003-09-08 to present
+  contrcode: 1576
+  exchange: 9175
+  exchange_name: ICE Futures Europe
+  clscode: 1176
+  calcseriesname: ICE-GAS OIL CONTINUOUS
+  name: Gas Oil
+  asset_class: commodity
+  ric: LGO
+  settlement_start: "16:27:00"
+  settlement_end: "16:30:00"
+  adjustments:
+    - threshold: 10000
+      divisor: 100
+BR: # 1988-12-07 to 2003-09-05
+  contrcode: 2640
+  exchange: 9175
+  exchange_name: ICE Futures Europe
+  clscode: 1970
+  calcseriesname: IPE-BRENT CRUDE OIL CONTINUOUS DEAD
+  name: Brent Crude Oil (historical)
+  asset_class: commodity
+BRN: # 2003-09-08 to present
+  contrcode: 1575
+  exchange: 9175
+  exchange_name: ICE Futures Europe
+  clscode: 1175
+  calcseriesname: ICE-BRENT CRUDE OIL CONTINUOUS
+  name: Brent Crude Oil
+  asset_class: commodity
+  ric: LCO
+  settlement_start: "19:28:00"
+  settlement_end: "19:30:00"
+  adjustments:
+    - threshold: 500
+      divisor: 100
+NG:
+  contrcode: 2060
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 1539
+  calcseriesname: NYM-NATURAL GAS CONTINUOUS
+  name: Natural Gas
+  asset_class: commodity
+  cftc_code: "023"
+  cftc_names:
+    - "NATURAL GAS - NEW YORK MERCANTILE EXCHANGE"
+    - "NAT GAS NYME - NEW YORK MERCANTILE EXCHANGE"
+  ric: NG
+  settlement_start: "14:28:00"
+  settlement_end: "14:30:00"
+AHD:
+  contrcode: 1441
+  exchange: 9079
+  exchange_name: London Metal Exchange
+  clscode: 1080
+  calcseriesname: LME-ALUMINIUM CONTINUOUS
+  name: Aluminium
+  asset_class: commodity
+  ric: CMAL
+  settlement_start: "12:55:00"
+  settlement_end: "13:00:00"
+  # round: 0.5
+CAD:
+  contrcode: 1481
+  exchange: 9079
+  exchange_name: London Metal Exchange
+  clscode: 3740
+  calcseriesname: LME-COPPER CONTINUOUS
+  name: Copper
+  asset_class: commodity
+  ric: CMCU
+  settlement_start: "12:30:00"    
+  settlement_end: "12:35:00"
+  # round: 0.5
+NID:
+  contrcode: 1614
+  exchange: 9079
+  exchange_name: London Metal Exchange
+  clscode: 1204
+  calcseriesname: LME-NICKEL CONTINUOUS
+  name: Nickel
+  asset_class: commodity
+  ric: CMNI
+  settlement_start: "13:00:00"
+  settlement_end: "13:05:00"
+  # round: 1
+PBD:
+  contrcode: 1502
+  exchange: 9079
+  exchange_name: London Metal Exchange
+  clscode: 1122
+  calcseriesname: LME-LEAD CONTINUOUS
+  name: Lead
+  asset_class: commodity
+  ric: CMPB
+  settlement_start: "12:45:00"
+  settlement_end: "12:50:00"
+  # round: 0.5
+ZSD:
+  contrcode: 1753
+  exchange: 9079
+  exchange_name: London Metal Exchange
+  clscode: 1308
+  calcseriesname: LME-ZINC CONTINUOUS
+  name: Zinc
+  asset_class: commodity
+  ric: CMZN
+  settlement_start: "12:50:00"
+  settlement_end: "12:55:00"
+  # round: 0.5
+GC:
+  contrcode: 2020
+  exchange: 9250
+  exchange_name: Commodities Exchange Center
+  clscode: 1508
+  calcseriesname: CMX-GOLD 100 OZ CONTINUOUS
+  name: Gold
+  asset_class: commodity
+  cftc_code: "088"
+  cftc_names:
+    - "GOLD - COMMODITY EXCHANGE INC."
+  ric: GC
+  settlement_start: "13:29:00"
+  settlement_end: "13:30:00"
+  adjustments:
+    - threshold: 4000
+      divisor: 100
+SI:
+  contrcode: 2108
+  exchange: 9250
+  exchange_name: Commodities Exchange Center
+  clscode: 1574
+  calcseriesname: CMX-SILVER 5000 OZ CONT.TRADITIONAL # CMX-SILVER 5000 OZ CONTINUOUS 
+  name: Silver
+  asset_class: [commodity, traditional]
+  ct: [3, 5, 7, 9, 12]
+  cftc_code: "084"
+  cftc_names:
+    - "SILVER - COMMODITY EXCHANGE INC."
+  ric: SI
+  settlement_start: "13:24:00"
+  settlement_end: "13:25:00"
+  adjustments:
+    - threshold: 100
+      divisor: 100
+HG:
+  contrcode: 2026
+  exchange: 9250
+  exchange_name: Commodities Exchange Center
+  clscode: 1512
+  calcseriesname: CMX-HIGH GRADE COPPER CONT.TRAD # CMX-HIGH GRADE COPPER CONT.
+  name: Copper (High Grade)
+  asset_class: [commodity, traditional]
+  ct: [3, 5, 7, 9, 12]
+  cftc_code: "085"
+  cftc_names:
+    - "COPPER - COMMODITY EXCHANGE INC."
+    - "COPPER-GRADE #1 - COMMODITY EXCHANGE INC."
+    - "COPPER- #1 - COMMODITY EXCHANGE INC."
+  ric: HG
+  settlement_start: "12:29:00"      
+  settlement_end: "12:30:00"
+  adjustments:
+    - threshold: 10
+      divisor: 100
+      
+### BONDS FUTURES ### 
+ZB:
+  contrcode: 3271 #448
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 2441 # 330
+  calcseriesname: CBT-30 YR US T-BOND COMP CONTINUOUS # ECBOT-30 YEAR US T-BOND CONT.
+  name: 30 Year US Government Bond
+  asset_class: bond
+  cftc_code: "020"
+  cftc_names:
+    - "LONG TERM U.S. TREASURY BONDS - CHICAGO BOARD OF TRADE"
+    - "U.S. TREASURY BONDS - CHICAGO BOARD OF TRADE"
+    - "UST BOND - CHICAGO BOARD OF TRADE"
+  ric: US
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+ZT:
+  contrcode: 3377
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 2523
+  calcseriesname: CBT-2 YEAR US T-NOTE COMP. CONTINUOUS 
+  name: 2 Year US Government Note
+  asset_class: bond
+  cftc_code: "042"
+  cftc_names:
+    - "2 YEAR U.S. TREASURY NOTES - NEW YORK COTTON EXCHANGE"
+    - "2 YEAR U.S. TREASURY NOTES - CHICAGO BOARD OF TRADE"
+    - "2-YEAR U.S. TREASURY NOTES - CHICAGO BOARD OF TRADE"
+    - "UST 2Y NOTE - CHICAGO BOARD OF TRADE"
+  ric: TU
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+ZF:
+  contrcode: 2680
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 1997
+  calcseriesname: CBT-5 YEAR US T-NOTE COMP. CONT.
+  name: 5 Year US Government Note
+  asset_class: bond
+  cftc_code: "044"
+  cftc_names:
+    - "5 YEAR U.S. TREASURY NOTES - NEW YORK COTTON EXCHANGE"
+    - "5 YEAR U.S. TREASURY NOTES - CHICAGO BOARD OF TRADE"
+    - "5-YEAR U.S. TREASURY NOTES - CHICAGO BOARD OF TRADE"
+    - "UST 5Y NOTE - CHICAGO BOARD OF TRADE"
+  ric: FV
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+ZN:
+  contrcode: 2682
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 3896
+  calcseriesname: CBT-10 YRS US T-NOTE COMP. CONTINUOUS
+  name: 10 Year US Government Note
+  asset_class: bond
+  cftc_code: "043"
+  cftc_names:
+    - "6.5-10 YEAR U.S. TREASURY NOTE - CHICAGO BOARD OF TRADE"
+    - "10 YEAR U.S. TREASURY NOTES - CHICAGO BOARD OF TRADE"
+    - "UST 10Y NOTE - CHICAGO BOARD OF TRADE"
+  ric: TY
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+TN: # ultra 10 year is only available from 2016 and onwards
+  contrcode: 4361
+  exchange: 9144
+  exchange_name: eCBOT
+  clscode: 4359
+  calcseriesname: CBT-ULTRA 10-YEAR US T-NOTE CONT
+  name: Ultra 10 Year US Government Note
+  asset_class: bond
+  cftc_code: "043"
+  cftc_names:
+    - "ULTRA 10-YEAR U.S. T-NOTES - CHICAGO BOARD OF TRADE"
+    - "ULTRA UST 10Y - CHICAGO BOARD OF TRADE"
+  ric: TN
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+UB:
+  contrcode: 2685
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 2001
+  calcseriesname: CBOT-ULTRA T-BOND COMP. CONT.
+  name: Ultra T-Bond
+  asset_class: bond
+  cftc_code: "020"
+  cftc_names:
+    - "ULTRA U.S. TREASURY BONDS - CHICAGO BOARD OF TRADE"
+    - "ULTRA UST BOND - CHICAGO BOARD OF TRADE"
+    - "ULTRA US T BOND - CHICAGO BOARD OF TRADE"
+  ric: AUL
+  settlement_start: "13:59:30"    
+  settlement_end: "14:00:00"
+SH2Z: # 1997-03-07 to #1999-03-08
+  contrcode: 1137
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 849
+  calcseriesname: EUREX-SCHATZ CONTINUOUS DEAD
+  name: Schatz
+  asset_class: [bond, historical]
+  ric: SH2Z
+FGBS: # 1998-10-05 to present
+  contrcode: 779
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 3647
+  calcseriesname: EUREX-EURO SCHATZ CONTINUOUS
+  name: Euro Schatz
+  asset_class: bond
+  ric: FGBS
+  settlement_start: "17:14:00"
+  settlement_end: "17:15:00"
+BDM: # 1996-06-18 to 1999-03-08
+  contrcode: 974
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 727
+  calcseriesname: EUREX-BOBL CONTINUOUS DEAD
+  name: Bobl
+  asset_class: [bond, historical]
+  ric: BDM
+FGBM: # 1998-10-05 to present
+  contrcode: 704
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 527
+  calcseriesname: EUREX-EURO BOBL CONTINUOUS
+  name: Euro Bobl
+  asset_class: bond
+  ric: FGBM
+  settlement_start: "17:14:00"
+  settlement_end: "17:15:00"
+BDL: # 1996-06-18 to 1999-03-08
+  contrcode: 831
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 623
+  calcseriesname: EUREX-BUND CONTINUOUS DEAD
+  name: Bund
+  asset_class: [bond, historical]
+  ric: BDL 
+FGBL: # 1998-10-05 to present
+  contrcode: 834
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 626
+  calcseriesname: EUREX-EURO BUND CONTINUOUS
+  name: Euro Bund
+  asset_class: bond
+  ric: FGBL
+  settlement_start: "17:14:00"
+  settlement_end: "17:15:00"
+FGBX:
+  contrcode: 723
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 543
+  calcseriesname: EUREX-EURO BUXL CONTINUOUS
+  name: Euro Buxl
+  asset_class: bond
+  ric: FGBX
+  settlement_start: "17:14:00"
+  settlement_end: "17:15:00"
+FOAT:
+  contrcode: 3479
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 3474
+  calcseriesname: EUREX-LONG EURO OAT CONTINUOUS
+  name: Euro Oat
+  asset_class: bond
+  ric: FOAT
+  settlement_start: "17:14:00"
+  settlement_end: "17:15:00"
+FBTP:
+  contrcode: 2694
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 2009
+  calcseriesname: EUREX-EURO BTP CONTINUOUS
+  name: Euro BTP
+  asset_class: bond
+  ric: FBTP
+  settlement_start: "17:14:00"  
+  settlement_end: "17:15:00"
+# Splice RIC=CON --> RIC=CONF
+CONF:
+  contrcode: 2517
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 3353
+  calcseriesname: EUREX-SWISS CONF CONTINUOUS
+  name: Swiss Conf
+  asset_class: [bond, historical]
+  ric: [CON, CONF]
+  settlement_start: "16:55:00"
+  settlement_end: "17:00:00"
+R:
+  contrcode: 1559
+  exchange: 9148
+  exchange_name: Euronext.LIFFE London
+  clscode: 1163
+  calcseriesname: LIFFE-LONG GILT CONTINUOUS
+  name: Long Gilt
+  asset_class: bond
+  ric: FLG
+  settlement_start: "17:14:00"
+  settlement_end: "17:15:00"
+CGB:
+  contrcode: 301
+  exchange: 1008
+  exchange_name: Montreal Exchange
+  clscode: 221
+  calcseriesname: ME-10Y CANADIAN GOVT BOND CONTINUOUS
+  name: 10 Year Canadian Government Bond
+  asset_class: bond
+  ric: CGB
+  settlement_start: "14:59:00"
+  settlement_end: "15:00:00"
+"160120001":
+  contrcode: 1398
+  exchange: 660
+  exchange_name: Osaka Exchange
+  clscode: 1048
+  calcseriesname: TSE-10 YEAR T-BOND CONTINUOUS
+  name: 10 Year Japanese Government Bond
+  asset_class: bond
+  ric: JGB
+  settlement_start: "15:00:00"
+  settlement_end: "15:02:00"
+YT:
+  contrcode: 108
+  exchange: 1011
+  exchange_name: Sydney Futures Exchange
+  clscode: 3055
+  calcseriesname: SFE-AUST 3 YEAR T-BOND CONT.
+  name: 3 Year Australian Government Bond
+  asset_class: bond
+  ric: YTT
+  settlement_start: "16:29:00"
+  settlement_end: "16:30:00"
+XT:
+  contrcode: 42
+  exchange: 1011
+  exchange_name: Sydney Futures Exchange
+  clscode: 3046
+  calcseriesname: SFE-AUST 10 YEAR T-BOND CONT.
+  name: 10 Year Australian Government Bond
+  asset_class: bond
+  ric: YTC
+  settlement_start: "16:29:00"    
+  settlement_end: "16:30:00"
+
+### CURRENCY FUTURES ###
+6A:
+  contrcode: 2744
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2047
+  calcseriesname: CME-AUSTRALIAN DOLLR COMP. CONTINUOUS
+  name: Australian Dollar
+  asset_class: currency
+  cftc_code: "232"
+  cftc_names: # there is a gap in this data from 06-2000 to 08-2000
+    - "AUSTRALIAN DOLLARS - INTERNATIONAL MONETARY MARKET"
+    - "AUSTRALIAN DOLLARS - CHICAGO MERCANTILE EXCHANGE"
+    - "AUSTRALIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+  ric: AD
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.00005
+6B:
+  contrcode: 2759
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2059
+  calcseriesname: CME-STERLING COMP. CONTINUOUS
+  name: Sterling  
+  asset_class: currency
+  cftc_code: "096"
+  cftc_names:
+    - "BRITISH POUND STERLING - INTERNATIONAL MONETARY MARKET"
+    - "BRITISH POUND STERLING- NEW - INTERNATIONAL MONETARY MARKET"
+    - "POUND STERLING - INTERNATIONAL MONETARY MARKET"
+    - "POUND STERLING - CHICAGO MERCANTILE EXCHANGE"
+    - "BRITISH POUND STERLING - CHICAGO MERCANTILE EXCHANGE"
+    - "BRITISH POUND - CHICAGO MERCANTILE EXCHANGE"
+  ric: BP
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.00001
+6C:
+  contrcode: 2776
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2072
+  calcseriesname: CME-CANADIAN DOLLAR COMP. CONTINUOUS
+  name: Canadian Dollar
+  asset_class: currency
+  cftc_code: "090"
+  cftc_names:
+    - "CANADIAN DOLLAR - INTERNATIONAL MONETARY MARKET"
+    - "CANADIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+  ric: CD
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.00005
+# Splice the German Mark to the Euro
+DM:
+  contrcode: 1336
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3719
+  calcseriesname: CME-DEUTSCHEMARK CONTINUOUS DEAD
+  name: Germany Mark
+  asset_class: [currency, historical]
+  ric: DM
+6E:
+  contrcode: 2683
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1999
+  calcseriesname: CME-EURO COMP. CONTINUOUS
+  name: Euro
+  asset_class: currency
+  cftc_code: "099"
+  cftc_names:
+    - "EUROPEAN CURRENCY UNIT - NEW YORK COTTON EXCHANGE"
+    - "EURO FX - INTERNATIONAL MONETARY MARKET"
+    - "EURO FX - CHICAGO MERCANTILE EXCHANGE"
+  ric: URO
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.00005
+6J:
+  contrcode: 2846
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2125
+  calcseriesname: CME-JAPANESE YEN COMP. CONTINUOUS
+  name: Japanese Yen
+  asset_class: currency
+  cftc_code: "097"
+  cftc_names:
+    - "JAPANESE YEN - INTERNATIONAL MONETARY MARKET"
+    - "JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE"
+  ric: JY
+  settlement_start: "13:59:30"    
+  settlement_end: "14:00:00"
+  adjustments:
+    - threshold: 10
+      divisor: 10000
+  # round: 0.0000005
+6N:
+  contrcode: 2881
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2154
+  calcseriesname: CME-NEW ZEALAND $ COMP. CONTINUOUS
+  name: New Zealand Dollar
+  asset_class: currency
+  cftc_code: "112"
+  cftc_names:
+    - "NEW ZEALAND DOLLARS - CHICAGO MERCANTILE EXCHANGE"
+    - "NEW ZEALAND DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+    - "NZ DOLLAR - CHICAGO MERCANTILE EXCHANGE"
+  ric: NE
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.00005
+6S:
+  contrcode: 2807
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2094
+  calcseriesname: CME-SWISS FRANC COMP. CONTINUOUS
+  name: Swiss Franc
+  asset_class: currency
+  cftc_code: "092"
+  cftc_names:
+    - "SWISS FRANC - INTERNATIONAL MONETARY MARKET"
+    - "SWISS FRANC - CHICAGO MERCANTILE EXCHANGE"
+  ric: SF
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.00005
+NOK:
+  contrcode: 1367
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1025
+  calcseriesname: CME-NORWEGIAN KRONE CONTINUOUS
+  name: Norwegian Krone
+  asset_class: currency
+  ric: NOKA
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.000025
+SEK:
+  contrcode: 1377
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1032
+  calcseriesname: CME-SWEDISH KRONA CONTINUOUS
+  name: Swedish Krona
+  asset_class: currency
+  ric: SEKA
+  settlement_start: "13:59:30"
+  settlement_end: "14:00:00"
+  # round: 0.000025
+
+### EQUITY MARKET INDEX FUTURES ###
+# Splice the Full Size S&P 500 --> the Mini S&P 500
+SP:
+  contrcode: 1382
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3725
+  calcseriesname: CME-S&P 500 INDEX CONTINUOUS DEAD
+  name: S&P 500 Index
+  asset_class: [equity, us_equity, historical]
+  cftc_code: "138"
+  cftc_names:
+    - "STOCK INDEX FUTURE, S&P 500 - INTERNATIONAL MONETARY MARKET"
+    - "S&P 500 STOCK INDEX - INTERNATIONAL MONETARY MARKET"
+    - "S&P 500 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE"
+    - "S&P 500 Consolidated - CHICAGO MERCANTILE EXCHANGE"
+  ric: SP
+ES:
+  contrcode: 1381
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1035
+  calcseriesname: CME-MINI S&P 500 INDEX CONT.
+  name: Mini S&P 500 Index
+  asset_class: [equity, us_equity]
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P 500 STOCK INDEX - INTERNATIONAL MONETARY MARKET"
+    - "E-MINI S&P 500 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE"
+    - "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE"
+  ric: ES
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+  # round: 0.25
+ND:
+  contrcode: 378
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3089
+  calcseriesname: CME-NASDAQ 100 INDEX CONTINUOUS DEAD
+  name: Nasdaq 100 Index
+  asset_class: [equity, us_equity, historical]
+  cftc_code: "209"
+  cftc_names:
+    - "NASDAQ-100 STOCK INDEX - INTERNATIONAL MONETARY MARKET"
+    - "NASDAQ-100 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE"
+    - "NASDAQ-100 Consolidated - CHICAGO MERCANTILE EXCHANGE"
+  ric: ND
+NQ:
+  contrcode: 323
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 238
+  calcseriesname: CME-E MINI NASDAQ 100 CONTINUOUS
+  name: Mini Nasdaq 100 Index
+  asset_class: [equity, us_equity]
+  cftc_code: "209"
+  cftc_names:
+    - "NASDAQ-100 STOCK INDEX (MINI) - INTERNATIONAL MONETARY MARKET"
+    - "NASDAQ-100 STOCK INDEX (MINI) - CHICAGO MERCANTILE EXCHANGE"
+    - "NASDAQ MINI - CHICAGO MERCANTILE EXCHANGE"
+  ric: NQ
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+# For Russell 2000, ER2 -> RL -> TF -> RTY
+ER2: # 1993-02-04 to 2008-09-18
+  contrcode: 394
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 290
+  calcseriesname: CME-RUSSELL 2000 INDEX CONT. DEAD
+  name: Russell 2000 Index (CME Past)
+  asset_class: [equity, us_equity, historical]
+RL: # 2003-12-22 to 2008-09-19
+  contrcode: 325
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3590
+  calcseriesname: CME-EMINI RUSSELL 2000 CONT. DEAD
+  name: Mini Russell 2000 Index (CME Past)
+  asset_class: [equity, us_equity, historical]
+  ric: RL
+TF: # 2007-08-20 to 2018-06-01
+  contrcode: 2101
+  exchange: 1012
+  exchange_name: New York Board of Trade (NYBOT)
+  clscode: 3298
+  calcseriesname: NYFE-RUSSELL 2000 MINI CS00 DEAD
+  name: Mini Russell 2000 Index (ICE)
+  asset_class: [equity, us_equity, historical]
+  cftc_code: "239"
+  cftc_names:
+    - "RUSSEL 2000 STOCK INDEX (MINI) - CHICAGO MERCANTILE EXCHANGE"
+    - "RUSSELL 2000 MINI INDEX FUTURE - ICE FUTURES U.S."
+    - "E-MINI RUSSELL 2000 INDEX - CHICAGO MERCANTILE EXCHANGE"
+    - "RUSSELL E-MINI - CHICAGO MERCANTILE EXCHANGE"
+  ric: TFT
+RTY: # 2017-07-11 onwards
+  contrcode: 4396
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 4317
+  calcseriesname: CME-E-MINI RUSSELL 2000 C CONT 
+  name: Mini Russell 2000 Index (CME Present)
+  asset_class: [equity, us_equity]
+  cftc_code: "239"
+  cftc_names:
+    - "RUSSEL 2000 STOCK INDEX FUTURE - INTERNATIONAL MONETARY MARKET"
+    - "RUSSEL 2000 STOCK INDEX FUTURE - CHICAGO MERCANTILE EXCHANGE"
+    - "RUSSELL 2000 MINI INDEX FUTURE - ICE FUTURES U.S."
+  ric: RTY
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+MD:
+  contrcode: 1361
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1021
+  calcseriesname: CME-S&P 400 MIDCAP INDEX CONT. DEAD
+  name: S&P 400 Midcap Index  
+  asset_class: [equity, us_equity, historical]
+  cftc_code: "138"
+  cftc_names:
+    - "STOCK INDEX FUTURE, S&P 400 - INTERNATIONAL MONETARY MARKET"
+    - "S&P 400 MIDCAP STOCK INDEX - INTERNATIONAL MONETARY MARKET"
+    - "S&P 400 MIDCAP STOCK INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: MD
+EMD:
+  contrcode: 401
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3600
+  calcseriesname: CME-EMINI S&P 400 MIDCAP CONTINUOU
+  name: Mini S&P 400 Midcap Index
+  asset_class: [equity, us_equity]
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P 400 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: DM
+  settlement_start: "15:14:30"
+  settlement_end: "15:15:00"
+DJ:
+  contrcode: 355
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 3085
+  calcseriesname: CBT-DJ INDUSTRIAL AVG CONT. DEAD
+  name: DJ Industrials Index
+  asset_class: [equity, us_equity, historical]
+  cftc_code: "124"
+  cftc_names:
+    - "DOW JONES INDUSTRIAL AVERAGE - CHICAGO BOARD OF TRADE"
+    - "DJIA Consolidated - CHICAGO BOARD OF TRADE"
+  ric: DJ
+YM:
+  contrcode: 444
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 3604
+  calcseriesname: CBT-MINI DOW JONES CONTINUOUS
+  name: Mini DJ Industrial Index
+  asset_class: [equity, us_equity]
+  cftc_code: "124"
+  cftc_names:
+    - "MICRO E-MINI DJIA (x$0.5) - CHICAGO BOARD OF TRADE"
+  ric: YM
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+AP:
+  contrcode: 4
+  exchange: 1011
+  exchange_name: Sydney Futures Exchange
+  clscode: 3
+  calcseriesname: SFE-SPI 200 INDEX CONT. TRAD # SFE-SPI 200 INDEX CONTINUOUS
+  name: SPI 200 Index
+  asset_class: [equity, nonus_equity, traditional]
+  ct: [3, 6, 9, 12]
+  ric: YAP
+  settlement_start: "16:28:00"
+  settlement_end: "16:30:00"
+  # round: 1
+Z:
+  contrcode: 1691
+  exchange: 9148
+  exchange_name: Euronext.LIFFE London
+  clscode: 1261
+  calcseriesname: LIFFE-FTSE 100 INDEX CONTINUOUS
+  name: FTSE 100 Index
+  asset_class: [equity, nonus_equity]
+  ric: FFI
+  settlement_start: "20:59:00"
+  settlement_end: "21:00:00"
+  # round: 0.5
+SXF:  
+  contrcode: 298
+  exchange: 1008
+  exchange_name: Montreal Stock Exchange
+  clscode: 219
+  calcseriesname: ME-S&P CANADA 60 INDEX CONT.
+  name: S&P TSX Canada 60 Index
+  asset_class: [equity, nonus_equity]
+  ric: SXF
+  settlement_start: "15:59:00"
+  settlement_end: "16:00:00"
+  # round: 0.1
+FESX:
+  contrcode: 801
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 600
+  calcseriesname: EUREX-EURO STOXX 50 CONTINUOUS
+  name: Euro Stoxx 50 Index
+  asset_class: [equity, nonus_equity]
+  ric: STXE
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+  # round: 1
+FCH: # 1991-01-16 to 1999-10-18
+# There's a gap in the data from 91 to 95, so start at 95
+  contrcode: 668
+  exchange: 127
+  exchange_name: Euronext Paris
+  clscode: 498
+  calcseriesname: MATIF-CAC 40 INDEX (1) CONT DEAD
+  name: CAC 40 Index
+  asset_class: [equity, nonus_equity, historical]
+  ric: FCH
+FCE: # 1997-04-24 to present
+  contrcode: 647
+  exchange: 127
+  exchange_name: Euronext Paris
+  clscode: 3117
+  calcseriesname: MONEP-CAC 40 INDEX CONTINUOUS
+  name: CAC 40 Index
+  asset_class: [equity, nonus_equity]
+  ric: FCE
+  settlement_start: "17:33:00"
+  settlement_end: "17:35:00"
+  # round: 0.5
+FDAX:
+  contrcode: 775
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 581
+  calcseriesname: EUREX-DAX INDEX CONTINUOUS
+  name: DAX Index
+  asset_class: [equity, nonus_equity]
+  ric: FDX
+  settlement_start: "17:29:00"  
+  settlement_end: "17:30:00"
+  # round: 1
+FIE:
+  contrcode: 1790
+  exchange: 9222
+  exchange_name: MEFF Renta Variable
+  clscode: 1335
+  calcseriesname: MEFF-IBEX 35 PLUS INDEX CONT.
+  name: IBEX 35 Plus Index
+  asset_class: [equity, nonus_equity]
+  ric: MFXI
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+  # round: 0.1
+IFX: # 1994-11-28 to 2004-09-17
+  contrcode: 1852
+  exchange: 9183
+  exchange_name: Italian Derivatives Market
+  clscode: 3266
+  calcseriesname: MIF-MIB 30 INDEX CONTINUOUS DEAD
+  name: IBEX 35 Plus Index
+  asset_class: [equity, nonus_equity, historical]
+  ric: IFX
+FIB: # 2004-03-22 to present
+  contrcode: 1926
+  exchange: 9183
+  exchange_name: Italian Derivatives Market
+  clscode: 1437
+  calcseriesname: IDEM-FTSE MIB CONTINUOUS
+  name: FTSE MIB Index
+  asset_class: [equity, nonus_equity]
+  ric: IFS
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+  # round: 1
+HSI:
+  contrcode: 1309
+  exchange: 9172
+  exchange_name: Hong Kong Futures Exchange
+  clscode: 983
+  calcseriesname: HKFE-HANG SENG INDEX CONTINUOUS
+  name: Hang Seng Index
+  asset_class: [equity, nonus_equity]
+  ric: HSI
+  settlement_start: "16:28:00"
+  settlement_end: "16:30:00"
+  # round: 1
+"161060005": 
+  contrcode: 1405
+  exchange: 660
+  exchange_name: Osaka Exchange
+  clscode: 3729
+  calcseriesname: OSX-TOPIX INDEX CONTINUOUS
+  name: TOPIX Index
+  asset_class: [equity, nonus_equity]
+"160120006":
+  contrcode: 1403
+  exchange: 660
+  exchange_name: Osaka Exchange
+  clscode: 1051
+  calcseriesname: TSE-MINI-TOPIX CONTINUOUS 
+  name: Mini TOPIX Index
+  asset_class: [equity, nonus_equity]
+  ric: JNI
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+  # round: 0.25
+"167120018":
+  contrcode: 2177
+  exchange: 660
+  exchange_name: Osaka Exchange
+  clscode: 1622
+  calcseriesname: OSX-NIKKEI 225 INDEX CONTINUOUS
+  name: Nikkei 225 Index
+  asset_class: [equity, nonus_equity]
+  cftc_code: "240"
+  cftc_names:
+    - "NIKKEI STOCK AVERAGE - INTERNATIONAL MONETARY MARKET"
+    - "NIKKEI STOCK AVERAGE - CHICAGO MERCANTILE EXCHANGE"
+"164120019":
+  contrcode: 4760 
+  exchange: 660
+  exchange_name: Osaka Exchange
+  clscode: 4648
+  calcseriesname: OSX-NIKKEI 225 INDEX CONTINUOUS 
+  name: Mini Nikkei 225 Index
+  asset_class: [equity, nonus_equity]
+  cftc_code: "240"
+  cftc_names:
+    - "NIKKEI STOCK AVERAGE - INTERNATIONAL MONETARY MARKET"
+    - "NIKKEI STOCK AVERAGE - CHICAGO MERCANTILE EXCHANGE"
+  ric: JNI
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+  # round: 5
+MFS:
+  contrcode: 2990
+  exchange: 9371
+  exchange_name: ICE Futures U.S.
+  clscode: 3930
+  calcseriesname: NYL-MSCI EAFE MINI CONTINUOUS
+  name: MSCI EAFE Index
+  asset_class: [equity, nonus_equity]
+  cftc_code: "244"
+  cftc_names:
+    - "MSCI EAFE - ICE FUTURES U.S."
+  ric: MFS
+  settlement_start: "17:59:00"  
+  settlement_end: "18:00:00"
+  # round: 0.1
+EFE:
+  contrcode: 330
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 244
+  calcseriesname: CME-EMINI MSCI EAFE INDEX CONT. DEAD
+  name: Mini MSCI EAFE Index
+  asset_class: [equity, nonus_equity]
+  cftc_code: "244"
+  cftc_names:
+    - "E-MINI MSCI EAFE - CHICAGO MERCANTILE EXCHANGE"
+    - "MSCI EAFE MINI INDEX - NYSE LIFFE"
+    - "MSCI EAFE MINI INDEX - ICE FUTURES U.S."
+    - "MSCI EM INDEX - ICE FUTURES U.S."
+FTI:
+  contrcode: 630
+  exchange: 314
+  exchange_name: Euronext Amsterdam
+  clscode: 3630
+  calcseriesname: AEX-AEX INDEX CONTINUOUS
+  name: AEX Index
+  asset_class: [equity, nonus_equity, historical]
+  ric: [EOE, AEX]
+  settlement_start: "15:30:00"
+  settlement_end: "16:00:00"
+  # round: 0.01
+FXS30:
+  contrcode: 2173
+  exchange: 9260
+  exchange_name: OM Nordic Exchange
+  clscode: 3829
+  calcseriesname: OMX-OMXS30 INDEX CONTINUOUS
+  name: OMXS30 (Sweden) Index
+  asset_class: [equity, nonus_equity, historical]
+  ric: [OMX, OMXS30]
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+  # round: 0.01
+FSMI:
+  contrcode: 2557
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 1908
+  calcseriesname: EUREX-SMI CONT.TRADITIONAL # EUREX-SMI CONTINUOUS 
+  name: Swiss Market Index
+  ct: [3, 6, 9, 12]
+  asset_class: [equity, nonus_equity, historical, traditional]
+  ric: [SMI, FSMI]
+  settlement_start: "17:19:00"
+  settlement_end: "17:20:00"
+  # round: 1
+ATX: # 1992-08-07 to 2014-02-07
+  contrcode: 2483
+  exchange: 9327
+  exchange_name: Vienna Stock Exchange
+  clscode: 3868
+  calcseriesname: OTOB-ATX INDEX CONTINUOUS DEAD
+  name: ATX Index
+  asset_class: [equity, nonus_equity, historical]
+  ric: ATX
+FATX: # 2014-02-10 to present
+  contrcode: 4154 
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 4154
+  calcseriesname: EUREX-ATX INDEX CONT
+  name: ATX Index
+  asset_class: [equity, nonus_equity]
+  ric: FATXA
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+  # round: 0.5
+SGP:
+  contrcode: 2363
+  exchange: 9288
+  exchange_name: Singapore Exchange - Derivatives Trading Division
+  clscode: 1761
+  calcseriesname: SGX DT-MSCI SING. INDEX CONT. TRAD # SGX DT-MSCI SING. INDEX CONT.
+  name: MSCI Singapore Index
+  asset_class: [equity, nonus_equity, traditional]
+  # ct: [3, 6, 9, 12]
+  ric: SSG
+A01:
+  contrcode: 1421
+  exchange: 484
+  exchange_name: Korea Stock Exchange
+  clscode: 1065
+  calcseriesname: KSE-KOSPI 200 INDEX CONTINUOUS
+  name: Kospi 200 Index
+  asset_class: [equity, nonus_equity]
+  ric: KS
+
+### VOLATILITY FUTURES ###
+VX:
+  contrcode: 429
+  exchange: 9120
+  exchange_name: CBOE Futures Exchange
+  clscode: 317
+  calcseriesname:  CFE-VIX INDEX CONT. TRAD # CFE-VIX INDEX CONTINUOUS
+  name: VIX Index
+  asset_class: volatility
+  cftc_code: "117"
+  cftc_names:
+    - "VIX FUTURES - CBOE FUTURES EXCHANGE"
+  ric: VX
+  settlement_start: "14:59:00"
+  settlement_end: "15:00:00"
+FVSX:
+  contrcode: 1133
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 3696
+  calcseriesname: EUREX-VSTOXX CONTINUOUS DEAD
+  name: VSTOXX Index
+  asset_class: [volatility, historical]
+  ric: FVSX
+FVS:
+  contrcode: 2741
+  exchange: 9145
+  exchange_name: EUREX
+  clscode: 3901
+  calcseriesname: EUREX-MINI VSTOXX CONTINUOUS
+  name: Mini VSTOXX Index
+  asset_class: volatility
+  ric: FVS
+  settlement_start: "17:29:00"
+  settlement_end: "17:30:00"
+
+### STOCK SECTOR FUTURES ###
+XAZ:
+  contrcode: 4521
+  exchange: 9051 
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 4553
+  calcseriesname: "Placeholder"
+  name: Communication Services Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P COMMUNICATION INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAZ
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAY:
+  contrcode: 3397
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2537
+  calcseriesname: CME-EMINI S&P CONS. DISC. CONT.
+  name: Consumer Discretionary Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P CONSUMER DISC INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAY
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAP:
+  contrcode: 3393
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2535
+  calcseriesname: CME-EMINI S&P CONS. STAPLES CONT.
+  name: Consumer Staples Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P CONSU STAPLES INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAP
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAE:
+  contrcode: 3388
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2531
+  calcseriesname: CME-EMINI S&P ENERGY CONTINUOUS
+  name: Energy Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P ENERGY INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAE
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAF:
+  contrcode: 3389
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3982
+  calcseriesname: CME-EMINI S&P FINANCE CONT.
+  name: Financial Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P FINANCIAL INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAF
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAV:
+  contrcode: 3396
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2536
+  calcseriesname: CME-EMINI S&P HEALTH CONTINUOUS
+  name: Health Care Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P HEALTH CARE INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAV
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAI:
+  contrcode: 3390
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2532
+  calcseriesname: CME-EMINI S&P INDUS. CONTINUOUS
+  name: Industrial Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P INDUSTRIAL INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: AIX
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAB:
+  contrcode: 3392
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2534
+  calcseriesname: CME-EMINI S&P MAT. CONTINUOUS
+  name: Materials Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P MATERIALS INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAB
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAR:
+  contrcode: 4540
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 4554
+  calcseriesname: CME-EMINI REAL EST INDEX CONT
+  name: Real Estate Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P REAL ESTATE INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAT
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAK:
+  contrcode: 3391
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2533
+  calcseriesname: CME-EMINI S&P TECH CONTINUOUS
+  name: Technology Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P TECHNOLOGY INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAK
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+XAU:
+  contrcode: 3395
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3983
+  calcseriesname: CME-EMINI S&P UTIL. CONT.
+  name: Utilities Sector
+  asset_class: sector
+  cftc_code: "138"
+  cftc_names:
+    - "E-MINI S&P UTILITIES INDEX - CHICAGO MERCANTILE EXCHANGE"
+  ric: XAU
+  settlement_start: "14:59:30"
+  settlement_end: "15:00:00"
+
+### SHORT TERM INTEREST RATE FUTURES ###
+# Splice 3-Month Eurodollar --> SOFR
+GE:
+  contrcode: 2804
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3907
+  calcseriesname: "Placeholder" # CME-3 MTH EURODOLLAR COMP. CS00 DEAD
+  name: 3-Month Eurodollar
+  asset_class: [stir, historical]
+  ct: [3, 6, 9, 12]
+  cftc_code: "132"
+  cftc_names:
+    - "EURODOLLARS (3-MONTH) - INTERNATIONAL MONETARY MARKET"
+    - "3-MONTH EURODOLLARS - INTERNATIONAL MONETARY MARKET"
+    - "3-MONTH EURODOLLARS - CHICAGO MERCANTILE EXCHANGE"
+    - "EURODOLLARS-3M - CHICAGO MERCANTILE EXCHANGE"
+  ric: ED
+SR3:
+  contrcode: 4468
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 4368
+  calcseriesname: CME-3 MONTH SOFR CONT
+  name: 3-Month SOFR
+  asset_class: stir
+  cftc_code: "134"
+  cftc_names:
+    - "3-MONTH SOFR - CHICAGO MERCANTILE EXCHANGE"
+    - "SOFR-3M - CHICAGO MERCANTILE EXCHANGE"
+  ric: SRA
+  settlement_start: "13:59:00"
+  settlement_end: "14:00:00"
+I:
+  contrcode: 1506
+  exchange: 9148
+  exchange_name: Euronext.LIFFE London
+  clscode: 1125
+  calcseriesname: LIFFE-3 MTH EURIBOR CONT.TRADITIONAL # LIFFE-3 MTH EURIBOR CONTINUOUS
+  name: 3-Month EURIBOR
+  asset_class: [stir, traditional]
+  ct: [3, 6, 9, 12]
+  ric: FEI
+  settlement_start: "20:55:00"
+  settlement_end: "21:00:00"
+# Splice 3-Month Euroyen LIBOR --> 3-Month TONA
+TIFEY:
+  contrcode: 1394
+  exchange: 9304
+  exchange_name: Tokyo International Financial Futures Exchange
+  clscode: 1045
+  calcseriesname: TIFFE-3 MTH EUROYEN TIBOR CONT. TRAD # TIFFE-3 MTH EUROYEN TIBOR CONT.
+  name: 3-Month Euroyen TIBOR
+  asset_class: [stir, traditional, historical] 
+  ct: [3, 6, 9, 12]
+  cftc_code: "597"
+  cftc_names:
+    - "3-MO. EUROYEN - INTERNATIONAL MONETARY MARKET"
+    - "3-MO. EUROYEN TIBOR - INTERNATIONAL MONETARY MARKET"
+    - "3-MO. EUROYEN TIBOR - CHICAGO MERCANTILE EXCHANGE"
+  ric: JEY
+  settlement_start: "15:00:00"
+  settlement_end: "15:30:00"
+"91":
+  contrcode: 4802
+  exchange: 660
+  exchange_name: Osaka Exchange
+  clscode: 4799
+  calcseriesname: OSX-3-MONTH TONA CONT
+  name: 3-Month TONA
+  asset_class: stir
+  ric: JTOA
+  settlement_start: "15:55:00"
+  settlement_end: "16:00:00"
+# Splice 3-Month Sterling --> 3-Month SONIA
+L:
+  contrcode: 1563
+  exchange: 9148
+  exchange_name: Euronext.LIFFE London
+  clscode: 1166
+  calcseriesname: LIFFE-3MTH STERLING CONT.TRADITIONAL # LIFFE-3MTH STERLING CONTINUOUS
+  name: 3-Month Short Sterling
+  asset_class: [stir, historical, traditional]
+  ct: [3, 6, 9, 12]
+  ric: FSS
+SO3:
+  contrcode: 4717
+  exchange: 9148
+  exchange_name: Euronext.LIFFE London
+  clscode: 4597
+  calcseriesname: "Placeholder"
+  name: 3-Month SONIA
+  asset_class: stir
+  ric: SON3
+  settlement_start: "17:05:00"
+  settlement_end: "17:15:00"
+IR:
+  contrcode: 9
+  exchange: 1011
+  exchange_name: Sydney Futures Exchange
+  clscode: 6
+  calcseriesname: SFE-AUST 90 DAY BANK BILLS CONT.
+  name: 90-Day Australian Bank Bill
+  asset_class: stir
+  ric: YBA
+  settlement_start: "16:25:00"
+  settlement_end: "16:30:00"
+BB:
+  contrcode: 2148
+  exchange: 1011
+  exchange_name: Sydney Futures Exchange
+  clscode: 1602
+  calcseriesname: NZFE-90 DAY BANK BILLS CONT.
+  name: 90-Day New Zealand Bank Bill
+  asset_class: stir
+  ric: NBB
+  settlement_start: "16:25:00"
+  settlement_end: "16:30:00"
+# Splice 3-Month Euroswiss --> 3-Month SARON
+FES:
+  contrcode: 1675
+  exchange: 9148
+  exchange_name: Euronext.LIFFE London
+  clscode: 3768
+  calcseriesname: LIFFE-3MTH EUROSWISS CONTINUOUS
+  name: 3-Month Euroswiss
+  asset_class: [stir, historical]
+  ct: [3, 6, 9, 12]
+  ric: FES
+SA3:
+  contrcode: 4749
+  exchange: 9351
+  exchange_name: Intercontinental Exchange - ICE Futures Limited
+  clscode: 4638
+  calcseriesname: "Placeholder"
+  name: 3-Month SARON
+  asset_class: stir
+  ric: SARO3
