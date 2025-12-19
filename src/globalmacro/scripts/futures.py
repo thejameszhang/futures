@@ -125,58 +125,6 @@ contr_data = contr_data.with_columns([
     pl.col("date_").alias("date")
 )
 
-# Splicing
-# symbol_mini_to_fullsize_mapping = {
-#     # S&P 500
-#     "ES": "SP",
-#     # S&P 400 Midcap
-#     "EMD": "MD",
-#     # Nasdaq
-#     "NQ": "ND",
-#     # VSTOXX
-#     "FVS": "FVSX",
-#     # Dow Jones
-#     "YM": "DJ",
-#     # Russell 2000 is an exception, 4-way stitch; see docs
-#     "RL": "ER2",
-#     "TF": "RL",
-#     "RTY": "TF",
-#     # Austrian index,
-#     "FATX": "ATX",
-#     # Nikkei 225
-#     "164120019": "167120018",
-#     # TOPIX Index
-#     "160120006": "161060005",
-#     # MSCI EAFE,
-#     "MFS": "EFE",
-#     # Unleaded gasoline replaced by RBOB Gasoline in 2006; stitch together
-#     "RB": "HU",
-#     # Short term interest rates
-#     # 3-Month SOFR replaced by 3-Month Eurodollar in 2018
-#     "SR3": "GE",
-#     # 3-Month TONA replaced the Euroyen in 2024
-#     "91": "TIFEY",
-#     # 3-Month SONIA replaced the 3-Month Short Sterling in 2018
-#     "SO3": "L",
-#     # 3-Month SARON replaced the 3-Month Euroswiss
-#     "SA3": "FES",
-#     # Euro Schatz replaced the Schatz in 1998
-#     "FGBS": "SH2Z",
-#     # Euro Bund replaced the Bund
-#     "FGBL": "BDL",
-#     # Euro Bobl replaced the Bobl
-#     "FGBM": "BDM",
-#     # CAC 40 Index
-#     "FCE": "FCH",
-#     # Euro 
-#     "6E": "DM",
-#     # FIB
-#     "FIB": "IFX",
-#     # Gas Oil (Dead) to Gas Oil Present
-#     "G": "GG",
-#     # Brent Crude Oil (Dead) to Brent Crude Oil
-#     "BRN": "BR",
-# }
 # Gas oil in the active contract has a gap in the data; use Gas oil from IPE and splice
 contr_data = contr_data.filter(
     (pl.col("clscode") != 1176) | (pl.col("date") > pl.date(2003, 1, 1))
@@ -317,7 +265,6 @@ contr_data_wide = contr_data_wide.with_columns([
 
 # First calculate the returns of the contracts until expiry date of each contract 
 def calc_returns_until_expiry(i: int):
-    # TODO: validate this second clause
     return pl.when((pl.col('daystomaturity_1').shift(1) == 0) | (pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1)))\
     .then((pl.col(f'{PRICE_TYPE}_{i}') / pl.col(f'{PRICE_TYPE}_{i + 1}').shift(1)) - 1)\
     .otherwise(((pl.col(f'{PRICE_TYPE}_{i}') / pl.col(f'{PRICE_TYPE}_{i}').shift(1)) - 1))\
@@ -340,10 +287,10 @@ contr_data_wide = contr_data_wide.with_columns([
     pl.coalesce(pl.col("ret_2"), pl.col("ret_1")).alias("ret_2"),
 ])    
 
-# if PRICE_TYPE == "settlement" and CT == "CS":
-#     symbol_to_clscode_map = {f.symbol: f.clscode for f in futures}
-#     for symbol, clscode in symbol_to_clscode_map.items():
-#         contr_data_wide.filter(pl.col('clscode') == clscode).write_csv(f"validation/datastream_comparison/{symbol}.csv")
+if PRICE_TYPE == "settlement" and CT == "CS":
+    symbol_to_clscode_map = {f.symbol: f.clscode for f in futures}
+    for symbol, clscode in symbol_to_clscode_map.items():
+        contr_data_wide.filter(pl.col('clscode') == clscode).sort('date').write_csv(f"data/datastream/futures/assets/{symbol}.csv")
 
 # For comparison purposes, finally calculate the returns of the contracts WITHOUT price adjustment with rolling on the first trading day of the month
 # Edge case: front month contract rolls and expires on the day before
