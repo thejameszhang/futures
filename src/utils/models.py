@@ -11,7 +11,7 @@ class AssetClass(Enum):
     BOND = "bond"
     EQUITY = "equity"
     VOLATILITY = "volatility"
-    SHORT_TERM_INTEREST_RATE = "stir"
+    STIR = "stir"
     SECTOR = "sector"
     HOUSING = "housing"
     CRYPTOCURRENCY = "cryptocurrency"

@@ -1326,160 +1326,160 @@ FVS:
   settlement_end: "17:30:00"
 
 ### STOCK SECTOR FUTURES ###
-XAZ:
-  contrcode: 4521
-  exchange: 9051 
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 4553
-  calcseriesname: "Placeholder"
-  name: Communication Services Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P COMMUNICATION INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAZ
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAY:
-  contrcode: 3397
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 2537
-  calcseriesname: CME-EMINI S&P CONS. DISC. CONT.
-  name: Consumer Discretionary Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P CONSUMER DISC INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAY
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAP:
-  contrcode: 3393
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 2535
-  calcseriesname: CME-EMINI S&P CONS. STAPLES CONT.
-  name: Consumer Staples Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P CONSU STAPLES INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAP
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAE:
-  contrcode: 3388
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 2531
-  calcseriesname: CME-EMINI S&P ENERGY CONTINUOUS
-  name: Energy Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P ENERGY INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAE
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAF:
-  contrcode: 3389
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 3982
-  calcseriesname: CME-EMINI S&P FINANCE CONT.
-  name: Financial Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P FINANCIAL INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAF
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAV:
-  contrcode: 3396
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 2536
-  calcseriesname: CME-EMINI S&P HEALTH CONTINUOUS
-  name: Health Care Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P HEALTH CARE INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAV
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAI:
-  contrcode: 3390
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 2532
-  calcseriesname: CME-EMINI S&P INDUS. CONTINUOUS
-  name: Industrial Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P INDUSTRIAL INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: AIX
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAB:
-  contrcode: 3392
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 2534
-  calcseriesname: CME-EMINI S&P MAT. CONTINUOUS
-  name: Materials Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P MATERIALS INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAB
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAR:
-  contrcode: 4540
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 4554
-  calcseriesname: CME-EMINI REAL EST INDEX CONT
-  name: Real Estate Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P REAL ESTATE INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAT
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAK:
-  contrcode: 3391
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 2533
-  calcseriesname: CME-EMINI S&P TECH CONTINUOUS
-  name: Technology Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P TECHNOLOGY INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAK
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
-XAU:
-  contrcode: 3395
-  exchange: 9051
-  exchange_name: Chicago Mercantile Exchange (CME)
-  clscode: 3983
-  calcseriesname: CME-EMINI S&P UTIL. CONT.
-  name: Utilities Sector
-  asset_class: sector
-  cftc_code: "138"
-  cftc_names:
-    - "E-MINI S&P UTILITIES INDEX - CHICAGO MERCANTILE EXCHANGE"
-  ric: XAU
-  settlement_start: "14:59:30"
-  settlement_end: "15:00:00"
+# XAZ:
+#   contrcode: 4521
+#   exchange: 9051 
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 4553
+#   calcseriesname: "Placeholder"
+#   name: Communication Services Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P COMMUNICATION INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAZ
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAY:
+#   contrcode: 3397
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2537
+#   calcseriesname: CME-EMINI S&P CONS. DISC. CONT.
+#   name: Consumer Discretionary Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P CONSUMER DISC INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAY
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAP:
+#   contrcode: 3393
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2535
+#   calcseriesname: CME-EMINI S&P CONS. STAPLES CONT.
+#   name: Consumer Staples Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P CONSU STAPLES INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAP
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAE:
+#   contrcode: 3388
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2531
+#   calcseriesname: CME-EMINI S&P ENERGY CONTINUOUS
+#   name: Energy Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P ENERGY INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAE
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAF:
+#   contrcode: 3389
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 3982
+#   calcseriesname: CME-EMINI S&P FINANCE CONT.
+#   name: Financial Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P FINANCIAL INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAF
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAV:
+#   contrcode: 3396
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2536
+#   calcseriesname: CME-EMINI S&P HEALTH CONTINUOUS
+#   name: Health Care Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P HEALTH CARE INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAV
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAI:
+#   contrcode: 3390
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2532
+#   calcseriesname: CME-EMINI S&P INDUS. CONTINUOUS
+#   name: Industrial Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P INDUSTRIAL INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: AIX
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAB:
+#   contrcode: 3392
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2534
+#   calcseriesname: CME-EMINI S&P MAT. CONTINUOUS
+#   name: Materials Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P MATERIALS INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAB
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAR:
+#   contrcode: 4540
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 4554
+#   calcseriesname: CME-EMINI REAL EST INDEX CONT
+#   name: Real Estate Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P REAL ESTATE INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAT
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAK:
+#   contrcode: 3391
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2533
+#   calcseriesname: CME-EMINI S&P TECH CONTINUOUS
+#   name: Technology Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P TECHNOLOGY INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAK
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
+# XAU:
+#   contrcode: 3395
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 3983
+#   calcseriesname: CME-EMINI S&P UTIL. CONT.
+#   name: Utilities Sector
+#   asset_class: sector
+#   cftc_code: "138"
+#   cftc_names:
+#     - "E-MINI S&P UTILITIES INDEX - CHICAGO MERCANTILE EXCHANGE"
+#   ric: XAU
+#   settlement_start: "14:59:30"
+#   settlement_end: "15:00:00"
 
 ### SHORT TERM INTEREST RATE FUTURES ###
 # Splice 3-Month Eurodollar --> SOFR

@@ -16,7 +16,7 @@ SPLICING_MAP = {
     "RL": "ER2",
     "TF": "RL",
     "RTY_open": "TF",
-    "RTY": "TF",
+    "RTY": "RTY_open",
     # Austrian index,
     "FATX": "ATX",
     # Nikkei 225
@@ -103,26 +103,4 @@ SPLICING_MAP = {
     "ZSD": "ZSD_lme",
     # LME Lead with settlement prices (1-2 hour before 9:30am EST)
     "PBD": "PBD_lme",
-    # Communication Services Sector with open prices because of missing data
-    "XAZ": "XAZ_open",
-    # Consumer Discretionary Sector with open prices because of missing data
-    "XAY": "XAY_open",
-    # Consumer Staples Sector with open prices because of missing data
-    "XAP": "XAP_open",
-    # Energy Sector with open prices because of missing data
-    "XAE": "XAE_open",
-    # Financial Sector with open prices because of missing data
-    "XAF": "XAF_open",
-    # Health Care with open prices because of missing data
-    "XAV": "XAV_open",
-    # Industrial Sector with open prices because of missing data
-    "XAI": "XAI_open",
-    # Materials Sector with open prices because of missing data
-    "XAB": "XAB_open",
-    # Real Estate Sector with open prices because of missing data
-    "XAR": "XAR_open",
-    # Information Technology Sector with open prices because of missing data
-    "XAK": "XAK_open",
-    # Utilities Sector with open prices because of missing data
-    "XAU": "XAU_open",
 }
