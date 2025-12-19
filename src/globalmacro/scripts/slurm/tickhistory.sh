@@ -5,29 +5,23 @@
 #SBATCH --error=slurm-%j.err        # File for standard error
 #SBATCH --time=1:00:00              # Maximum runtime in HH:MM:SS
 #SBATCH --ntasks=1                  # Number of tasks/processes
-#SBATCH --cpus-per-task=32          # Number of CPU cores per task
-#SBATCH --mem-per-cpu=45G           # Memory per CPU core
+#SBATCH --cpus-per-task=31          # Number of CPU cores per task
+#SBATCH --mem-per-cpu=32G           # Memory per CPU core
 #SBATCH --partition=build           # The Slurm partition to use
 
 source ~/futures/.venv/bin/activate
 
-echo "Running TickHistory for Commodities"
-python3 tickhistory.py --asset_class commodity
+echo "Running TickHistory for Commodities and Volatility Indices"
+python3 tickhistory.py --asset_class commodity & 
+python3 tickhistory.py --asset_class volatility
 
 wait
 
-echo "Running TickHistory for Sectors, Currencies, STIRs, and Bonds"
-python3 tickhistory.py --asset_class sector &
+echo "Running TickHistory for Currencies, STIRs, Bonds, and Traditional Assets"
 python3 tickhistory.py --asset_class currency & 
 python3 tickhistory.py --asset_class bond & 
-python3 tickhistory.py --asset_class stir
-
-wait
-
-echo "Running TickHistory for Volatility Indices, Historical, and Traditional Assets"
-python3 tickhistory.py --asset_class volatility &
-python3 tickhistory.py --asset_class historical &
-python3 trad.py --asset_class traditional
+python3 tickhistory.py --asset_class stir & 
+python3 tickhistory.py --asset_class traditional
 
 wait 
 
