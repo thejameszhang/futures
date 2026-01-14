@@ -23,7 +23,7 @@ class AssetClass(Enum):
 @dataclass
 class Future:
     """Data class representing a futures contract configuration."""
-    # Datastream data
+    # Datastream Futures data
     symbol: str
     contrcode: int
     exchange: int
@@ -32,17 +32,31 @@ class Future:
     calcseriesname: str
     name: str
     asset_class: List[AssetClass]
+    curcdd: str
     ct: Optional[List[int]] = None  # Allowed contract expiry months
     historical: Optional[bool] = None # T if the contract is no longer traded but useful for longer time series
+    # Datastream Equities data
+    dsindexcode: Optional[List[int]] = None
+    dsindexmnem: Optional[List[str]] = None
+    # Datastream FX data
+    exrateintcode: Optional[int] = None
+    inverted_pair: Optional[bool] = False
+    # Datastream Economics data
+    ecoseriesid: Optional[int] = None
+    dsnumber: Optional[str] = None
+    dsmnemonic: Optional[str] = None
+    libor: Optional[str] = None
     # CFTC data
     cftc_code: Optional[str] = None
     cftc_names: Optional[List[str]] = None
-    # Time-synced data
+    # LSEG TickHistory data
     ric: Optional[List[str]] = None
     settlement_start: Optional[time] = None
     settlement_end: Optional[time] = None
     round: Optional[float] = None
     adjustments: Optional[List[Dict[str, Any]]] = None  # Historical price adjustments
+    is_us_asset: Optional[bool] = False 
+    exchange_pmc_name: Optional[str] = None
     
     @classmethod
     def from_dict(cls, symbol: str, data: dict) -> 'Future':
@@ -56,6 +70,14 @@ class Future:
         if isinstance(ric, str):
             ric = [ric]
 
+        dsindexcode = data.get('dsindexcode')
+        if isinstance(dsindexcode, int):
+            dsindexcode = [dsindexcode]
+
+        dsindexmnem = data.get('dsindexmnem')
+        if isinstance(dsindexmnem, str):
+            dsindexmnem = [dsindexmnem]
+
         return cls(
             # Required fields for non-time-synced data
             symbol=symbol,
@@ -66,7 +88,20 @@ class Future:
             calcseriesname=data['calcseriesname'],
             name=data['name'],
             asset_class=asset_classes,
+            curcdd=data.get('curcdd'),
             ct=data.get('ct'),
+            historical=AssetClass.HISTORICAL in asset_classes,
+            # Datastream Equities data
+            dsindexcode=dsindexcode,
+            dsindexmnem=dsindexmnem,
+            libor=data.get('libor'),
+            # Datastream Economics data
+            ecoseriesid=data.get('ecoseriesid'),
+            dsnumber=data.get('dsnumber'),
+            dsmnemonic=data.get('dsmnemonic'),
+            # Datastream FX Rates data
+            exrateintcode=data.get('exrateintcode'),
+            inverted_pair=data.get('inverted_pair', False),
             # CFTC data
             cftc_code=data.get('cftc_code'),
             cftc_names=data.get('cftc_names'),
@@ -76,6 +111,7 @@ class Future:
             settlement_end=parse_time(data.get('settlement_end')),
             round=data.get('round'),
             adjustments=data.get('adjustments'),
+            exchange_pmc_name=data.get('exchange_pmc_name'),
         )
 
 def parse_time(time_str: Optional[str]) -> Optional[time]:

@@ -6,11 +6,13 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 from typing import List
 import os
+from pathlib import Path
 from .models import Future 
 
-def load_config(yaml_file='../../tier1.yaml') -> List[Future]:
+def load_config(yaml_file="../../tier1.yaml") -> List[Future]:
     """Load tier1 symbols data from YAML file and return list of Future objects.
     If yaml_file contains 'tier2', loads from both tier1.yaml and tier2.yaml."""
+    yaml_file = os.fspath(yaml_file)
     futures = []
     
     # Determine which files to load
