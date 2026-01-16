@@ -513,7 +513,7 @@ def validate_missing_symbols(synced: pl.DataFrame, asynced: pl.DataFrame) -> Non
     log_wrapped_list("Asynced only", missing_in_synced, indent=2)
 
 
-def validate_daily_symbol_counts_plot(synced: pl.DataFrame, dataset_label: str = "synced", freq: str = "daily") -> None:
+def validate_symbol_counts_plot(synced: pl.DataFrame, dataset_label: str = "synced", freq: str = "daily") -> None:
     if freq not in {"daily", "monthly"}:
         raise ValueError(f"Unsupported freq: {freq}")
     log_section(f"{freq.capitalize()} symbol counts plot for {dataset_label}")
@@ -769,9 +769,9 @@ def add_vix_vxo_to_async(asynced: pl.DataFrame, vxo: pl.DataFrame, vix: pl.DataF
 
 def load_sectors_async() -> pl.DataFrame:
     sectors_async = read_csv(
-        DATA_ROOT / "misc" / "daily_ind_gics.csv",
+        DATA_ROOT / "jkp" / "daily_ind_gics.csv",
         schema_overrides={"gics": pl.Utf8},
-    ).sort("date")
+    ).sort("date").filter(pl.col("date") <= pl.date(2024, 12, 31))
     return coerce_numeric_data(sectors_async.pivot(values="ret_vw_cap", index="date", on="gics").sort("date"))
 
 
@@ -946,9 +946,9 @@ def build_synced_dataset(vix_open: pl.DataFrame) -> pl.DataFrame:
     volatilities = coerce_numeric_data(read_csv(DATASETS_ROOT / "tier1" / "sync" / "volatility_daily_returns.csv"))
     stirs = coerce_numeric_data(read_csv(DATASETS_ROOT / "tier1" / "sync" / "stir_daily_returns.csv"))
     sectors = read_csv(
-        DATA_ROOT / "misc" / "daily_ind_gics_synced.csv",
+        DATA_ROOT / "jkp" / "daily_ind_gics_synced.csv",
         schema_overrides={"gics": pl.Utf8},
-    ).sort("date")
+    ).sort("date").filter(pl.col("date")<= pl.date(2024, 12, 31))
     sectors = coerce_numeric_data(sectors.pivot(values="ret_vw_cap", index="date", on="gics").sort("date"))
 
     synced = bonds
@@ -1011,21 +1011,20 @@ def filter_dataset_by_monthly_returns(dataset: pl.DataFrame) -> pl.DataFrame:
 
 
 def main() -> None:
-    futures = load_config(PROJECT_ROOT / "tier1.yaml")
-    equities = [future for future in futures if future.dsindexcode is not None]
+    tier1_futures = load_config(PROJECT_ROOT / "tier1.yaml")
+    equities = [future for future in tier1_futures if future.dsindexcode is not None]
     rf = load_rf()
     synthetic_returns, synthetic_returns_synced = load_synthetic_returns(rf, equities)
 
     log_section("Dataset preparation")
     asynced = load_async_dataset(tier=1)
     asynced = keep_after_date(asynced, "FBTP", date(2009, 9, 14), inclusive=True)
-    asynced_tier2 = load_async_dataset(tier=2)
 
     vxo = load_vxo(rf)
     vix = load_vix(rf)
     asynced = add_vix_vxo_to_async(asynced, vxo, vix)
     sectors_async = load_sectors_async()
-    asynced = asynced.join(sectors_async, on="date", how="left")
+    asynced = asynced.join(sectors_async.filter(pl.col("date")<= pl.date(2024, 12, 31)), on="date", how="left")
     asynced = splice_synthetic_returns(asynced, synthetic_returns, "Datastream")
     asynced = fill_asynced_gaps_with_synthetic_returns(asynced, synthetic_returns)
     asynced = drop_all_null_rows(asynced).filter(pl.col("date") <= pl.date(2025, 12, 31))
@@ -1041,9 +1040,9 @@ def main() -> None:
 
     log_dataset_stats(synced, asynced)
     validate_missing_symbols(synced, asynced)
-    validate_daily_symbol_counts_plot(synced, "synced")
-    validate_daily_symbol_counts_plot(asynced, "asynced")
-    validate_daily_symbol_counts_plot(asynced_monthly, "asynced_monthly")
+    validate_symbol_counts_plot(synced, "synced")
+    validate_symbol_counts_plot(asynced, "asynced")
+    validate_symbol_counts_plot(asynced_monthly, "asynced_monthly")
     validate_availability_summary(synced, asynced)
     validate_gap_analysis(synced, asynced, freq="daily")
     validate_gap_analysis(synced, asynced_monthly, min_gap_size=1, freq="monthly")
