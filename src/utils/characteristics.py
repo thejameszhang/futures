@@ -1,6 +1,6 @@
 import polars as pl
 
-def calc_price_with_roll(i: int, price_type: str):
+def calc_price_with_roll(i: int, price_type: str) -> list[pl.Expr]:
     """
     Calculate price of the futures contract
     Args:
@@ -22,7 +22,7 @@ def calc_price_with_roll(i: int, price_type: str):
         .alias(f'adj_{price_type}_local_{i}'),
     ])
     
-def calc_returns_until_expiry(i: int, price_type: str):
+def calc_returns_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     """
     Helper function for calculating returns of futures contracts with and without price adjustment
     Args:
@@ -42,7 +42,7 @@ def calc_returns_until_expiry(i: int, price_type: str):
         .over('clscode').alias(f'ret_temp_local_{i}'),
     ])
     
-def calc_returns_with_price_adj_and_roll(i: int):
+def calc_returns_with_price_adj_and_roll(i: int) -> list[pl.Expr]:
     """
     Calculate the returns of the futures contracts with price adjustment and roll
     Args:
@@ -65,7 +65,7 @@ def calc_returns_with_price_adj_and_roll(i: int):
     ])
     
 # Edge case: front month contract rolls and expires on the day before
-def calc_total_returns_with_roll(i: int, price_type: str):
+def calc_total_returns_with_roll(i: int, price_type: str) -> list[pl.Expr]:
     """
     Calculate the returns of the futures contracts without price adjustment and roll
     Args:
@@ -87,7 +87,7 @@ def calc_total_returns_with_roll(i: int, price_type: str):
         .alias(f'ret_total_local_{i}'),
     ])
 
-def calc_spot_price_until_expiry(i: int, price_type: str):
+def calc_spot_price_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     """
     Helper function for calculating the futures-implied spot prices. Mostly relevant for commodities.
     Args:
@@ -105,7 +105,7 @@ def calc_spot_price_until_expiry(i: int, price_type: str):
         .alias(f'spot_price_local_{i}'),
     ])
 
-def calc_spot_price_with_roll(i: int):
+def calc_spot_price_with_roll(i: int) -> list[pl.Expr]:
     """
     Calculate the the futures-implied spot price with roll
     Args:
@@ -128,7 +128,7 @@ def calc_spot_price_with_roll(i: int):
     ])
 
 # Calculate the the futures-implied spot return with price adjustment and roll
-def calc_spot_returns_until_expiry(i: int):
+def calc_spot_returns_until_expiry(i: int) -> list[pl.Expr]:
     """
     Helper function for calculating the futures-implied spot returns. Mostly relevant for commodities.
     Args:
@@ -150,7 +150,7 @@ def calc_spot_returns_until_expiry(i: int):
         .alias(f'spot_ret_temp_local_{i}'),
     ])
 
-def calc_spot_return_with_price_adj_and_roll(i: int):
+def calc_spot_return_with_price_adj_and_roll(i: int) -> list[pl.Expr]:
     """
     Calculate the the futures-implied spot return with price adjustment and roll
     Args:
@@ -173,7 +173,7 @@ def calc_spot_return_with_price_adj_and_roll(i: int):
     ])
     
 # Calculate the the futures-implied basis until expiry
-def calc_basis_until_expiry(i: int, price_type: str):
+def calc_basis_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     """
     Helper function for calculating the futures-implied basis. Mostly relevant for commodities.
     See Gorton and Rouwenhorst (2012) Page 83.
@@ -192,7 +192,7 @@ def calc_basis_until_expiry(i: int, price_type: str):
         .alias(f'basis_local_{i}'),
     ])
     
-def calc_basis_with_roll(i: int):
+def calc_basis_with_roll(i: int) -> list[pl.Expr]:
     """
     Calculate the the futures-implied basis with roll
     Args:

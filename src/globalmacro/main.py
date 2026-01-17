@@ -9,7 +9,20 @@ from typing import Any, Dict, Iterable, List, Sequence
 import matplotlib.pyplot as plt
 import polars as pl
 from utils.config import load_config
-from utils.paths import *
+from utils.paths import (
+    COMMODITIES_PATH,
+    COMPUSTAT_PATH,
+    DATA_ROOT,
+    DATASETS_ROOT,
+    DATASTREAM_PATH,
+    ECONOMICS_PATH,
+    EQUITIES_PATH,
+    FX_PATH,
+    FUTURES_PATH,
+    GLOBALMACRO_ROOT,
+    PROJECT_ROOT,
+    TICKHISTORY_PATH,
+)
 from utils.splice import SPLICING_MAP
 
 LOG_WIDTH = 88

@@ -1,16 +1,32 @@
 import argparse
+import logging
 from datetime import date
+
 import polars as pl
-from utils.characteristics import *
+
+from utils.characteristics import (
+    calc_basis_until_expiry,
+    calc_basis_with_roll,
+    calc_price_with_roll,
+    calc_returns_until_expiry,
+    calc_returns_with_price_adj_and_roll,
+    calc_spot_price_until_expiry,
+    calc_spot_price_with_roll,
+    calc_spot_return_with_price_adj_and_roll,
+    calc_spot_returns_until_expiry,
+    calc_total_returns_with_roll,
+)
 from utils.config import load_config
 from utils.splice import SPLICING_MAP
 from utils.paths import (
-    PROJECT_ROOT,
-    DATASETS_ROOT, 
-    GLOBALMACRO_ROOT, 
-    FUTURES_PATH, 
     COMPUSTAT_PATH,
+    DATASETS_ROOT,
+    FUTURES_PATH,
+    GLOBALMACRO_ROOT,
+    PROJECT_ROOT,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def splice_active_inactive_series(
@@ -32,10 +48,14 @@ def splice_active_inactive_series(
         The contr_data dataframe with the active and inactive series spliced together, joined by the same symbol
     """
     if active not in symbols or inactive not in symbols:
-        print(f"Skipping splicing {active} to {inactive} because one of the symbols is not in the dataset")
+        logger.info(
+            "Skipping splicing %s to %s because one of the symbols is not in the dataset",
+            active,
+            inactive,
+        )
         return contr_data
 
-    print(f"Splicing {inactive} to {active}")
+    logger.info("Splicing %s to %s", inactive, active)
     # Find the first date that the active contract is available
     active_data = contr_data.filter(pl.col('symbol') == active)
     inactive_data = contr_data.filter(pl.col('symbol') == inactive)
@@ -43,8 +63,8 @@ def splice_active_inactive_series(
     active_max_date = active_data.select(pl.col('date').max()).item()
     inactive_max_date = inactive_data.select(pl.col('date').max()).item()
 
-    print(f"Active contract {active} starts on: {active_min_date}")
-    print(f"Inactive contract {inactive} ends on: {inactive_max_date}")
+    logger.info("Active contract %s starts on: %s", active, active_min_date)
+    logger.info("Inactive contract %s ends on: %s", inactive, inactive_max_date)
 
     # Find the date when active volume first exceeds inactive volume
     overlap_start = active_min_date
@@ -70,18 +90,38 @@ def splice_active_inactive_series(
 
         if volume_crossover.height > 0:
             stitch_date = volume_crossover.select('date').head(1).item()
-            print(f"Volume crossover found: active {active} volume exceeded inactive {inactive} volume on {stitch_date}")
+            logger.info(
+                "Volume crossover found: active %s volume exceeded inactive %s volume on %s",
+                active,
+                inactive,
+                stitch_date,
+            )
         else:
             stitch_date = max(overlap_end, active_min_date)
-            print(f"WARNING: No volume crossover found for {active}/{inactive}. Using fallback date: {stitch_date}")
+            logger.warning(
+                "No volume crossover found for %s/%s. Using fallback date: %s",
+                active,
+                inactive,
+                stitch_date,
+            )
     else:
         stitch_date = active_min_date
-        print(f"WARNING: No overlap period found for {active}/{inactive}. Using active start date: {stitch_date}")
+        logger.warning(
+            "No overlap period found for %s/%s. Using active start date: %s",
+            active,
+            inactive,
+            stitch_date,
+        )
 
     # Check for reasonable gap
     gap_days = (stitch_date - inactive_max_date).days if inactive_max_date < stitch_date else 0
     if gap_days > 10:
-        print(f"WARNING: Gap of {gap_days} days is too large. Skipping stitching for {active}/{inactive}")
+        logger.warning(
+            "Gap of %s days is too large. Skipping stitching for %s/%s",
+            gap_days,
+            active,
+            inactive,
+        )
         return contr_data
 
     # Get inactive data before stitch date
@@ -101,9 +141,21 @@ def splice_active_inactive_series(
     combined_active_series = pl.concat([inactive_before_stitch, active_from_stitch]).sort('date')
     contr_data = pl.concat([contr_data, combined_active_series]).sort(['symbol', 'date'])
 
-    print(f"Combined series for active {active}: {combined_active_series.height} total observations")
-    print(f"  - Inactive data (before {stitch_date}): {inactive_before_stitch.height} observations")
-    print(f"  - Active data (from {stitch_date}): {active_from_stitch.height} observations")
+    logger.info(
+        "Combined series for active %s: %s total observations",
+        active,
+        combined_active_series.height,
+    )
+    logger.info(
+        "  - Inactive data (before %s): %s observations",
+        stitch_date,
+        inactive_before_stitch.height,
+    )
+    logger.info(
+        "  - Active data (from %s): %s observations",
+        stitch_date,
+        active_from_stitch.height,
+    )
     return contr_data
 
 
@@ -134,7 +186,7 @@ def main():
     # Implement the CT option if the futures series has a CT option
     if CT == "CT":
         clscode_to_ct = {f.clscode: f.ct for f in futures if f.ct is not None}
-        print(f"Clscodes with CT cycles: {clscode_to_ct}")
+        logger.info("Clscodes with CT cycles: %s", clscode_to_ct)
         for clscode, allowed_months in clscode_to_ct.items():
             # Filter the data to only include contracts with expiry months in the allowed list
             mask = (pl.col('clscode') == clscode) & (pl.col('lasttrddate').dt.month().is_in(allowed_months))
@@ -395,10 +447,10 @@ def main():
         )
         returns_data = returns_data.select(["date"] + columns)
         returns_data.write_csv(dir / f"daily_{returns_variable}_{CT}.csv")
-        print(f"Returns data saved to {dir} / daily_{returns_variable}_{CT}.csv")
+        logger.info("Returns data saved to %s / daily_%s_%s.csv", dir, returns_variable, CT)
 
     if PRICE_TYPE == 'settlement':
-        print(f"Saving datasets and characteristics for Settlement prices")
+        logger.info("Saving datasets and characteristics for Settlement prices")
         for tier in [1, 2]:
             save_returns("ret_1", tier=tier)
             save_returns("ret_2", tier=tier)
@@ -411,7 +463,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     PRICE_TYPE = args.price_type
     CT = "CT" if args.ct else "CS"
-    print(f"Using {PRICE_TYPE} prices and {CT} option (if available)")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logger.info("Using %s prices and %s option (if available)", PRICE_TYPE, CT)
 
     tier1_symbols = [f.symbol for f in load_config(PROJECT_ROOT / "tier1.yaml")]
     futures = load_config(PROJECT_ROOT / "tier2.yaml")
