@@ -1,0 +1,43 @@
+__pycache__/
+*.py[cod]
+*.log
+*.out
+*.err
+*.tmp
+*.ipynb_checkpoints/
+*.ipynb
+*.csv
+*.parquet
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.idea/
+# artifacts (not source) — LEADING SLASH anchors each to the repo root, so
+# e.g. /validation/ ignores only the top-level output dir, NOT the tracked
+# code under src/globalmacro/validation/. (Unanchored `validation/` would match
+# at any depth and silently re-ignore the code.)
+/data/
+/datasets/
+/characteristics/
+/validation/
+/analysis/
+/docs/
+/figures/
+# validation output artifacts co-located with tracked validation .py code
+# (build repoints VALIDATION_OUTPUT to the ignored /validation/ later; these
+#  stale/interim outputs live in the code dir — ignore them, keep the code tracked)
+src/globalmacro/validation/*.pdf
+src/globalmacro/validation/*.txt
+src/globalmacro/validation/datastream_comparison/
+src/analysis/validation/
+# confidential external validation plugin — never commit
+src/globalmacro/validation/external_comparison.py
+.DS_Store
+.env
+.claude/
+.superpowers/
+assetlist.pdf
+AGENTS.md
+/slurm/logs/
+reference/
+old-data/

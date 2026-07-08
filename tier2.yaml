@@ -1,0 +1,1138 @@
+### TIER 2 COMMODITIES ### 
+ZM:
+  contrcode: 3256
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 2429
+  comcode: 19006 # WASDE soybean meal ending stocks (month0)
+  calcseriesname: CBT-SOYABEAN MEAL COMP CONTINUOUS
+  name: Soyabean Meal
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "026603"
+ZL:
+  contrcode: 3269
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 3968
+  comcode: 19013 # WASDE soybean oil ending stocks (month0)
+  calcseriesname: CBT-SOYABEAN OIL COMP. CONTINUOUS
+  name: Soyabean Oil
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "007601"
+ZR:
+  contrcode: 3268
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 3447
+  comcode:
+    - 17251 # CME rice total stocks
+    - 17281 # CME rice Arkansas total stocks
+    - 17279 # CME rice Arkansas deliverable grades stocks
+    - 17280 # CME rice Arkansas non-deliverable grades stocks
+  calcseriesname: CBT-ROUGH RICE COMP FUTURES CONT.
+  name: Rough Rice
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "039601"
+    - "039781"
+ZO:
+  contrcode: 3262
+  exchange: 1022
+  exchange_name: Chicago Board of Trade (CBOT)
+  clscode: 2435
+  comcode:
+    - 17250 # CME oats total stocks
+    - 17243 # CME oats Chicago total stocks
+    - 17272 # CME oats Chicago deliverable grades stocks
+    - 19359 # CME oats Chicago non-deliverable grades stocks
+    - 17275 # CME oats Duluth Superior total stocks
+    - 17273 # CME oats Duluth Superior deliverable grades stocks
+    - 17274 # CME oats Duluth Superior non-deliverable grades stocks
+    - 17278 # CME oats Minneapolis total stocks
+    - 17276 # CME oats Minneapolis deliverable grades stocks
+    - 17277 # CME oats Minneapolis non-deliverable grades stocks
+  calcseriesname: CBT-OATS COMP. CONTINUOUS
+  name: Oats
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "004601"
+    - "004603"
+CB:
+  contrcode: 289
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 213
+  calcseriesname: CME-BUTTER CASH CONTINUOUS
+  name: Butter
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "050642"
+DC:
+  contrcode: 3255
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2428
+  calcseriesname: CME-MILK CLASS III COMP. CONT.
+  name: Milk Class III
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "052641"
+# PRK:
+#   contrcode: 4721
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 4608
+#   calcseriesname: CME-PORK CUTOUT CONT
+#   name: Pork Cutout
+#   asset_class: commodity
+#   curcdd: USD
+# LBR:
+#   contrcode: 4755 
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 4644
+#   calcseriesname: CME-LUMBER CONT
+#   name: Lumber
+#   asset_class: commodity
+#   curcdd: USD
+#   cftc_contract_market_codes:
+#     - "058641"
+#     - "058643"
+#     - "058644"
+ATW:
+  contrcode: 1590
+  exchange: 9175  
+  exchange_name: ICE Futures Europe
+  clscode: 1186
+  calcseriesname: ICE-COAL ROTTERDAM CONTINUOUS
+  name: Coal Rotterdam Monthly
+  asset_class: commodity
+  curcdd: USD
+AFR:
+  contrcode: 1591
+  exchange: 9175
+  exchange_name: ICE Futures Europe
+  clscode: 1187
+  calcseriesname: ICE-COAL RICHARD BAY CONTINUOUS
+  name: Coal Ritchards Bay Monthly
+  asset_class: commodity
+  curcdd: USD
+C:
+  contrcode: 1471
+  exchange: 9148
+  exchange_name: ICE Futures Europe
+  clscode: 1100
+  comcode: 13874 # ICE cocoa certified warehouse stocks total
+  calcseriesname: LIFFE-COCOA CONTINUOUS
+  name: Cocoa
+  asset_class: commodity
+  curcdd: GBP
+RC:
+  contrcode: 1665
+  exchange: 9148
+  exchange_name: ICE Futures Europe
+  clscode: 1242
+  calcseriesname: LIFFE-ROBUSTA COFFEE REVISED CONT.
+  name: Robusta Coffee
+  asset_class: commodity
+  curcdd: USD
+OJ:
+  contrcode: 2036
+  exchange: 1012
+  exchange_name: New York Board of Trade
+  clscode: 1520
+  calcseriesname: NYCE-(FCOJ-1) ORANGE JUICE CONT.
+  name: Orange Juice
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "040701"
+RS:
+  contrcode: 3161
+  exchange: 9333
+  exchange_name: ICE Futures Canada
+  clscode: 2357
+  calcseriesname: ICE US-CANOLA CONTINUOUS
+  name: Canola
+  asset_class: commodity
+  curcdd: CAD
+SND:
+  contrcode: 1699
+  exchange: 9079
+  exchange_name: London Metal Exchange
+  clscode: 1267
+  comcode: 2153 # LME tin warehouse stocks total
+  calcseriesname: LME-TIN CONTINUOUS
+  name: Tin
+  asset_class: commodity
+  curcdd: USD
+PA:
+  contrcode: 2065
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 1542
+  comcode: 13746 # NYMEX palladium stocks total
+  calcseriesname: NYM-PALLADIUM CONT.TRADITIONAL # NYM-PALLADIUM CONTINUOUS
+  name: Palladium
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "075651"
+A7E:
+  contrcode: 4413
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 4334
+  comcode: 1628 # EIA US propane/propylene end stocks
+  calcseriesname: NYM-ARGUS PROPANE FE INDEX CONT
+  name: Argus Propane Far East
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "06665B"
+A9N:
+  contrcode: 4460
+  exchange: 9044
+  exchange_name: New York Mercantile Exchange
+  clscode: 4361
+  comcode: 1628 # EIA US propane/propylene end stocks
+  calcseriesname: NYM-ARGUS PROP SAUDI ARAMCO CONT
+  name: Argus Propane
+  asset_class: commodity
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "06665A"
+"1610400A4":
+  contrcode: 2976
+  exchange: 9331
+  exchange_name: Tokyo Commodity Exchange
+  clscode: 3928
+  comcode: 6821 # COMEX platinum stocks total
+  calcseriesname: TOCOM-PLATINUM CONTINUOUS
+  name: Platinum
+  asset_class: commodity
+  curcdd: JPY
+"1610400AK":
+  contrcode: 2982
+  exchange: 9331
+  exchange_name: Tokyo Commodity Exchange
+  clscode: 2229
+  comcode: 5215 # SHFE rubber warehouse stocks total
+  calcseriesname: TOCOM-RUBBER CONTINUOUS
+  name: Rubber
+  asset_class: commodity
+  curcdd: JPY
+"1610700A7":
+  contrcode: 2966
+  exchange: 9331
+  exchange_name: Tokyo Commodity Exchange
+  clscode: 2217
+  calcseriesname: TOCOM-CRUDE OIL CONTINUOUS
+  name: Crude Oil (TOCOM)
+  asset_class: commodity
+  curcdd: JPY
+# ZAP:
+#   contrcode: 4493
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4376
+#   calcseriesname: ZCE-APPLE CONT
+#   name: Apple
+#   asset_class: commodity
+#   curcdd: CNY
+CF:
+  contrcode: 3162
+  exchange: 9347
+  exchange_name: Zhengzhou Commodity Exchange
+  clscode: 3955
+  comcode: 18991 # WASDE cotton ending stocks (month0)
+  calcseriesname: "ZCE-COTTON #1 CONTINUOUS"
+  name: "Cotton #1"
+  asset_class: commodity
+  curcdd: CNY
+SF:
+  contrcode: 4434
+  exchange: 9347
+  exchange_name: Zhengzhou Commodity Exchange
+  clscode: 4339
+  calcseriesname: ZCE-FERROSILICON CONT
+  name: Ferrosilicon
+  asset_class: commodity
+  curcdd: CNY
+FG:
+  contrcode: 4097
+  exchange: 9347
+  exchange_name: Zhengzhou Commodity Exchange
+  clscode: 4097
+  calcseriesname: ZCE-FLAT GLASS CONTINUOUS
+  name: Flat Glass
+  asset_class: commodity
+  curcdd: CNY
+# CJ:
+#   contrcode: 4484
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4375
+#   calcseriesname: ZCE-CHINESE JUJUBE CONT
+#   name: Jujube
+#   asset_class: commodity
+#   curcdd: CNY
+MA:
+  contrcode: 4098
+  exchange: 9347
+  exchange_name: Zhengzhou Commodity Exchange
+  clscode: 4098
+  calcseriesname: ZCE-METHANOL CONTINUOUS
+  name: Methanol
+  asset_class: commodity
+  curcdd: CNY
+TA:
+  contrcode: 3167
+  exchange: 9347
+  exchange_name: Zhengzhou Commodity Exchange
+  clscode: 2362
+  calcseriesname: ZCE-PTA CONTINUOUS
+  name: Purified Terephthalic Acid
+  asset_class: commodity
+  curcdd: CNY
+RM:
+  contrcode: 4096
+  exchange: 9347
+  exchange_name: Zhengzhou Commodity Exchange
+  clscode: 4096
+  calcseriesname: ZCE-RAPESEED MEAL CONTINUOUS
+  name: Rapeseed Meal
+  asset_class: commodity
+  curcdd: CNY
+SM:
+  contrcode: 4433
+  exchange: 9347
+  exchange_name: Zhengzhou Commodity Exchange
+  clscode: 4338
+  calcseriesname: ZCE-SILICON MANGANES CONT
+  name: Silicon Manganese
+  asset_class: commodity
+  curcdd: CNY
+# SA:
+#   contrcode: 4766
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4766
+#   calcseriesname: ZCE-SODA ASH CONT
+#   name: Soda Ash
+#   asset_class: commodity
+#   curcdd: CNY
+# UR:
+#   contrcode: 4481
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4374
+#   calcseriesname: ZCE-UREA CONT
+#   name: Urea
+#   asset_class: commodity
+#   curcdd: CNY
+# TC:
+#   contrcode: 4179
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4179
+#   comcode: 13539 # Qinhuangdao port coal inventory
+#   calcseriesname: ZCE-THERMAL COAL CONT
+#   name: Thermal Coal
+#   asset_class: commodity
+#   curcdd: CNY
+# CY:
+#   contrcode: 4480
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4373
+#   calcseriesname: ZCE-COTTON YARN CONT
+#   name: Cotton Yarn
+#   asset_class: commodity
+#   curcdd: CNY
+# PF:
+#   contrcode: 4808
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4809
+#   calcseriesname: ZCE-POLYESTER STAPLE FIBER CONT
+#   name: Polyester Stable Fiber
+#   asset_class: commodity
+#   curcdd: CNY
+# PK:
+#   contrcode: 4809
+#   exchange: 9347
+#   exchange_name: Zhengzhou Commodity Exchange
+#   clscode: 4810
+#   calcseriesname: ZCE-PEANUT CONT
+#   name: Peanut
+#   asset_class: commodity
+#   curcdd: CNY
+J:
+  contrcode: 4145
+  exchange: 9337
+  exchange_name: Dalian Commodity Exchange
+  clscode: 4145
+  comcode: 16396 # Coke inventory Tianjin port
+  calcseriesname: DCE-COKE CONTINUOUS
+  name: Coke
+  asset_class: commodity
+  curcdd: CNY
+JM:
+  contrcode: 4146
+  exchange: 9337
+  exchange_name: Dalian Commodity Exchange
+  clscode: 4146
+  calcseriesname: DCE-COKING COAL CONTINUOUS
+  name: Coking Coal
+  asset_class: commodity
+  curcdd: CNY
+# EG:
+#   contrcode: 4477
+#   exchange: 9337
+#   exchange_name: Dalian Commodity Exchange  
+#   clscode: 4371
+#   calcseriesname: DCE-ETHYLENE GLYCOL CONT
+#   name: Ethylene Glycol Energy
+#   asset_class: commodity
+#   curcdd: CNY
+IO: # I
+  contrcode: 4170
+  exchange: 9337
+  exchange_name: Dalian Commodity Exchange
+  clscode: 4170
+  comcode: 16486 # Iron ore inventory import total, Dalian port
+  calcseriesname: DCE-IRON ORE CONT
+  name: Iron Ore
+  asset_class: commodity
+  curcdd: CNY
+P:
+  contrcode: 2717
+  exchange: 9337
+  exchange_name: Dalian Commodity Exchange
+  clscode: 2026
+  comcode: 3963 # Rotterdam palm oil stocks (vegetable oil inventory)
+  calcseriesname: DCE-PALM OIL CONTINUOUS
+  name: Palm Oil
+  asset_class: commodity
+  curcdd: CNY
+PP:
+  contrcode: 4171
+  exchange: 9337
+  exchange_name: Dalian Commodity Exchange
+  clscode: 4171
+  comcode: 2137 # LME polypropylene warehouse stocks (legacy series)
+  calcseriesname: DCE-POLYPROPYLENE TRc10
+  name: Polypropylene
+  asset_class: commodity
+  curcdd: CNY
+FB:
+  contrcode: 4169
+  exchange: 9337
+  exchange_name: Dalian Commodity Exchange
+  clscode: 4169
+  calcseriesname: DCE-FIBERBOARD TRc10
+  name: Fiberboard
+  asset_class: commodity
+  curcdd: CNY
+# SC:
+#   contrcode: 4762
+#   exchange: 9409
+#   exchange_name: Shanghai International Energy Exchange
+#   clscode: 4762
+#   calcseriesname: SIEE-MED. SOUR CRUDE OIL CONT
+#   name: Medium Sour Crude Oil
+#   asset_class: commodity
+#   curcdd: CNY
+# NR:
+#   contrcode: 4763
+#   exchange: 9409
+#   exchange_name: Shanghai International Energy Exchange
+#   clscode: 4763
+#   comcode: 5215 # SHFE rubber warehouse stocks total
+#   calcseriesname: SIEE-TSR 20 CONT
+#   name: Block Rubber TSR20 Grade
+#   asset_class: commodity
+#   curcdd: CNY
+CU:
+  contrcode: 3123
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 2328
+  comcode: 5195 # SHFE copper warehouse stocks total
+  calcseriesname: SHFE-COPPER CONTINUOUS
+  name: Copper (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+FU:
+  contrcode: 3124
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 2329
+  comcode: 5203 # SHFE fuel oil warehouse stocks total
+  calcseriesname: SHFE-FUEL OIL CONTINUOUS
+  name: Fuel Oil (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+AL:
+  contrcode: 3126
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 2331
+  comcode: 5186 # SHFE aluminium warehouse stocks total
+  calcseriesname: SHFE-ALUMINIUM CONTINUOUS
+  name: Aluminum (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+AU:
+  contrcode: 3127
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 2332
+  calcseriesname: SHFE-GOLD CONTINUOUS
+  name: Gold (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+# WR:
+#   contrcode: 3128
+#   exchange: 9330
+#   exchange_name: Shanghai Futures Exchange
+#   clscode: 2333
+#   comcode: 16639 # Steel wire rod inventory China total 35 cities
+#   calcseriesname: SHFE-STEEL WIRE CONTINUOUS
+#   name: Steel Wire
+#   asset_class: commodity
+#   curcdd: CNY
+SRB: # SB
+  contrcode: 3131
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 2335
+  comcode: 16603 # Steel rebar inventory China total 35 cities
+  calcseriesname: SHFE-STEEL REBAR CONTINUOUS
+  name: Steel Rebar
+  asset_class: commodity
+  curcdd: CNY
+ZIN: # ZN
+  contrcode: 3135
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 2338
+  comcode: 5228 # SHFE zinc warehouse stocks total
+  calcseriesname: SHFE-ZINC CONTINUOUS
+  name: Zinc (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+PB:
+  contrcode: 3340
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 2493
+  comcode:
+    - 13890 # SHFE lead warehouse stocks weekly total
+    - 13896 # SHFE lead warehouse stocks Tianjin subtotal
+  calcseriesname: SHFE-LEAD CONTINUOUS
+  name: Lead (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+AG:
+  contrcode: 4061
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 3036
+  calcseriesname: "NA"
+  name: Silver (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+HC:
+  contrcode: 4173
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 4173
+  comcode: 16879 # SHFE hot rolled coil warehouse stock total
+  calcseriesname: "NA"
+  name: Hot Rolled Coil
+  asset_class: commodity
+  curcdd: CNY
+BU:
+  contrcode: 4183
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 4183
+  calcseriesname: SHFE-BITUMEN CONT
+  name: Bitumen
+  asset_class: commodity
+  curcdd: CNY
+NI:
+  contrcode: 4228
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 4228
+  comcode: 16847 # SHFE nickel warehouse stocks total
+  calcseriesname: "NA"
+  name: Nickel (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+SN:
+  contrcode: 4229
+  exchange: 9330
+  exchange_name: Shanghai Futures Exchange
+  clscode: 4229
+  comcode: 16896 # SHFE tin warehouse stocks total
+  calcseriesname: "NA"
+  name: Tin (SHFE)
+  asset_class: commodity
+  curcdd: CNY
+# KP: # SP
+#   contrcode: 4483
+#   exchange: 9330
+#   exchange_name: Shanghai Futures Exchange
+#   clscode: 4372
+#   calcseriesname: SHFE-BLCHD SW KRAFT PULP CONT
+#   name: Kraft Pulp
+#   asset_class: commodity
+#   curcdd: CNY
+# SS:
+#   contrcode: 4728
+#   exchange: 9330
+#   exchange_name: Shanghai Futures Exchange
+#   clscode: 4615
+#   calcseriesname: SHFE-STAINLESS STEEL CONT
+#   name: Stainless Steel (SHFE)
+#   asset_class: commodity
+#   curcdd: CNY
+
+### TIER 2 EQUITY MARKET INDICES ###
+IND:
+  contrcode: 191
+  exchange: 9071
+  exchange_name: A Bolsa do Brazil (B3)
+  exchange_pmc_name: BVMF
+  clscode: 140
+  calcseriesname: BMF-BOVESPA INDEX CONTINUOUS
+  name: Bovespa Index
+  asset_class: equity
+  ric: IND
+  curcdd: BRL
+  dsindexcode: 879
+  dsindexmnem: BRBOVE1 
+# WIN:
+#   contrcode: 4068
+#   exchange: 103
+#   exchange_name: Sau Paulo Stock Exchange
+#   clscode: 3041
+#   calcseriesname: N/A
+#   name: Mini Bovespa Index
+#   asset_class: equity
+#   curcdd: BRL
+CN:
+  contrcode: 2324
+  exchange: 9288
+  exchange_name: Singapore Exchange - Derivatives Trading Division
+  exchange_pmc_name: XSES
+  clscode: 1731
+  calcseriesname: SGX DT-FTSE CHINA A50 CONTINUOUS
+  name: FTSE China A50 Index
+  asset_class: equity
+  ric: SFC
+  curcdd: USD
+  dsindexcode: 50470
+  dsindexmnem: XINA50I
+HHI:
+  contrcode: 1280
+  exchange: 9172
+  exchange_name: Hong Kong Futures Exchange
+  exchange_pmc_name: XHKG
+  clscode: 959
+  calcseriesname: HKFE-H SHARES INDEX CONTINUOUS
+  name: FTSE China H Shares Index
+  asset_class: equity
+  ric: HCEI
+  curcdd: CNY 
+  # Use Hang Seng China Enterprises Index (HCEI) for longer history and index match.
+  dsindexcode: 37740
+  dsindexmnem: HKHCHIE
+NIFTY:
+  contrcode: 2872
+  exchange: 9341
+  exchange_name: National Stock Exchange of India
+  exchange_pmc_name: XNSE
+  clscode: 2145
+  calcseriesname: NSE-S&P CNX NIFTY CONTINUOUS
+  name: NIFTY 50 Index
+  asset_class: equity
+  ric: GIF
+  curcdd: USD
+  dsindexcode: 38347
+  dsindexmnem: INNSE50
+FKLI:
+  contrcode: 1422
+  exchange: 491
+  exchange_name: Kuala Lumpur Stock Exchange
+  exchange_pmc_name: XKLS
+  clscode: 3731
+  calcseriesname: KLSE-KLCI CONTINUOUS
+  name: FTSE Bursla Malaysia KLCI
+  asset_class: equity
+  ric: FKLI
+  curcdd: MYR
+  dsindexcode: 77751
+  dsindexmnem: FBMKLCI
+  # USD price index: FTSE BURSA MALAYSIA KLCI $ (dsindexcode 90466, dsindexmnem FBMKLC$, start 2009-04-06)
+IPC:
+  contrcode: 3016
+  exchange: 9329
+  exchange_name: Mexican Derivatives Exchange
+  exchange_pmc_name: XMEX
+  clscode: 3935
+  calcseriesname: MEXDER-IPC INDEX CONTINUOUS
+  name: IPC Index
+  asset_class: equity
+  ric: IPC
+  curcdd: MXN
+  dsindexcode: 40787
+  dsindexmnem: MXIPC35
+FW20:
+  contrcode: 4157
+  exchange: 857
+  exchange_name: Warsaw Stock Exchange
+  exchange_pmc_name: XWAR
+  clscode: 4157
+  calcseriesname: WSE-WIG 20 INDEX 20PLN CONT
+  name: Warsaw WIG20 Index
+  asset_class: equity
+  ric: FW2020
+  curcdd: PLN
+  dsindexcode: 41310
+  dsindexmnem: POLWG20
+DTOP:
+  contrcode: 3996
+  exchange: 9291
+  exchange_name: South African Futures Exchange
+  exchange_pmc_name: XJSE
+  clscode: 4059
+  calcseriesname: "NA"
+  name: South African All-Shares Index
+  asset_class: equity
+  ric: DTOP
+  curcdd: ZAR
+  dsindexcode: 39591
+  dsindexmnem: JSEOVER
+MXF:
+  contrcode: 2442
+  exchange: 9297
+  exchange_name: Taiwan Futures Exchange
+  exchange_pmc_name: XTAI
+  clscode: 1821
+  calcseriesname: TAIFEX-MINI TAIEX INDEX CONTINUOUS
+  name: TAIEX Index
+  asset_class: equity
+  ric: MTX
+  curcdd: TWD
+  dsindexcode: 48081
+  dsindexmnem: TAIWGHT
+  # USD price index: WLD FEDN EX TAIWAN TAIEX $ (dsindexcode 90202, dsindexmnem WFETAI$, start 1995-01-31)
+SET50:
+  contrcode: 3156
+  exchange: 9345  
+  exchange_name: Thailand Futures Exchange
+  exchange_pmc_name: XBKK
+  clscode: 3435
+  calcseriesname: TFEX-MINI SET50 INDEX CONTINUOUS
+  name: SET 50 Index
+  asset_class: equity
+  ric: S50
+  curcdd: THB
+  dsindexcode: 162167
+  dsindexmnem: SET50FF
+# TODO: Apparently the Bel All-share is getting more attention now than the bel20
+BXF:
+  contrcode: 168
+  exchange: 107
+  exchange_name: Euronext Brussels
+  exchange_pmc_name: XBRU
+  clscode: 3062
+  calcseriesname: BELFOX-BEL20 INDEX CONTINUOUS
+  name: BEL20 Belgium Index
+  asset_class: equity
+  ric: BFX
+  curcdd: EUR
+  dsindexcode: 714
+  dsindexmnem: BGBEL20
+OMXC20: # ends in 2012-01-02
+  contrcode: 524
+  exchange: 206
+  exchange_name: Copenhagen Stock Exchange
+  exchange_pmc_name: XCSE
+  clscode: 3104
+  calcseriesname: FUTOP-OMXC20 INDEX CONTINUOUS DEAD
+  name: OMXC20 Denmark Index
+  asset_class: [equity, historical]
+  curcdd: DKK
+C20CAP: # 2011-12-13 to 2017-12-01
+  contrcode: 3427
+  exchange: 206
+  exchange_name: Copenhagen Stock Exchange
+  exchange_pmc_name: XCSE
+  clscode: 3467
+  calcseriesname: "N/A"
+  name: OMXC20 Denmark Index
+  asset_class: [equity, historical]
+  curcdd: DKK
+FXC25: # 2017-11-21 to present
+  contrcode: 4408
+  exchange: 206
+  exchange_name: Copenhagen Stock Exchange
+  exchange_pmc_name: XCSE
+  clscode: 4322
+  calcseriesname: OMX-OMXC25CAP INDEX CONT
+  name: OMXC20 Denmark Index
+  asset_class: equity
+  ric: C25CAP
+  curcdd: DKK
+  # Splice OMXC20 into OMXC25 to align with pre-2017 contract history.
+  dsindexcode: [13966, 140941]
+  dsindexmnem: [DKKFXIN, OMXC25C]
+OBF:
+  contrcode: 2197
+  exchange: 9264
+  exchange_name: Oslo Stock Exchange
+  exchange_pmc_name: XOSL
+  clscode: 1638
+  calcseriesname: OSLO-OBX INDEX CONTINUOUS
+  name: OBX Norway Index
+  asset_class: equity
+  ric: OBX
+  curcdd: NOK
+  dsindexcode: 41242
+  dsindexmnem: OSLOOBX
+PSI:
+  contrcode: 2248
+  exchange: 677
+  exchange_name: Euronext Lisbon
+  exchange_pmc_name: XLIS
+  clscode: 1675
+  calcseriesname: BDP-PSI 20 INDEX CONTINUOUS
+  name: PSI 20 Portugal Index
+  asset_class: equity
+  ric: PSI20
+  curcdd: EUR
+  dsindexcode: 41317
+  dsindexmnem: POPSI20
+FFOX:
+  contrcode: 827
+  exchange: 9145
+  exchange_name: EUREX
+  exchange_pmc_name: EUREX
+  clscode: 620
+  calcseriesname: EUREX-OMXH25 INDEX CONTINUOUS
+  name: OMXH25 Finland Index
+  asset_class: equity
+  ric: OMXH25
+  curcdd: EUR
+  dsindexcode: 37642
+  dsindexmnem: HEX25IN
+
+### TIER 2 CURRENCIES ###
+6L:
+  contrcode: 2771
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2068
+  calcseriesname: CME-BRAZILIAN REAL COMP. CONTINUOUS
+  name: Brazilian Real
+  asset_class: currency
+  ric: BR
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "102741"
+  # No 1M forward series available in ds2fxcode.
+CZK:
+  contrcode: 2788
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3388
+  calcseriesname: CME-CZECH KORUNA COMP. CONTINUOUS
+  name: Czech Koruna
+  asset_class: currency
+  ric: CKO
+  curcdd: USD
+  exrateintcode: 2492
+  fwd_exrateintcode: 2627
+  adjustments:
+    - threshold: 10000
+      divisor: 1000000
+HUF:
+  contrcode: 2824
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2108
+  calcseriesname: CME-HUNGARIAN FORINT COMP. CONTINUOUS
+  name: Hungarian Forint
+  asset_class: currency
+  ric: HFO
+  curcdd: USD
+  exrateintcode: 2493
+  fwd_exrateintcode: 3244
+  adjustments:
+    - threshold: 0.1
+      divisor: 100
+    - threshold: 10000
+      divisor: 100000000
+    - threshold: 100
+      divisor: 100000
+6M:
+  contrcode: 2864
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2139
+  calcseriesname: CME-MEXICAN PESO COMP. CONTINUOUS
+  name: Mexican Peso
+  asset_class: currency
+  ric: MP
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "095741"
+  exrateintcode: 2759
+  fwd_exrateintcode: 3322
+  adjustments:
+    - threshold: 10
+      divisor: 1000000
+PLN:
+  contrcode: 2895
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3400
+  calcseriesname: CME-POLISH ZLOTY COMP. CONTINUOUS
+  name: Polish Zloty
+  asset_class: currency
+  ric: PLZ
+  curcdd: USD
+  exrateintcode: 2494
+  fwd_exrateintcode: 2683
+# 6R: # ends in 2024-10-28, suspended https://www.cmegroup.com/notices/ser/2024/06/SER-9393.html, TODO: fill with spot? 
+#   contrcode: 2906
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 2172
+#   calcseriesname: CME-RUSSIAN ROUBLE COMP. CONTINUOUS
+#   name: Russian Ruble
+#   asset_class: currency
+#   ric: RU
+#   curcdd: USD
+#   adjustments:
+#     - threshold: 10
+#       divisor: 10
+#     - threshold: 1
+#       divisor: 10
+#     - threshold: 0.1
+#       divisor: 10
+6Z:
+  contrcode: 2918
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 2181
+  calcseriesname: CME-S. AFRICAN RAND COMP. CONTINUOUS
+  name: South African Rand
+  asset_class: currency
+  ric: RA
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "122741"
+  exrateintcode: 2446
+  fwd_exrateintcode: 2726
+KRW:
+  contrcode: 1358
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1019
+  calcseriesname: CME-KOREAN WON CONTINUOUS
+  name: South Korean Won
+  asset_class: currency
+  ric: KWR
+  curcdd: USD
+  exrateintcode: 2447
+  fwd_exrateintcode: 3289
+  adjustments: 
+    - threshold: 1
+      divisor: 10000000
+ILS:
+  contrcode: 1359
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 3722
+  calcseriesname: CME-ISRAELI SHEKEL CONTINUOUS
+  name: Israeli Shekel
+  asset_class: currency
+  ric: ISR
+  curcdd: USD
+  exrateintcode: 2437
+  fwd_exrateintcode: 3278
+RMB:
+  contrcode: 1372
+  exchange: 9051
+  exchange_name: Chicago Mercantile Exchange (CME)
+  clscode: 1029
+  calcseriesname: CME-CHINESE RENMINBI /US$ CONTINUOUS
+  name: Chinese Renminbi
+  asset_class: currency
+  ric: RMB
+  curcdd: USD
+  cftc_contract_market_codes:
+    - "082744"
+  exrateintcode: 2430
+  fwd_exrateintcode: 3184
+
+# TODO: Get synthetic FX returns for other currencies who dont have futures, but are still tradable via forwards
+
+### CRYPTOCURRENCY FUTURES ###
+# BTC:
+#   contrcode: 4407
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 4352
+#   calcseriesname: CME-BITCOIN INDEX CONT
+#   name: Bitcoin
+#   asset_class: cryptocurrency
+#   ric: BTC
+#   curcdd: USD
+# ETH:
+#   contrcode: 4742
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 4631
+#   calcseriesname: CME-ETHER INDEX CONT
+#   name: Ether
+#   asset_class: cryptocurrency
+#   ric: HTE 
+#   curcdd: USD
+
+### S&P CASE-SHILLER HOUSING FUTURES ###
+# BOS:
+#   contrcode: 344
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 3593
+#   calcseriesname: CME-HOUSING BOSTON CONTINUOUS
+#   name: Boston Housing
+#   asset_class: housing
+#   ric: BOS
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# CHI:
+#   contrcode: 347
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 256
+#   calcseriesname: CME-HOUSING CHICAGO CONTINUOUS
+#   name: Chicago Housing
+#   asset_class: housing
+#   ric: CHI
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# DEN:
+#   contrcode: 299
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 3586
+#   calcseriesname: CME-HOUSING DENVER CONTINUOUS
+#   name: Denver Housing
+#   asset_class: housing
+#   ric: DEN
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# LAV:
+#   contrcode: 365
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 269
+#   calcseriesname: CME-HOUSING LAS VEGAS CONTINUOUS
+#   name: Los Vegas Housing
+#   asset_class: housing
+#   ric: LAV
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# LAX:
+#   contrcode: 360
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 266
+#   calcseriesname: CME-HOUSING LOS ANGELES CONT.
+#   name: Los Angeles Housing
+#   asset_class: housing
+#   ric: LAX
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# MIA:
+#   contrcode: 370
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 274
+#   calcseriesname: CME-HOUSING MIAMI CONTINUOUS
+#   name: Miami Housing
+#   asset_class: housing
+#   ric: MIA
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# NYM:
+#   contrcode: 383
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 282
+#   calcseriesname: CME-HOUSING NEW YORK CONTINUOUS
+#   name: New York Housing
+#   asset_class: housing
+#   ric: NYM
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# SDG:
+#   contrcode: 399
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 293
+#   calcseriesname: CME-HOUSING SAN DIEGO CONTINUOUS
+#   name: San Diego Housing
+#   asset_class: housing
+#   ric: SDG
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# SFR:
+#   contrcode: 349
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 258
+#   calcseriesname: CME-HOUSING SAN FRAN. CONTINUOUS
+#   name: San Francisco Housing
+#   asset_class: housing
+#   ric: SFR
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
+# WDC:
+#   contrcode: 350
+#   exchange: 9051
+#   exchange_name: Chicago Mercantile Exchange (CME)
+#   clscode: 259
+#   calcseriesname: CME-HOUSING WASH. DC CONTINUOUS
+#   name: Washington D.C. Housing
+#   asset_class: housing
+#   ric: WDC
+#   curcdd: USD
+#   settlement_start: "13:59:00"
+#   settlement_end: "14:00:00"
