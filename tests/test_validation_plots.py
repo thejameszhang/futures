@@ -57,3 +57,29 @@ def test_consistency_pairs_tier1_and_grade_unchanged():
     # because the pipeline's async stage is non-deterministic run-to-run, so this
     # median legitimately drifts ~0.9778–0.9789 independent of any code here.
     assert med == pytest.approx(0.9783, abs=3e-3)
+
+
+from pathlib import Path
+import polars as pl
+from globalmacro.validation.plots import plot_paired_bars
+
+
+def test_plot_paired_bars_writes_a_pdf(tmp_path):
+    df = pl.DataFrame({
+        "grp": ["sync", "sync", "async", "async"],
+        "sym": ["6A", "6B", "6A", "6B"],
+        "l": [0.64, 0.67, 0.91, 0.90],
+        "r": [0.87, 0.85, 0.81, 0.82],
+    })
+    path = Path(tmp_path) / "bars.pdf"
+    plot_paired_bars(df, group_col="grp", label_col="sym", left_col="l", right_col="r",
+                     series_labels=("left", "right"), title="t", ylabel="corr", path=path)
+    assert path.exists() and path.stat().st_size > 0
+
+
+def test_plot_paired_bars_tolerates_a_single_group(tmp_path):
+    df = pl.DataFrame({"grp": ["only"], "sym": ["X"], "l": [0.3], "r": [0.6]})
+    path = Path(tmp_path) / "one.pdf"
+    plot_paired_bars(df, group_col="grp", label_col="sym", left_col="l", right_col="r",
+                     series_labels=("a", "b"), title="t", ylabel="c", path=path)
+    assert path.exists()

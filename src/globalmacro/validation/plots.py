@@ -100,3 +100,47 @@ def plot_symbol_counts(daily: pl.DataFrame, title: str, path) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(str(path))
     plt.close(fig)
+
+
+def plot_paired_bars(
+    df: pl.DataFrame,
+    *,
+    group_col: str,
+    label_col: str,
+    left_col: str,
+    right_col: str,
+    series_labels,
+    title: str,
+    ylabel: str,
+    path,
+) -> None:
+    """Side-by-side bars per label, one subplot per group.
+
+    Used for the two justification figures, where the whole argument is 'the right bar is
+    taller than the left one, for every symbol, in this panel and the other way round in
+    that one'. A bar chart makes that legible at a glance; a line chart would not.
+    """
+    groups = list(dict.fromkeys(df.get_column(group_col).to_list()))
+    fig, axes = plt.subplots(
+        1, len(groups), figsize=(7.5 * len(groups), 4.6), squeeze=False
+    )
+    for ax, group in zip(axes[0], groups):
+        sub = df.filter(pl.col(group_col) == group)
+        labels = sub.get_column(label_col).to_list()
+        left = [0.0 if v is None else float(v) for v in sub.get_column(left_col).to_list()]
+        right = [0.0 if v is None else float(v) for v in sub.get_column(right_col).to_list()]
+        x = np.arange(len(labels))
+        width = 0.38
+        ax.bar(x - width / 2, left, width, label=series_labels[0], color=_C_OURS)
+        ax.bar(x + width / 2, right, width, label=series_labels[1], color=_C_THEIRS)
+        ax.axhline(0.0, color="0.4", linewidth=0.8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=90, fontsize=7)
+        ax.set_title(str(group), fontsize=10)
+        ax.set_ylabel(ylabel, fontsize=8)
+        ax.tick_params(axis="y", labelsize=7)
+        ax.legend(fontsize=7, loc="best")
+    fig.suptitle(title, fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)

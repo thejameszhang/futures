@@ -51,3 +51,33 @@ def test_consistency_correlations_monthly_path():
     # freq="monthly": dt.truncate is a no-op on month-starts, period join is 1:1
     out = consistency_correlations(a, b, freq="monthly")
     assert out.filter(pl.col("instrument")=="AA")["correlation"].item() > 0.999
+
+from pathlib import Path
+from globalmacro.validation.base import Check, Invariant, write_summary
+
+
+def test_check_defaults_leave_existing_checks_untouched():
+    c = Check(name="Demo", slug="demo", run=lambda: _df([0.99]))
+    assert c.invariants is None
+    assert c.figures is None
+
+
+def test_write_summary_renders_invariants_table(tmp_path):
+    results = [grade("Demo", "demo", _df([0.99, 0.97]))]
+    invariants = [
+        Invariant(check="Demo", name="diagonal holds", value="8/8", passed=True),
+        Invariant(check="Demo", name="level agreement", value="max 0.19%", passed=False),
+    ]
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(results, invariants, path)
+    text = path.read_text()
+    assert "## Invariants" in text
+    assert "diagonal holds" in text and "8/8" in text
+    assert "level agreement" in text
+    assert "❌" in text and "✅" in text
+
+
+def test_write_summary_omits_invariants_table_when_none(tmp_path):
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary([grade("Demo", "demo", _df([0.99]))], [], path)
+    assert "## Invariants" not in path.read_text()

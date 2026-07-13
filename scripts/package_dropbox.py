@@ -12,7 +12,7 @@ from audit_data import REPO, resolve
 
 OUT = REPO / "scripts" / "dropbox_include.txt"
 FORBIDDEN = ["passive_returns", ".parquet", "spot_equity_returns",
-             "synthetic_fx_returns", "3month_libor_rates", "tousd_panel",
+             "synthetic_fx_returns", "3month_libor_rates",
              "instrumentlists", "old-data/", "reference/"]
 MUST = ["data/datastream/equities/ds2indexdata.csv",
         "data/datastream/futures/datastream_continuous_series.csv",

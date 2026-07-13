@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 import polars as pl
+from globalmacro.pipeline.to_usd import usd_panel
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass, Future
 from globalmacro.utils.paths import (
@@ -23,6 +24,8 @@ from globalmacro.utils.paths import (
 from globalmacro.utils.splice import SPLICING_MAP
 
 LOG_WIDTH = 88
+
+logger = logging.getLogger(__name__)
 
 # The JKP sector files key returns by 2-digit GICS sector code. Map each code to
 # the corresponding CME/ICE Select Sector futures Ticker Symbol so that sector
@@ -57,6 +60,19 @@ def rename_gics_to_tickers(sectors: pl.DataFrame) -> pl.DataFrame:
     if unknown:
         raise ValueError(f"Unrecognized GICS sector codes in JKP data: {unknown}")
     return sectors.rename({c: GICS_SECTOR_TICKERS[c] for c in gics_cols})
+
+
+def build_currency_map(futures: List[Future]) -> Dict[str, str]:
+    """Every published symbol -> its return currency (curcdd); JKP sectors are US -> USD.
+    Fails loudly on a missing curcdd so an unmapped symbol can't slip into USD conversion."""
+    ccy: Dict[str, str] = {}
+    for future in futures:
+        if not future.curcdd:
+            raise ValueError(f"Future {future.symbol} has no curcdd in config")
+        ccy[future.symbol] = future.curcdd
+    for ticker in GICS_SECTOR_TICKERS.values():
+        ccy[ticker] = "USD"
+    return ccy
 
 
 def log_section(title: str) -> None:
@@ -250,15 +266,31 @@ def drop_columns_by_patterns(
     return df.drop(list(to_drop)) if to_drop else df
 
 
-def compute_monthly_returns(daily_ret_df: pl.DataFrame) -> pl.DataFrame:
+def compute_monthly_returns(daily_ret_df: pl.DataFrame, min_observations: int = 15) -> pl.DataFrame:
+    """Compound daily returns within each calendar month.
+
+    min_observations answers "how many real observations does a month need before we
+    are willing to state its return?", and it is deliberately NOT one number:
+
+      * 15 (the default) -- a full month. This is what every validation call site wants:
+        a thin month is a noisy statistic to correlate on, even when it is a legitimate
+        figure to publish. It is also how filter_dataset_by_monthly_returns decides where
+        a series STARTS, so that a series never opens on a partial-period return.
+        Concretely: BXF's sync month for 2017-12 holds 10 observations compounding to
+        -49.3% against an async +0.0%. Grading it drags BXF's async-vs-sync correlation
+        from 0.874 to 0.702, pushing the symbol below the 0.80 floor.
+      * 1 -- any month holding a real observation has a return. This is the shipped
+        monthly product.
+
+    A month with NO observations is null at every threshold. It is never 0.0.
+    """
     df = daily_ret_df.sort("date").with_columns(pl.col("date").dt.truncate("1mo").alias("year_month"))
     asset_cols = [col for col in df.columns if col not in {"date", "year_month"}]
     agg_exprs = [pl.col("date").max().alias("date")]
     for col in asset_cols:
         non_null_count = is_present_expr(col).sum()
         product_expr = (pl.col(col).cast(pl.Float64).fill_null(0).fill_nan(0) + 1).product() - 1
-        agg_exprs.append(pl.when((non_null_count < 15) & (non_null_count != 1)).then(None).otherwise(product_expr).alias(col))
-        # agg_exprs.append(pl.when(non_null_count == 0).then(None).otherwise(product_expr).alias(col))
+        agg_exprs.append(pl.when(non_null_count < min_observations).then(None).otherwise(product_expr).alias(col))
     monthly = df.group_by("year_month").agg(agg_exprs).sort("date")
     return monthly
 
@@ -304,14 +336,68 @@ def load_sectors_async() -> pl.DataFrame:
     return coerce_numeric_data(rename_gics_to_tickers(sectors_async))
 
 
+# Cash indices whose session (09:30-16:00 ET) falls entirely AFTER the sync panel's
+# 09:31 ET sampling point. The sync return for day t spans [09:31 ET (t-1), 09:31 ET (t)],
+# which therefore contains day t-1's Americas session, not day t's. Their synthetic
+# backfill must be lagged one session -- in the SYNC panel ONLY. Async is settlement-timed.
+#
+# `exchange_pmc_name` now names the CASH exchange for the 37 indices carrying a
+# `dsindexcode` (tier1.yaml / tier2.yaml) -- but not uniformly. Seven symbols with no
+# `dsindexcode` still name a FUTURES venue (DJ, ER2, MD, ND, RL, SP, TF -- all
+# CME_Equity/CBOT_Equity), and FESX deliberately stays on EUREX -- no single national
+# exchange fits the Eurozone-wide Euro Stoxx 50. So the field alone can't drive this tuple --
+# but the actual reason to keep it explicit is different: membership also requires that the
+# symbol actually RECEIVES a synthetic backfill in the sync panel, which the config cannot
+# express. ES and EMD both name NYSE but ship ZERO backfilled sync cells -- EMD is
+# coalesced with historical MD via SPLICING_MAP, which pulls its pre-splice cutoff back
+# to the panel floor -- so neither is listed here, and both drop out of
+# validation/synthetic_equity.alignment() entirely.
+#
+# The tests and exercise (b)'s alignment invariant verify that the lag is applied correctly
+# to the symbols listed here, and that no listed symbol is wrongly lagged -- they cannot
+# detect a symbol wrongly OMITTED from this tuple. Membership is a human judgement, checked
+# against each cash index's own exchange.
+AMERICAS_CASH_INDICES = ("SXF", "YM", "NQ", "RTY", "IPC")
+
+
+def lag_one_session(df: pl.DataFrame, symbols: Iterable[str]) -> pl.DataFrame:
+    """Replace each symbol's value with the value at its PREVIOUS OWN observation.
+
+    Gap-aware. `df` lives on a union date grid (every index's calendar merged), so a raw
+    shift(1) would pull a value from a date the symbol did not trade. forward_fill().shift(1)
+    yields the last value observed strictly before this row; masking to observed rows keeps
+    the null pattern intact.
+
+    A null NEVER becomes 0: rows where the symbol is null stay null, and a symbol's first
+    observation becomes null (it has no previous observation).
+
+    "Observed" means is_present_expr, as everywhere else in this module: a NaN is a missing
+    observation, not a value to be carried forward as someone's lagged return.
+    """
+    # forward_fill().shift(1) is row-position-based, not date-value-based, so an unsorted
+    # frame would silently produce a wrong lag. Sort defensively rather than trust the caller.
+    df = df.sort("date")
+    exprs = []
+    for symbol in symbols:
+        if symbol not in df.columns:
+            logger.warning("lag_one_session: %s not in frame; skipping", symbol)
+            continue
+        present = is_present_expr(symbol)
+        observed = pl.when(present).then(pl.col(symbol)).otherwise(None)
+        previous = observed.forward_fill().shift(1)
+        exprs.append(pl.when(present).then(previous).otherwise(None).alias(symbol))
+    return df.with_columns(exprs) if exprs else df
+
+
 def load_synthetic_returns(rf: pl.DataFrame, equities: List[Any]) -> tuple[pl.DataFrame, pl.DataFrame]:
-    synthetic_fx_returns = read_csv(FX_PATH / "synthetic_fx_returns.csv").select(
-        ["date", "NOK", "SEK", "6N", "6A"]
-    )
-    synthetic_fx_returns = coerce_numeric_data(drop_all_null_rows(synthetic_fx_returns))
+    fx_async = coerce_numeric_data(drop_all_null_rows(
+        read_csv(FX_PATH / "synthetic_fx_returns_async.csv").select(["date", "NOK", "SEK", "6N", "6A"])))
+    fx_sync = coerce_numeric_data(drop_all_null_rows(
+        read_csv(FX_PATH / "synthetic_fx_returns_sync.csv").select(["date", "NOK", "SEK", "6N", "6A"])))
 
     spot_equity_returns = read_csv(EQUITIES_PATH / "spot_equity_returns.csv")
-    spot_equity_returns = keep_after_date(spot_equity_returns, "AUSTOLD", date(1976, 6, 1), inclusive=True)
+    # No hand-written equity cutoffs live here: equities.py's first_daily_date truncates each
+    # index at its first genuinely daily month (AUSTOLD: 12 observations/year until 1980).
     spot_equity_returns = coerce_numeric_data(drop_all_null_rows(spot_equity_returns).join(rf, on="date", how="left"))
 
     # Splice equity index returns together
@@ -322,20 +408,22 @@ def load_synthetic_returns(rf: pl.DataFrame, equities: List[Any]) -> tuple[pl.Da
                 logger.warning(f"Missing {inactive} or {equity.symbol} in spot_equity_returns")
                 continue
             spot_equity_returns = spot_equity_returns.with_columns(
-                (
-                    pl.coalesce(pl.col(equity.symbol), pl.col(inactive)) - pl.col("rf")
-                ).alias(equity.symbol)
+                (pl.coalesce(pl.col(equity.symbol), pl.col(inactive)) - pl.col("rf")).alias(equity.symbol)
             ).drop(inactive)
         else:
             if equity.symbol not in spot_equity_returns.columns:
                 logger.warning(f"Missing {equity.symbol} in spot_equity_returns")
                 continue
-
     spot_equity_returns = coerce_numeric_data(spot_equity_returns.drop("rf"))
-    synthetic_returns = coerce_numeric_data(
-        outer_join_on_date(synthetic_fx_returns, spot_equity_returns).sort("date")
-    )
-    return synthetic_returns, synthetic_returns.clone()
+
+    # The sync panel samples at 09:31 ET; an Americas cash session on day t falls entirely
+    # after that point, so the day-t sync window actually contains day t-1's session. Lag
+    # their synthetic one session. Applied to a sync-only copy -- async must NOT be lagged.
+    spot_equity_sync = lag_one_session(spot_equity_returns, AMERICAS_CASH_INDICES)
+
+    async_synth = coerce_numeric_data(outer_join_on_date(fx_async, spot_equity_returns).sort("date"))
+    sync_synth = coerce_numeric_data(outer_join_on_date(fx_sync, spot_equity_sync).sort("date"))
+    return async_synth, sync_synth
 
 
 def splice_synthetic_returns(
@@ -529,7 +617,9 @@ def build_synced_dataset(vix_open: pl.DataFrame, tier: int = 1) -> pl.DataFrame:
     return synced
 
 
-def filter_dataset_by_monthly_returns(dataset: pl.DataFrame) -> pl.DataFrame:
+def filter_dataset_by_monthly_returns(dataset: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+    # Where does each series START? At its first FULL month -- so that a series never
+    # opens on a partial-period return wearing a month's label.
     dataset_monthly = compute_monthly_returns(dataset)
     dataset_monthly_cols = [col for col in dataset.columns if col not in {"date", "year_month"}]
     if dataset_monthly_cols:
@@ -546,7 +636,10 @@ def filter_dataset_by_monthly_returns(dataset: pl.DataFrame) -> pl.DataFrame:
                 expr = pl.when(pl.col("date") >= pl.lit(cutoff)).then(pl.col(col)).otherwise(None).alias(col)
             cutoff_exprs.append(expr)
         dataset = dataset.with_columns(cutoff_exprs)
-    dataset_monthly = dataset_monthly.drop("year_month")
+    # What is each month's RETURN? Any month with a real observation has one. Recomputed on
+    # the CLIPPED daily panel, so months before a series starts stay null rather than
+    # reappearing as thin leading fragments.
+    dataset_monthly = compute_monthly_returns(dataset, min_observations=1).drop("year_month")
     return dataset, dataset_monthly
 
 def save_datasets(
@@ -583,6 +676,76 @@ def save_datasets(
     tier2_synced.write_csv(DATASETS_ROOT / "tier2" / "sync" / "sync_daily.csv")
 
     return tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly
+
+
+def save_usd_datasets(
+    tier1_synced: pl.DataFrame, tier1_asynced: pl.DataFrame,
+    tier2_synced: pl.DataFrame, tier2_asynced: pl.DataFrame,
+    symbol_to_ccy: Dict[str, str], fx_async: pl.DataFrame, fx_sync: pl.DataFrame,
+    out_root: Path = DATASETS_ROOT,
+) -> None:
+    """Write *_usd.csv siblings. async panels use Datastream FX (fx_async); sync panels
+    use Compustat FX (fx_sync). Monthly USD is compounded from daily USD."""
+    def _warn_first_obs_lost(df: pl.DataFrame, usd: pl.DataFrame, rel: str) -> None:
+        # usd_panel correctly nulls any leading span where a currency's FX history
+        # starts after the asset's own returns (safe: never a wrong value) — but
+        # that truncation is otherwise silent. Surface it per symbol.
+        for s in [c for c in df.columns if c != "date"]:
+            local_first = df.filter(pl.col(s).is_not_null()).select(pl.col("date").min()).item()
+            if local_first is None:
+                continue
+            usd_first = usd.filter(pl.col(s).is_not_null()).select(pl.col("date").min()).item()
+            if usd_first is not None and usd_first <= local_first:
+                continue
+            if usd_first is None:
+                lost = df.filter(pl.col(s).is_not_null()).height
+            else:
+                lost = df.filter(pl.col(s).is_not_null() & (pl.col("date") < usd_first)).height
+            logger.warning(
+                "USD panel %s: symbol %s (currency %s) FX coverage starts after local "
+                "returns (local first %s, USD first %s) — %d observation(s) un-convertible",
+                rel, s, symbol_to_ccy.get(s, "?"), local_first, usd_first, lost,
+            )
+
+    def _warn_stale_fx(df: pl.DataFrame, fx: pl.DataFrame, rel: str) -> None:
+        # level.forward_fill() in usd_panel has no recency bound: if a needed
+        # currency's series ever ends mid-panel, r_fx would silently become a
+        # permanent 0 (USD == local), indistinguishable from a genuine zero FX
+        # move. Not realized today (every currency quotes through the panel end),
+        # but warn if that ever stops being true.
+        symbols = [c for c in df.columns if c != "date"]
+        panel_last = df.select(pl.col("date").max()).item()
+        if panel_last is None:
+            return
+        needed = sorted({symbol_to_ccy[s] for s in symbols if s in symbol_to_ccy} - {"USD"})
+        for c in needed:
+            if c not in fx.columns:
+                continue
+            last_valid = fx.filter(pl.col(c).is_not_null()).select(pl.col("date").max()).item()
+            if last_valid is not None and (panel_last - last_valid).days <= 7:
+                continue
+            logger.warning(
+                "USD panel %s: currency %s FX quotes end at %s (panel ends %s) — "
+                "forward-fill beyond this point would silently zero r_fx",
+                rel, c, last_valid, panel_last,
+            )
+
+    def daily(df, fx, rel):
+        usd = usd_panel(df, symbol_to_ccy, fx)
+        _warn_first_obs_lost(df, usd, rel)
+        _warn_stale_fx(df, fx, rel)
+        (out_root / rel).parent.mkdir(parents=True, exist_ok=True)
+        usd.write_csv(out_root / rel)
+        logger.info("Saved USD dataset to %s", out_root / rel)
+        return usd
+    def monthly(usd_daily, rel):
+        m = drop_all_null_rows(compute_monthly_returns(usd_daily, min_observations=1).drop("year_month"))
+        (out_root / rel).parent.mkdir(parents=True, exist_ok=True)
+        m.write_csv(out_root / rel)
+    u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv"); monthly(u, "tier1/async/async_monthly_usd.csv")
+    daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv")
+    u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv"); monthly(u, "tier2/async/async_monthly_usd.csv")
+    daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv")
 
 
 def load_symbols(tier: int) -> list[str]:
@@ -643,6 +806,13 @@ def main() -> None:
     asynced, asynced_monthly = filter_dataset_by_monthly_returns(asynced)
 
     tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly = save_datasets(synced, asynced, asynced_monthly, load_symbols_to_save(tier1_futures), load_symbols_to_save(tier2_futures))
+
+    log_subsection("USD-converted datasets")
+    fx_async = read_csv(FX_PATH / "fx_async.csv")
+    fx_sync = read_csv(FX_PATH / "fx_sync.csv")
+    symbol_to_ccy = build_currency_map(tier1_futures + tier2_futures)
+    save_usd_datasets(tier1_synced, tier1_asynced, tier2_synced, tier2_asynced,
+                      symbol_to_ccy, fx_async, fx_sync)
 
 
 if __name__ == "__main__":

@@ -637,7 +637,7 @@ CN:
   contrcode: 2324
   exchange: 9288
   exchange_name: Singapore Exchange - Derivatives Trading Division
-  exchange_pmc_name: XSES
+  exchange_pmc_name: XSHG
   clscode: 1731
   calcseriesname: SGX DT-FTSE CHINA A50 CONTINUOUS
   name: FTSE China A50 Index
@@ -831,7 +831,7 @@ FFOX:
   contrcode: 827
   exchange: 9145
   exchange_name: EUREX
-  exchange_pmc_name: EUREX
+  exchange_pmc_name: XHEL
   clscode: 620
   calcseriesname: EUREX-OMXH25 INDEX CONTINUOUS
   name: OMXH25 Finland Index

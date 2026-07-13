@@ -41,3 +41,8 @@ AGENTS.md
 /slurm/logs/
 reference/
 old-data/
+# methodology docs — intentionally untracked here, not an oversight. Their
+# history lives on the local productionize / docs branches. Ignoring a path
+# does NOT stop tracked files arriving via a merge, so merge those branches
+# into master only with --squash, never plain.
+/documentation/

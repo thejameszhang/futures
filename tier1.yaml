@@ -853,7 +853,7 @@ ES:
   contrcode: 1381
   exchange: 9051
   exchange_name: Chicago Mercantile Exchange (CME)
-  exchange_pmc_name: CME_Equity
+  exchange_pmc_name: NYSE
   clscode: 1035
   calcseriesname: CME-MINI S&P 500 INDEX CONT.
   name: Mini S&P 500 Index
@@ -886,7 +886,7 @@ NQ:
   contrcode: 323
   exchange: 9051
   exchange_name: Chicago Mercantile Exchange (CME)
-  exchange_pmc_name: CME_Equity
+  exchange_pmc_name: NYSE
   clscode: 238
   calcseriesname: CME-E MINI NASDAQ 100 CONTINUOUS
   name: Mini Nasdaq 100 Index
@@ -942,7 +942,7 @@ RTY: # 2017-07-11 onwards
   contrcode: 4396
   exchange: 9051
   exchange_name: Chicago Mercantile Exchange (CME)
-  exchange_pmc_name: CME_Equity
+  exchange_pmc_name: NYSE
   clscode: 4317
   calcseriesname: CME-E-MINI RUSSELL 2000 C CONT 
   name: Mini Russell 2000 Index (CME Present)
@@ -974,7 +974,7 @@ EMD:
   contrcode: 401
   exchange: 9051
   exchange_name: Chicago Mercantile Exchange (CME)
-  exchange_pmc_name: CME_Equity
+  exchange_pmc_name: NYSE
   clscode: 3600
   calcseriesname: CME-EMINI S&P 400 MIDCAP CONTINUOU
   name: Mini S&P 400 Midcap Index
@@ -1006,7 +1006,7 @@ YM:
   contrcode: 444
   exchange: 1022
   exchange_name: Chicago Board of Trade (CBOT)
-  exchange_pmc_name: CBOT_Equity
+  exchange_pmc_name: NYSE
   clscode: 3604
   calcseriesname: CBT-MINI DOW JONES CONTINUOUS
   name: Mini DJ Industrial Index

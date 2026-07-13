@@ -30,6 +30,21 @@ class CheckResult:
 
 
 @dataclass
+class Invariant:
+    """A pass/fail assertion that is NOT a correlation.
+
+    Correlation is the wrong instrument for some of the sharpest statements a check
+    can make -- "Compustat beats Datastream on the sync futures, 8/8" or "the two FX
+    panels agree in level to 0.19%". Those are invariants: they hold or they don't.
+    A failing invariant fails the run.
+    """
+    check: str      # display name of the owning Check; write_summary groups on this
+    name: str       # e.g. "Compustat beats Datastream on sync futures"
+    value: str      # pre-rendered, e.g. "8/8" or "max 0.19%"
+    passed: bool
+
+
+@dataclass
 class Check:
     name: str                       # display name, e.g. "Datastream comparison"
     slug: str                       # output subdir, e.g. "datastream"
@@ -38,6 +53,10 @@ class Check:
     # [instrument, name, month, ours, theirs]; series_labels names the two lines.
     pairs: "Callable[[], pl.DataFrame] | None" = None
     series_labels: tuple[str, str] = ("ours", "reference")
+    # Optional non-correlation assertions; a failure fails the run.
+    invariants: "Callable[[], list[Invariant]] | None" = None
+    # Optional one-off justification figures; called with the check's out_dir.
+    figures: "Callable[[Path], None] | None" = None
 
 
 def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
@@ -56,7 +75,7 @@ def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
     )
 
 
-def write_summary(results: list[CheckResult], path: Path) -> None:
+def write_summary(results: list[CheckResult], invariants: list[Invariant], path: Path) -> None:
     lines = [
         "# Validation Summary",
         "",
@@ -71,5 +90,18 @@ def write_summary(results: list[CheckResult], path: Path) -> None:
             f"| {r.name} | {r.n} | {r.mean:.4f} | {r.median:.4f} | "
             f"{r.minimum:.4f} | {r.n_below} | {status} |"
         )
+    if invariants:
+        lines += [
+            "",
+            "## Invariants",
+            "",
+            "Assertions that are not correlations. A failure fails the run.",
+            "",
+            "| Exercise | Invariant | Value | Result |",
+            "|---|---|---:|:--:|",
+        ]
+        for i in invariants:
+            status = "✅ PASS" if i.passed else "❌ FAIL"
+            lines.append(f"| {i.check} | {i.name} | {i.value} | {status} |")
     lines.append("")
     path.write_text("\n".join(lines))

@@ -16,8 +16,8 @@ self-describing). Unpack so that a `data/` directory sits at the repo root
 
 ## Not included (regenerated or out of scope)
 - Regenerable interims (`*.parquet`, `spot_equity_returns.csv`,
-  `synthetic_fx_returns.csv`, `3month_libor_rates.csv`, `tousd_panel.csv`,
-  `instrumentlists/`) — recreated on a full pipeline run.
+  `synthetic_fx_returns_async.csv`, `synthetic_fx_returns_sync.csv`,
+  `3month_libor_rates.csv`, `instrumentlists/`) — recreated on a full pipeline run.
 - Debug output, stale/duplicate files, out-of-scope analysis datasets, and any
   confidential third-party reference series.
 

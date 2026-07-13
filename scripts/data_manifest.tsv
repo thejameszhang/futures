@@ -21,7 +21,10 @@ data/datastream/equities/ds2*.csv	glob	C2	none	old-data/datastream/equities
 data/datastream/fx/ds2fxcode.csv	file	A	download:fx	-
 data/datastream/fx/ds2fxrate.csv	file	A	download:fx	-
 data/datastream/fx/ds2*.csv	glob	C2	none	old-data/datastream/fx
-data/datastream/fx/synthetic_fx_returns.csv	file	B	producer:build.py	-
+data/datastream/fx/fx_async.csv	file	B	producer:fx.py	-
+data/datastream/fx/fx_sync.csv	file	B	producer:fx.py	-
+data/datastream/fx/synthetic_fx_returns_async.csv	file	B	producer:fx.py	-
+data/datastream/fx/synthetic_fx_returns_sync.csv	file	B	producer:fx.py	-
 data/datastream/fx/datastream_fx_rates.csv	file	C2	producer-output	old-data/datastream/fx/datastream_fx_rates.csv
 data/datastream/fx/fx_forwards_1m.csv	file	C1	analysis:main.py	analysis/forwards/fx_forwards_1m.csv
 data/datastream/fx/synthetic_fx_forwards_returns.csv	file	C2	none	old-data/datastream/fx/synthetic_fx_forwards_returns.csv
@@ -35,7 +38,6 @@ data/datastream/economics/monthlyinfo.csv	file	C2	none	old-data/datastream/econo
 data/datastream/economics/macrovariables.csv	file	C2	none	old-data/datastream/economics/macrovariables.csv
 data/datastream/economics/bond_futures_target_map.csv	file	C2	none	old-data/datastream/economics/bond_futures_target_map.csv
 data/comp/exrt_dly.csv	file	A	download:comp	-
-data/comp/tousd_panel.csv	file	B	producer:fx.py	-
 data/comp/compustat_fx_rates.csv	file	C2	producer-output	old-data/comp/compustat_fx_rates.csv
 data/comp/sec_mth.csv	file	C2	none	old-data/comp/sec_mth.csv
 data/comp/old_exrt_dly.csv	file	C2	none	old-data/comp/old_exrt_dly.csv

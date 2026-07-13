@@ -6,7 +6,11 @@
 for global macro futures — commodities, government bonds, short-term interest
 rates, currencies, equity indices, U.S. equity sectors, and volatility indices. It
 is the global-macro counterpart to the dataset behind Jensen, Kelly, and Pedersen
-(2023). All returns are in each futures contract's local currency.
+(2023). Every panel is published in two forms: local currency (the primary form)
+and U.S. dollars, the latter carrying a `_usd` suffix. The two datasets take their
+exchange rates from different vendors, matched to when each is measured — the
+settlement-price (async) dataset uses Datastream's end-of-day rates, the time-synced
+dataset uses Compustat's WM/Reuters 4pm London rates.
 
 Follow this [link](https://www.overleaf.com/read/jrdvqrqmcwrt#d28fa4) for detailed documentation on the dataset.
 

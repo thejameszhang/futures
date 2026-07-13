@@ -1,17 +1,74 @@
 from datetime import time, date
+from functools import lru_cache
 import pandas_market_calendars as pmc
 import polars as pl
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass
 from globalmacro.utils.paths import (
-    CHARACTERISTICS_ROOT,
     COMPUSTAT_PATH,
-    PROJECT_ROOT, 
-    ECONOMICS_PATH, 
-    FX_PATH, 
+    PROJECT_ROOT,
+    ECONOMICS_PATH,
+    FX_PATH,
     FUTURES_PATH,
-    DATASTREAM_PATH,
 )
+
+SYMBOL_TO_CURCDD_MAPPING = {
+    "6A": "AUD",
+    "6C": "CAD",
+    "6J": "JPY",
+    "6B": "GBP",
+    "6E": "EUR",
+    "6N": "NZD",
+    "6S": "CHF",
+    "NOK": "NOK",
+    "SEK": "SEK",
+    "KRW": "KRW",
+    "6Z": "ZAR",
+    "CZK": "CZK",
+    "HUF": "HUF",
+    "6M": "MXN",
+    "PLN": "PLN",
+    "ILS": "ILS",
+    "RMB": "CNY",  # RMB futures map to the CNY spot series in the async/sync spot panels.
+    "6L": "BRL"
+}
+
+CURRENCY_TO_LIBOR_SYMBOL_MAPPING = {
+    "6A": "Australia",
+    "6J": "TIFEY",
+    "6B": "L",
+    "6E": "I",
+    "6N": "BB",
+    "6S": "FES",
+    "NOK": "NOK_rate_monthly",
+    "SEK": "Sweden",
+    "KRW": "Korea",
+    "6Z": "6Z_rate",
+    "CZK": "CZK_rate",
+    "HUF": "Hungary",
+    "6M": "Mexico",
+    "PLN": "Poland",
+    "ILS": "Israel",
+    "RMB": "China (People’s Republic of)",
+    "6L": "6L_rate",
+}
+
+
+@lru_cache(maxsize=1)
+def _synthetic_inputs():
+    """(fx_list, clscodes, key, schedule_dates, LIBOR) — built once, no shared-panel side effects."""
+    tier1 = load_config(PROJECT_ROOT / "tier1.yaml")
+    tier2 = load_config(PROJECT_ROOT / "tier2.yaml")
+    fx_list = [f for f in (tier1 + tier2) if f.asset_class[0] == AssetClass.CURRENCY and f.exrateintcode]
+    clscodes = [f.clscode for f in fx_list]
+    cme = pmc.get_calendar("CMEGlobex_FX")
+    schedule = cme.schedule(start_date="1972-05-16", end_date="2025-12-31")
+    schedule_dates = pl.Series("exratedate", schedule.index.to_numpy(dtype="datetime64[D]")).cast(pl.Date).implode()
+    key = pl.DataFrame({"exrateintcode": [f.exrateintcode for f in fx_list], "symbol": [f.symbol for f in fx_list],
+                        "clscode": clscodes, "inverted_pair": [f.inverted_pair for f in fx_list]})
+    LIBOR = (pl.read_csv(ECONOMICS_PATH / "3month_libor_rates.csv", schema_overrides={"date": pl.Date})
+             .fill_null(strategy="forward").sort("date"))
+    return fx_list, clscodes, key, schedule_dates, LIBOR
 
 def load_expiry_dates() -> pl.DataFrame:
     """Load expiry dates from the LSEG Datastream."""
@@ -82,145 +139,58 @@ def save_compustat_fx_rates() -> pl.DataFrame:
     return estimated_compustat_fx_rates
 
 
-def save_datastream_fx_rates() -> pl.DataFrame:
+def build_datastream_direct_panel() -> pl.DataFrame:
+    """Datastream direct X<->USD SPOT rates, oriented to USD-per-X, on the 1950.. calendar.
+
+    An X->USD contract's raw rate is X-per-USD (invert to 1/rate); a USD->X contract's
+    raw rate is already USD-per-X (keep). Prefer whichever direct direction starts earlier.
+    This is the async spot panel (Datastream is an end-of-day snapshot).
     """
-    Save the Datastream FX rates to a CSV file.
-    """
-    datastream_fx_rates = (
-        pl.read_csv(FX_PATH / "ds2fxrate.csv", schema_overrides={"exratedate": pl.Date, "midrate": pl.Float64, "bidrate": pl.Float64, "offerrate": pl.Float64})
+    long = (
+        pl.read_csv(FX_PATH / "ds2fxrate.csv",
+                    schema_overrides={"exratedate": pl.Date, "midrate": pl.Float64,
+                                      "bidrate": pl.Float64, "offerrate": pl.Float64})
         .join(pl.read_csv(FX_PATH / "ds2fxcode.csv"), on="exrateintcode", how="left")
         .filter(pl.col("ratetypecode") == "SPOT")
-        .with_columns(
-            pl.coalesce(
-                pl.col("midrate"),
-                (pl.col("bidrate") + pl.col("offerrate")) / 2,
-                pl.col("offerrate"),
-                pl.col("bidrate"), 
-            )
-            .alias("rate")
-        )
+        .with_columns(pl.coalesce(pl.col("midrate"),
+                                  (pl.col("bidrate") + pl.col("offerrate")) / 2,
+                                  pl.col("offerrate"), pl.col("bidrate"))
+                                  .alias("rate"))
         .select(["exratedate", "fromcurrcode", "tocurrcode", "rate"])
-        .rename({"exratedate": "datadate", "fromcurrcode": "fromcurd", "tocurrcode": "tocurd", "rate": "exratd"})
+        .rename({"exratedate": "datadate", "fromcurrcode": "fromcurd",
+                 "tocurrcode": "tocurd", "rate": "exratd"})
     )
-
-    estimated_datastream_fx_rates = __estimate_fx_rates(datastream_fx_rates)
-
-    # Supplement with longer history direct rates where available
-    currencies = datastream_fx_rates.select("fromcurd").unique().to_series().to_list() + datastream_fx_rates.select("tocurd").unique().to_series().to_list()
-    currencies = sorted(list(set(currencies)))
-    for curcdd in currencies:
-        if curcdd == "USD":
+    currencies = sorted({c for c in long["fromcurd"].to_list() + long["tocurd"].to_list()
+                         if c and c != "USD"})
+    series = []
+    for x in currencies:
+        tousd = long.filter((pl.col("fromcurd") == x) & (pl.col("tocurd") == "USD"))
+        fromusd = long.filter((pl.col("fromcurd") == "USD") & (pl.col("tocurd") == x))
+        t0 = tousd.select(pl.col("datadate").min()).item() if tousd.height else None
+        f0 = fromusd.select(pl.col("datadate").min()).item() if fromusd.height else None
+        if t0 is None and f0 is None:
             continue
-        print(f"Processing {curcdd}...")
-        tousd = datastream_fx_rates.filter((pl.col("fromcurd") == curcdd) & (pl.col("tocurd") == "USD"))
-        tousd_start_date = tousd.select("datadate").min().item()
-        fromusd = datastream_fx_rates.filter((pl.col("fromcurd") == "USD") & (pl.col("tocurd") == curcdd))
-        fromusd_start_date = fromusd.select("datadate").min().item()
-
-        if tousd_start_date is None and fromusd_start_date is None:
-            print(f"No direct rates found for {curcdd}, skipping...")
-            continue
-
-        if (fromusd_start_date is None and tousd_start_date is not None) or (tousd_start_date is not None and tousd_start_date < fromusd_start_date):
-            # Invert the rate if necessary
-            tousd = tousd.with_columns((1 / pl.col("exratd")).alias("exratd"))
-            tousd = tousd.pivot(on="fromcurd", values="exratd", index="datadate").sort("datadate")
-            if curcdd in estimated_datastream_fx_rates.columns:
-                estimated_start_date = estimated_datastream_fx_rates.select("date", curcdd).drop_nulls().min().select("date").item()
-                if tousd_start_date > estimated_start_date:
-                    print("Estimated rate has longer history than direct rate, skipping...")
-                    continue
-                else:
-                    estimated_datastream_fx_rates = (
-                        estimated_datastream_fx_rates
-                        .drop(curcdd)
-                        .join(tousd, left_on="date", right_on="datadate", how="left")
-                    )
-                    print(f"Replacing estimated rate with direct tousd rate...")
-            else:
-                estimated_datastream_fx_rates = estimated_datastream_fx_rates.join(tousd, left_on="date", right_on="datadate", how="left")
-                print(f"Joined direct tousd rate...")
+        if (f0 is None) or (t0 is not None and t0 <= f0):
+            s = tousd.select(pl.col("datadate"), (1.0 / pl.col("exratd")).alias(x))
         else:
-            fromusd = fromusd.pivot(on="tocurd", values="exratd", index="datadate").sort("datadate")
-
-            if curcdd in estimated_datastream_fx_rates.columns:
-                estimated_start_date = estimated_datastream_fx_rates.select("date", curcdd).drop_nulls().min().select("date").item()
-                if fromusd_start_date > estimated_start_date:
-                    print("Estimated rate has longer history than direct rate, skipping...")
-                    continue
-                else:
-                    estimated_datastream_fx_rates = (
-                        estimated_datastream_fx_rates
-                        .drop(curcdd)
-                        .join(fromusd, left_on="date", right_on="datadate", how="left")
-                    )
-                    print(f"Replacing estimated rate with direct fromusd rate...")
-            else:
-                estimated_datastream_fx_rates = estimated_datastream_fx_rates.join(fromusd, left_on="date", right_on="datadate", how="left")
-                print(f"Joined direct fromusd rate...")
-
-    estimated_datastream_fx_rates = (
-        estimated_datastream_fx_rates
-        .sort("date")
-        .fill_null(strategy="forward")
-        .with_columns([pl.col(col).cast(pl.Float64).alias(col) for col in estimated_datastream_fx_rates.columns if col != "date"])
-    )
-    estimated_datastream_fx_rates.write_csv(DATASTREAM_PATH / "fx" / "datastream_fx_rates.csv")
-    return estimated_datastream_fx_rates
+            s = fromusd.select(pl.col("datadate"), pl.col("exratd").alias(x))
+        s = s.drop_nulls().unique("datadate").sort("datadate")
+        if s.height:
+            series.append(s)
+    if not series:
+        raise RuntimeError("no direct Datastream X<->USD SPOT contracts found")
+    date_end = max(m for s in series
+                   if (m := s.select(pl.col("datadate").max()).item()) is not None)
+    panel = pl.DataFrame({"datadate": pl.date_range(date(1950, 1, 1), date_end, "1d", eager=True)})
+    for s in series:
+        panel = panel.join(s, on="datadate", how="left")
+    return (panel.rename({"datadate": "date"}).sort("date")
+            .with_columns(pl.lit(1.0).alias("USD")).fill_null(strategy="forward"))
 
 
-def estimate_fx_rates() -> pl.DataFrame:
-    """
-    Estimate the FX rates using the Compustat and Datastream data.
-    """
-    compustat_fx_rates = save_compustat_fx_rates()
-    datastream_fx_rates = save_datastream_fx_rates()
-    cols = set(compustat_fx_rates.columns + datastream_fx_rates.columns) - set(["date"])
+def build_synthetic(spot_panel: pl.DataFrame) -> pl.DataFrame:
+    fx_list, clscodes, key, schedule_dates, LIBOR = _synthetic_inputs()
 
-    compustat_fx_rates = compustat_fx_rates.rename({col: f"compustat_{col}" for col in compustat_fx_rates.columns if col != "date"})
-    datastream_fx_rates = datastream_fx_rates.rename({col: f"datastream_{col}" for col in datastream_fx_rates.columns if col != "date"})
-
-    result_df = compustat_fx_rates.join(datastream_fx_rates, on="date", how="full").sort("date").fill_null(strategy="forward")
-    reuslt_df = result_df.drop([col for col in result_df.columns if result_df[col].is_null().all()])
-
-    for col in cols:
-        compustat_col = f"compustat_{col}"
-        datastream_col = f"datastream_{col}"
-        compustat_has = compustat_col in compustat_fx_rates.columns 
-        datastream_has = datastream_col in datastream_fx_rates.columns
-        
-        if compustat_has and datastream_has:
-            compustat_start_date = compustat_fx_rates.select("date", compustat_col).drop_nulls().min().select("date").item()
-            datastream_start_date = datastream_fx_rates.select("date", datastream_col).drop_nulls().min().select("date").item()
-            if (compustat_start_date is not None and datastream_start_date is not None) and compustat_start_date < datastream_start_date:
-                print(f"{col} present in both compustat and datastream, using compustat - {compustat_start_date}...")
-                result_df = result_df.rename({compustat_col: col}).drop(datastream_col)
-            else:
-                datastream_start_date = datastream_fx_rates.select("date", datastream_col).drop_nulls().min().select("date").item()
-                print(f"{col} present in both compustat and datastream, using datastream - {datastream_start_date}...")
-                result_df = result_df.rename({datastream_col: col}).drop(compustat_col)
-        elif compustat_has:
-            compustat_start_date = compustat_fx_rates.select("date", compustat_col).drop_nulls().min().select("date").item()
-            print(f"{col} present in compustat only, using compustat - {compustat_start_date}...")
-            result_df = result_df.rename({compustat_col: col})
-        elif datastream_has:
-            datastream_start_date = datastream_fx_rates.select("date", datastream_col).drop_nulls().min().select("date").item()
-            print(f"{col} present in datastream only, using datastream - {datastream_start_date}...")
-            result_df = result_df.rename({datastream_col: col})
-
-    result_df = (
-        result_df
-        .drop([col for col in result_df.columns if "compustat_" in col or "datastream_" in col])
-        .with_columns([pl.col(col).cast(pl.Float64).alias(col) for col in result_df.columns if col != "date"])
-        .select(["date"] + sorted([col for col in result_df.columns if col != "date"]))
-        .sort("date")
-        .fill_null(strategy="forward")
-    )
-    result_df.write_csv(COMPUSTAT_PATH / "tousd_panel.csv")
-    return result_df
-
-
-def main():
     synthetic_returns = []
     # Infer expiry dates for NOK, SEK, and 6N before they were traded on listed on CME to mimic the future's return
     expiry_dates = (
@@ -229,7 +199,7 @@ def main():
         .sort(["clscode", "lasttrddate"])
     )
     # TODO: Add the other (symbols x clscode) pairs for the tier 2 currencies. Algorithmically
-    symbol_clscode_pairs = [(f.symbol, f.clscode) for f in fx if f.symbol not in ("6A", "6B", "6C", "6E", "6J", "6S")]
+    symbol_clscode_pairs = [(f.symbol, f.clscode) for f in fx_list if f.symbol not in ("6A", "6B", "6C", "6E", "6J", "6S")]
     for symbol, clscode in symbol_clscode_pairs:
         symbol_start_date = (
             expiry_dates
@@ -251,10 +221,13 @@ def main():
         .with_columns(pl.col("lasttrddate").shift(-1).over("clscode").alias("next_lasttrddate"))
     )
     
-    FX_RATES = pl.read_csv(COMPUSTAT_PATH / "tousd_panel.csv", schema_overrides={"date": pl.Date})
-    datastream_fx_rates = FX_RATES.with_columns([pl.col(col).cast(pl.Float64).alias(col) for col in FX_RATES.columns if col != "date"])
+    datastream_fx_rates = spot_panel.with_columns(
+        [pl.col(c).cast(pl.Float64).alias(c) for c in spot_panel.columns if c != "date"]
+    )
 
     for symbol, libor_symbol in CURRENCY_TO_LIBOR_SYMBOL_MAPPING.items():
+        if SYMBOL_TO_CURCDD_MAPPING[symbol] not in datastream_fx_rates.columns:
+            continue
         ds2fxrate = (
             datastream_fx_rates
             .select("date", SYMBOL_TO_CURCDD_MAPPING[symbol])
@@ -352,81 +325,18 @@ def main():
         synthetic_returns.append(synthetic_fx_returns)
 
     synthetic_fx_returns = pl.concat(synthetic_returns).sort(["symbol", "date"])
-    synthetic_fx_returns.write_csv(CHARACTERISTICS_ROOT / "synthetic_fx_info.csv")
     wide_synthetic_fx_returns = synthetic_fx_returns.pivot(on="symbol", values="ret1", index="date").sort("date")
-    wide_synthetic_fx_returns.write_csv(FX_PATH / "synthetic_fx_returns.csv")
+    return wide_synthetic_fx_returns
 
 
 if __name__ == "__main__":
-    tier1_futures = load_config(PROJECT_ROOT / "tier1.yaml")
-    tier2_futures = load_config(PROJECT_ROOT / "tier2.yaml")
-    futures = tier1_futures + tier2_futures
-    fx = list(filter(lambda f: f.asset_class[0] == AssetClass.CURRENCY and f.exrateintcode, futures))
-    exrateintcodes = [f.exrateintcode for f in fx]
-    clscodes = [f.clscode for f in fx]
+    # Two source-specific spot panels (no shared tousd panel):
+    #   async  -> Datastream direct (end-of-day / settlement-timed)
+    #   sync   -> Compustat cross   (WM/R 4pm London ~ 11am ET)
+    fx_async = build_datastream_direct_panel()
+    fx_sync = save_compustat_fx_rates()  # GBP cross on Compustat exrt_dly
+    fx_async.write_csv(FX_PATH / "fx_async.csv")
+    fx_sync.write_csv(FX_PATH / "fx_sync.csv")
 
-    start_date = "1972-05-16"
-    end_date = "2025-12-31"
-    cme = pmc.get_calendar("CMEGlobex_FX")
-    schedule = cme.schedule(start_date=start_date, end_date=end_date)
-    schedule_dates = pl.Series(
-        "exratedate",
-        schedule.index.to_numpy(dtype="datetime64[D]"),
-    ).cast(pl.Date).implode()
-    
-    key = pl.DataFrame({
-        "exrateintcode": exrateintcodes,
-        "symbol": [f.symbol for f in fx],
-        "clscode": clscodes,
-        "inverted_pair": [f.inverted_pair for f in fx],
-    })
-
-    SYMBOL_TO_CURCDD_MAPPING = {
-        "6A": "AUD",
-        "6C": "CAD",
-        "6J": "JPY",
-        "6B": "GBP",
-        "6E": "EUR",
-        "6N": "NZD",
-        "6S": "CHF",
-        "NOK": "NOK",
-        "SEK": "SEK",
-        "KRW": "KRW",
-        "6Z": "ZAR",
-        "CZK": "CZK",
-        "HUF": "HUF",
-        "6M": "MXN",
-        "PLN": "PLN",
-        "ILS": "ILS",
-        "RMB": "CNY",  # RMB futures map to CNY spot series in tousd_panel.
-        "6L": "BRL"
-    }
-
-    CURRENCY_TO_LIBOR_SYMBOL_MAPPING = {
-        "6A": "Australia",
-        "6J": "TIFEY",
-        "6B": "L",
-        "6E": "I",
-        "6N": "BB",
-        "6S": "FES",
-        "NOK": "NOK_rate_monthly",
-        "SEK": "Sweden",
-        "KRW": "Korea",
-        "6Z": "6Z_rate",
-        "CZK": "CZK_rate",
-        "HUF": "Hungary",
-        "6M": "Mexico",
-        "PLN": "Poland",
-        "ILS": "Israel",
-        "RMB": "China (People’s Republic of)",
-        "6L": "6L_rate",
-    }
-    LIBOR = (
-        pl.read_csv(ECONOMICS_PATH / "3month_libor_rates.csv", schema_overrides={"date": pl.Date})
-        .fill_null(strategy="forward")
-        .sort("date")
-    )
-
-    estimate_fx_rates()
-
-    main()
+    build_synthetic(fx_async).write_csv(FX_PATH / "synthetic_fx_returns_async.csv")
+    build_synthetic(fx_sync).write_csv(FX_PATH / "synthetic_fx_returns_sync.csv")
