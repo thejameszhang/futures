@@ -6,7 +6,7 @@ import sys
 from contextlib import closing
 import wrds
 from tqdm import tqdm
-from globalmacro.utils.paths import DATA_ROOT, COMPUSTAT_PATH, DATASTREAM_PATH
+from globalmacro.utils.paths import COMPUSTAT_PATH, DATASTREAM_PATH
 
 # database -> (WRDS library, explicit table list). Tightened to ONLY the tables
 # the pipeline actually consumes (see plan). No prefix pulls: the old dsf*/eco*
@@ -42,7 +42,11 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # Connect to WRDS
-    conn = wrds.Connection()
+    from globalmacro.wrds_credentials import get_wrds_credentials
+    creds = get_wrds_credentials()
+    if creds.password is not None:
+        os.environ["PGPASSWORD"] = creds.password
+    conn = wrds.Connection(wrds_username=creds.username)
     dbapi_conn = conn.engine.raw_connection()
 
     # List all tables in the library

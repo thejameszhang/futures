@@ -5,7 +5,7 @@ import pandas_market_calendars as pmc
 import polars as pl
 from tqdm import tqdm
 from globalmacro.utils.config import load_config
-from globalmacro.utils.paths import DATASTREAM_PATH, EQUITIES_PATH, PROJECT_ROOT
+from globalmacro.utils.paths import EQUITIES_PATH, PROJECT_ROOT
         
 CACHE = {}
 

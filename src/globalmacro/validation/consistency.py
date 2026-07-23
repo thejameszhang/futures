@@ -15,7 +15,8 @@ universe.
 """
 from __future__ import annotations
 import polars as pl
-from globalmacro.utils.paths import DATASETS_ROOT
+from globalmacro.utils.paths import DATASETS_ROOT, PROJECT_ROOT
+from globalmacro.utils.config import load_config
 from globalmacro.validation.base import Check
 # Pure, side-effect-free transform (importing build runs no heavy code: build has
 # no module-level work outside the __main__ guard). compute_monthly_returns is the
@@ -31,9 +32,11 @@ def consistency_correlations(
     synced: pl.DataFrame, asynced_monthly: pl.DataFrame, freq: str = "monthly"
 ) -> pl.DataFrame:
     """Per-instrument correlation of sync vs async returns (compare_tick_vs core)."""
-    val = lambda df: df.with_columns(
-        [pl.col(c).cast(pl.Float64, strict=False) for c in df.columns if c != "date"]
-    )
+    def val(df: pl.DataFrame) -> pl.DataFrame:
+        """Cast non-date columns to Float64 safely."""
+        return df.with_columns(
+            [pl.col(c).cast(pl.Float64, strict=False) for c in df.columns if c != "date"]
+        )
     tick, other = val(synced), val(asynced_monthly)
     if freq == "monthly":
         tick = tick.with_columns(pl.col("date").dt.truncate("1mo").alias("period")).drop("date")
@@ -58,8 +61,6 @@ def consistency_correlations(
     return pl.DataFrame(rows).sort("correlation", descending=True)
 
 
-from globalmacro.utils.paths import PROJECT_ROOT
-from globalmacro.utils.config import load_config
 
 
 def _consistency_pairs() -> pl.DataFrame:

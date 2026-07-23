@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import numpy as np
 import polars as pl
 import pytest
-from globalmacro.validation.plots import _cum_and_corr, plot_comparison, plot_symbol_counts
+from globalmacro.validation.plots import _cum_and_corr, plot_comparison, plot_symbol_counts, plot_paired_bars
 
 
 def test_cum_and_corr_identical_series_is_perfectly_correlated():
@@ -59,9 +61,7 @@ def test_consistency_pairs_tier1_and_grade_unchanged():
     assert med == pytest.approx(0.9783, abs=3e-3)
 
 
-from pathlib import Path
-import polars as pl
-from globalmacro.validation.plots import plot_paired_bars
+
 
 
 def test_plot_paired_bars_writes_a_pdf(tmp_path):

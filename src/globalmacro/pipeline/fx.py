@@ -1,4 +1,4 @@
-from datetime import time, date
+from datetime import date
 from functools import lru_cache
 import pandas_market_calendars as pmc
 import polars as pl

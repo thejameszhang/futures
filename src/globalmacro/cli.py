@@ -21,7 +21,7 @@ _STAGE_MODULES = {
     "tickhistory": "globalmacro.pipeline.tickhistory",
     "build": "globalmacro.build",
 }
-_FUNCTION_STAGES = ("instrumentlists", "validate", "run")
+_FUNCTION_STAGES = ("instrumentlists", "validate", "run", "connect")
 
 
 def main(argv=None):
@@ -43,6 +43,31 @@ def main(argv=None):
     if stage == "validate":
         from globalmacro.validation.run import main as validate_main
         return validate_main(rest)
+    if stage == "connect":
+        from globalmacro.wrds_credentials import get_wrds_credentials, reset_credentials
+        reset = "--reset" in rest or "-r" in rest
+        if reset:
+            reset_credentials(full_reset=True)
+            print("Credentials reset.")
+            return 0
+        try:
+            creds = get_wrds_credentials()
+            import wrds
+            import os
+            if creds.password is not None:
+                os.environ["PGPASSWORD"] = creds.password
+            # Actively test connection against WRDS
+            db = wrds.Connection(wrds_username=creds.username)
+            db.close()
+            print(f"Connected as: {creds.username}")
+            return 0
+        except Exception as exc:
+            # RuntimeError = clean "no credentials" message from the module.
+            # A wrong password raises sqlalchemy/psycopg2 OperationalError from
+            # wrds.Connection.__init__ (autoconnect), NOT RuntimeError — catch
+            # both so validation fails with a message instead of a raw traceback.
+            print(f"WRDS connection failed: {exc}", file=sys.stderr)
+            return 1
     if stage == "run":
         import subprocess
         from globalmacro.utils.paths import PROJECT_ROOT

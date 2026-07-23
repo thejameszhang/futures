@@ -1,11 +1,12 @@
 import os
+from pathlib import Path
 from typing import List
 
 import yaml
 
 from .models import Future
 
-def load_config(yaml_file="../../tier1.yaml") -> List[Future]:
+def load_config(yaml_file: str | Path = "../../tier1.yaml") -> List[Future]:
     """Load symbols data from a single YAML file and return list of Future objects."""
     yaml_file = os.fspath(yaml_file)
     futures = []

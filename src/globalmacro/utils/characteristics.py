@@ -57,7 +57,7 @@ def calc_total_returns_with_roll(i: int, price_type: str) -> list[pl.Expr]:
         pl.Expr - the returns of the i-th month contract without price adjustment and roll
     """
     return ([
-        pl.when(((pl.col('exp_1') == 1) & (pl.col('switch_1') == 1)) & (pl.col(f'daystomaturity_1').shift(1) != 0))
+        pl.when(((pl.col('exp_1') == 1) & (pl.col('switch_1') == 1)) & (pl.col('daystomaturity_1').shift(1) != 0))
         .then((pl.col(f'{price_type}_{i + 1}').shift(1) / pl.col(f'{price_type}_{i}').shift(1)) * (pl.col(f'ret_temp_{i + 1}') + 1) - 1)
         .otherwise(pl.col(f'ret_{i}'))
         .over(pl.col('clscode'))

@@ -1,6 +1,7 @@
 import polars as pl
 from globalmacro.utils.config import load_config
 from globalmacro.utils.paths import DATASTREAM_PATH, PROJECT_ROOT
+from globalmacro.validation.base import Check
 
 DATASET = "constructed_no_price_adjustment"
 """
@@ -130,7 +131,6 @@ def _datastream_monthly(tier: int = 1, verbose: bool = False) -> pl.DataFrame:
     )
 
     # TODO: Corrections to our constructed returns; root of the issue is some last trade dates are super off...
-    EXTREME_RETURN_CLSCODES = [3829, 1622, 1025, 1065]
     EXTREME_RETURN_CLSCODES_CORRECTIONS = {
         3829: 0.8,
         1622: 0.8,
@@ -211,7 +211,6 @@ def compare(tier: int = 1, verbose: bool = False) -> pl.DataFrame:
     ).sort("correlation", descending=True)
 
 
-from globalmacro.validation.base import Check   # load_config, PROJECT_ROOT already imported at top
 
 
 def _datastream_pairs() -> pl.DataFrame:

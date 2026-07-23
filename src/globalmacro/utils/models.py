@@ -36,7 +36,7 @@ class Future:
     calcseriesname: str
     name: str
     asset_class: List[AssetClass]
-    curcdd: str
+    curcdd: str | None = None
     # Datastream Commodities data
     comcode: Optional[List[int]] = None
     ct: Optional[List[int]] = None  # Allowed contract expiry months

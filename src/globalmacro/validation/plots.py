@@ -14,6 +14,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.dates import YearLocator, DateFormatter
+from matplotlib.lines import Line2D
 
 _C_OURS, _C_THEIRS = "#1f77b4", "#ff7f0e"
 _MIN_MONTHS = 12
@@ -63,12 +64,12 @@ def plot_comparison(pairs: pl.DataFrame, series_labels, title: str, path) -> Non
             s.set_linewidth(0.4)
     for ax in axes[n:]:
         ax.axis("off")
-    fig.legend([plt.Line2D([], [], color=_C_OURS, lw=1.5),
-                plt.Line2D([], [], color=_C_THEIRS, lw=1.5)],
+    fig.legend([Line2D([], [], color=_C_OURS, lw=1.5),
+                Line2D([], [], color=_C_THEIRS, lw=1.5)],
                list(series_labels), loc="upper right", fontsize=8, frameon=False,
                ncol=2, bbox_to_anchor=(0.995, 0.997))
     fig.suptitle(title, fontsize=12, x=0.02, ha="left", y=0.997)
-    fig.tight_layout(rect=[0, 0, 1, 0.985])
+    fig.tight_layout(rect=(0, 0, 1, 0.985))
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(str(path))
     plt.close(fig)

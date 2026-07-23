@@ -742,13 +742,15 @@ def save_usd_datasets(
         m = drop_all_null_rows(compute_monthly_returns(usd_daily, min_observations=1).drop("year_month"))
         (out_root / rel).parent.mkdir(parents=True, exist_ok=True)
         m.write_csv(out_root / rel)
-    u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv"); monthly(u, "tier1/async/async_monthly_usd.csv")
+    u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv")
+    monthly(u, "tier1/async/async_monthly_usd.csv")
     daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv")
-    u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv"); monthly(u, "tier2/async/async_monthly_usd.csv")
+    u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv")
+    monthly(u, "tier2/async/async_monthly_usd.csv")
     daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv")
 
 
-def load_symbols(tier: int) -> list[str]:
+def load_symbols(tier: int) -> tuple[list[Future], list[str]]:
     futures = load_config(PROJECT_ROOT / f"tier{tier}.yaml")
     symbols = [f.symbol for f in futures]
     return futures, symbols

@@ -21,6 +21,8 @@ dependencies = [
     "tqdm>=4.67.1",
     "matplotlib==3.9.4",
     "wrds>=3.1.6",
+    "keyring>=24.0.0",
+    "platformdirs>=4.0.0",
 ]
 
 [project.scripts]

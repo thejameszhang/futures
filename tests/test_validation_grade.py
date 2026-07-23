@@ -1,5 +1,9 @@
+from datetime import date
+from pathlib import Path
+
 import polars as pl
-from globalmacro.validation.base import grade, PASS_THRESHOLD
+from globalmacro.validation.base import grade, PASS_THRESHOLD, Check, Invariant, write_summary
+from globalmacro.validation.consistency import consistency_correlations
 
 def _df(corrs):
     return pl.DataFrame({"instrument": [f"X{i}" for i in range(len(corrs))],
@@ -29,8 +33,7 @@ def test_grade_passes_exactly_at_threshold():
     assert abs(r.median - PASS_THRESHOLD) < 1e-12
     assert r.passed is True
 
-from datetime import date
-from globalmacro.validation.consistency import consistency_correlations
+
 
 def test_consistency_correlations_matches_shared_symbols():
     import polars as pl
@@ -52,8 +55,7 @@ def test_consistency_correlations_monthly_path():
     out = consistency_correlations(a, b, freq="monthly")
     assert out.filter(pl.col("instrument")=="AA")["correlation"].item() > 0.999
 
-from pathlib import Path
-from globalmacro.validation.base import Check, Invariant, write_summary
+
 
 
 def test_check_defaults_leave_existing_checks_untouched():

@@ -1,8 +1,9 @@
 from datetime import date
+from pathlib import Path
 
 import polars as pl
 
-from globalmacro.pipeline.fx import build_datastream_direct_panel
+from globalmacro.pipeline.fx import build_datastream_direct_panel, build_synthetic
 
 # USD-per-X anchor bands on 2019-06-28 to catch inversion errors.
 ANCHOR = {
@@ -20,10 +21,6 @@ def test_datastream_direct_panel_orientation():
         v = row.select(pl.col(ccy).cast(pl.Float64)).item()
         assert lo <= v <= hi, f"{ccy}={v} outside [{lo},{hi}] — likely inverted"
 
-
-from pathlib import Path
-
-from globalmacro.pipeline.fx import build_synthetic
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
