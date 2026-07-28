@@ -7,9 +7,15 @@ from typing import Any
 
 import polars as pl
 
+from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
 from globalmacro.pipeline.to_usd import usd_panel
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass, Future
+from globalmacro.utils.panels import (
+    first_finite_date,
+    first_valid_date,
+    is_present_expr,
+)
 from globalmacro.utils.paths import (
     COMPUSTAT_PATH,
     DATA_ROOT,
@@ -24,6 +30,7 @@ from globalmacro.utils.paths import (
     VALIDATION_OUTPUT,
 )
 from globalmacro.utils.splice import SPLICING_MAP
+from globalmacro.utils.sync_fx import build_sync_fx_panel
 
 LOG_WIDTH = 88
 
@@ -131,16 +138,6 @@ def is_missing_expr(col: str) -> pl.Expr:
     return pl.col(col).is_null() | numeric_is_nan
 
 
-def is_present_expr(col: str) -> pl.Expr:
-    numeric_is_nan = (
-        pl.col(col)
-        .cast(pl.Float64, strict=False)
-        .is_nan()
-        .fill_null(False)
-    )
-    return pl.col(col).is_not_null() & ~numeric_is_nan
-
-
 def read_csv(
     path: Path,
     *,
@@ -226,10 +223,6 @@ def full_join_on_date(
 ) -> pl.DataFrame:
     joined = left.join(right, on=date_col, how="full", suffix=suffix)
     return coalesce_join_date(joined, date_col, suffix=suffix)
-
-
-def first_valid_date(df: pl.DataFrame, col: str, *, date_col: str = "date") -> Any:
-    return df.select(pl.col(date_col).filter(is_present_expr(col)).min()).to_series().item()
 
 
 def last_valid_date(df: pl.DataFrame, col: str, *, date_col: str = "date") -> Any:
@@ -829,7 +822,17 @@ def main() -> None:
 
     vix_open = vix.filter(pl.col("date") >= pl.date(1996, 1, 1)).select(["date", "vix_ret_rf_open"])
     synced = build_synced_dataset(vix_open, tier=2)
+    pre_splice_synced = synced  # BEFORE splice_synthetic_returns: real-splice-aware (6E<-DM), synthetic-blind
     synced = splice_synthetic_returns(synced, synthetic_returns_synced, "TickHistory", skip_if_before=date(1996, 1, 4))
+    # Capture-site guard (criterion c-2, "never the CIP synthetic"): a late-listing G10 future
+    # (NOK, real 2002) is finite in the SYNTHETIC-BLIND pre-splice panel only from its real
+    # start -- strictly LATER than in the post-splice `synced`, where the CIP synthetic backfills
+    # it from 1996. If a future edit captured `pre_splice_synced` AFTER the splice, these dates
+    # equalize and the blend would chain the synthetic below the real future; this assertion
+    # fails the build loudly instead.
+    assert first_finite_date(pre_splice_synced, "NOK") > first_finite_date(synced, "NOK"), (
+        "pre_splice_synced is not synthetic-blind -- captured after splice_synthetic_returns?"
+    )
     synced = drop_all_null_rows(synced).filter(
         (pl.col("date") >= pl.date(1996, 1, 4)) & (pl.col("date") <= pl.date(2025, 12, 31))
     )
@@ -850,6 +853,9 @@ def main() -> None:
     log_subsection("USD-converted datasets")
     fx_async = read_csv(FX_PATH / "fx_async.csv")
     fx_sync = read_csv(FX_PATH / "fx_sync.csv")
+    # Blend the G10 FX-futures return into the sync Compustat levels (sync _usd only; async
+    # untouched). Uses SYMBOL_TO_CURCDD_MAPPING (6E->EUR), NOT build_currency_map (all-USD).
+    fx_sync = build_sync_fx_panel(fx_sync, pre_splice_synced, SYMBOL_TO_CURCDD_MAPPING)
     symbol_to_ccy = build_currency_map(tier1_futures + tier2_futures)
     save_usd_datasets(tier1_synced, tier1_asynced, tier2_synced, tier2_asynced,
                       symbol_to_ccy, fx_async, fx_sync)

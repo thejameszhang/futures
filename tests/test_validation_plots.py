@@ -135,6 +135,41 @@ def test_synthetic_equity_pairs_windowed_and_grade_unchanged():
     assert med == pytest.approx(0.9901571257287533, abs=1e-6)
 
 
+def test_plot_fx_vs_spot_grid_draws_the_blend_line(tmp_path):
+    import numpy as np
+    import polars as pl
+
+    from globalmacro.validation.plots import plot_fx_vs_spot_grid
+    dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 1), interval="1d", eager=True).to_numpy()
+    n = len(dates)
+    panels = [{
+        "ccy": "EUR", "symbol": "6E", "dates": dates,
+        "cum_et": np.linspace(0.0, 0.05, n), "cum_lon": np.linspace(0.0, 0.06, n),
+        "cum_spot": np.linspace(0.0, 0.055, n), "cum_blend": np.linspace(0.0, 0.051, n),
+        "r_et": 0.83, "r_lon": 0.98, "r_blend": 0.997,
+    }]
+    out = tmp_path / "comparison.pdf"
+    plot_fx_vs_spot_grid(panels, "Test", out)
+    assert out.exists() and out.stat().st_size > 1000
+
+
+def test_plot_fx_vs_spot_grid_tolerates_missing_blend_key(tmp_path):
+    import numpy as np
+    import polars as pl
+
+    from globalmacro.validation.plots import plot_fx_vs_spot_grid
+    dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 1), interval="1d", eager=True).to_numpy()
+    n = len(dates)
+    panels = [{
+        "ccy": "JPY", "symbol": "6J", "dates": dates,
+        "cum_et": None, "cum_lon": np.linspace(0.0, -0.02, n), "cum_spot": np.linspace(0.0, -0.03, n),
+        "r_et": None, "r_lon": 0.5,   # no cum_blend / r_blend keys
+    }]
+    out = tmp_path / "nb.pdf"
+    plot_fx_vs_spot_grid(panels, "Test", out)
+    assert out.exists()
+
+
 def test_plot_paired_bars_writes_a_pdf(tmp_path):
     df = pl.DataFrame({
         "grp": ["sync", "sync", "async", "async"],

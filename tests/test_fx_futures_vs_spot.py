@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 import polars as pl
+import pytest
 
 import globalmacro.validation.fx_futures as fx_futures
 from globalmacro.validation.fx_futures import (
@@ -121,6 +122,7 @@ def test_plot_fx_vs_spot_comparison_writes_a_single_pdf(tmp_path, monkeypatch):
     comp, fut_et, fut_london = _synthetic_comp_and_futures()
     monkeypatch.setattr(fx_futures, "SYMBOL_TO_CURCDD_MAPPING", {"6E": "EUR"})
     monkeypatch.setattr(fx_futures, "save_compustat_fx_rates", lambda: comp)
+    monkeypatch.setattr(fx_futures, "_blend_series", lambda comp: {})
 
     def fake_loader(symbol, sync_dir):
         if sync_dir == "sync":
@@ -141,6 +143,7 @@ def test_plot_fx_vs_spot_comparison_handles_a_missing_london_panel(tmp_path, mon
     comp, fut_et, _ = _synthetic_comp_and_futures()
     monkeypatch.setattr(fx_futures, "SYMBOL_TO_CURCDD_MAPPING", {"6E": "EUR"})
     monkeypatch.setattr(fx_futures, "save_compustat_fx_rates", lambda: comp)
+    monkeypatch.setattr(fx_futures, "_blend_series", lambda comp: {})
 
     def fake_loader(symbol, sync_dir):
         return fut_et if sync_dir == "sync" else None
@@ -266,3 +269,29 @@ def test_fx_vs_spot_panels_falls_back_to_no_clip_when_currency_absent_from_windo
     panel = panels[0]
     assert panel["dates"][0] == fut_et["date"][0]
     assert panel["dates"][-1] == fut_et["date"][-1]
+
+
+def test_blend_series_tracks_the_future_on_a_toy_panel():
+    # A clean toy blend (future finite every day) must be ~1.0 correlated with the future.
+    # >= _MIN_OBS (30) rows, or _blend_corr_from_series returns None by design.
+    from globalmacro.validation.fx_futures import _blend_corr_from_series
+    n = 40
+    dates = [date(2020, 1, 6) + timedelta(days=i) for i in range(n)]
+    r = [0.0] + [0.01 if i % 2 else -0.008 for i in range(n - 1)]
+    df = pl.DataFrame({"date": dates, "r_fut": r, "r_spot": r})  # blend == future
+    assert _blend_corr_from_series(df) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_blend_invariant_passes_on_real_data():
+    # DATA-COUPLED integration test: calls save_compustat_fx_rates() + pre_splice_panel("sync")
+    # (a full tier-2 build from raw), so it SKIPS (not errors) where the raw dataset is absent,
+    # and it is slow. min over G10 of corr(blend, its futures) must be >= 0.99; empirical min
+    # ~0.9966 (NOK) -> ~0.007 headroom (thin by design -- min, not median).
+    from globalmacro.utils.paths import COMPUSTAT_PATH, DATASETS_ROOT
+    if not ((COMPUSTAT_PATH / "exrt_dly.csv").exists()
+            and (DATASETS_ROOT / "tier1" / "sync" / "currency_daily_returns.csv").exists()):
+        pytest.skip("raw sync CSVs absent")
+    from globalmacro.validation.fx_futures import _blend_invariant
+    invs = _blend_invariant()
+    assert len(invs) == 1
+    assert invs[0].passed, invs[0].value

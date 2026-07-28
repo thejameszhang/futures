@@ -33,6 +33,12 @@ Then run data QA with:
 globalmacro validate
 ```
 
+## USD-converted datasets
+
+- Sync `_usd` panels convert G10-denominated assets using the TickHistory FX-futures
+  return (blended into `fx_sync` by `utils/sync_fx.build_sync_fx_panel`); EM/non-G10 and
+  all async panels keep Compustat/Datastream spot FX.
+
 ## Detailed Data Prerequisites
 
 `build` must not be run until the required `data/` inputs are in place. They fall

@@ -82,6 +82,7 @@ def plot_comparison(pairs: pl.DataFrame, series_labels, title: str, path) -> Non
 
 
 _C_ET, _C_LONDON, _C_SPOT = "#1f77b4", "#ff7f0e", "#444444"
+_C_BLEND = "#2ca02c"
 
 
 def _corr_label(prefix: str, r: float | None) -> tuple[str, str]:
@@ -117,8 +118,10 @@ def plot_fx_vs_spot_grid(panels: list[dict], title: str, path) -> None:
         if p["cum_lon"] is not None:
             ax.plot(dates, p["cum_lon"], color=_C_LONDON, lw=0.9)
         ax.plot(dates, p["cum_spot"], color=_C_SPOT, lw=1.0)
+        if p.get("cum_blend") is not None:
+            ax.plot(dates, p["cum_blend"], color=_C_BLEND, lw=0.9, ls=(0, (4, 1)))
         ax.set_title(f"{p['ccy']} ({p['symbol']})", fontsize=6.2, pad=2)
-        for i, (prefix, r) in enumerate((("et", p["r_et"]), ("lon", p["r_lon"]))):
+        for i, (prefix, r) in enumerate((("et", p["r_et"]), ("lon", p["r_lon"]), ("blend", p.get("r_blend")))):
             txt, color = _corr_label(prefix, r)
             ax.text(0.035, 0.93 - i * 0.17, txt, transform=ax.transAxes, fontsize=5.6,
                     va="top", color=color)
@@ -132,10 +135,11 @@ def plot_fx_vs_spot_grid(panels: list[dict], title: str, path) -> None:
         ax.axis("off")
     fig.legend([Line2D([], [], color=_C_ET, lw=1.5),
                 Line2D([], [], color=_C_LONDON, lw=1.5),
-                Line2D([], [], color=_C_SPOT, lw=1.5)],
-               ["ET futures", "London futures", "Compustat spot"],
+                Line2D([], [], color=_C_SPOT, lw=1.5),
+                Line2D([], [], color=_C_BLEND, lw=1.5, ls=(0, (4, 1)))],
+               ["ET futures", "London futures", "Compustat spot", "Blend (shipped)"],
                loc="upper right", fontsize=8, frameon=False,
-               ncol=3, bbox_to_anchor=(0.995, 0.997))
+               ncol=4, bbox_to_anchor=(0.995, 0.997))
     fig.suptitle(title, fontsize=12, x=0.02, ha="left", y=0.997)
     fig.tight_layout(rect=(0, 0, 1, 0.985))
     Path(path).parent.mkdir(parents=True, exist_ok=True)

@@ -34,8 +34,10 @@ import polars as pl
 
 from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING, save_compustat_fx_rates
 from globalmacro.utils.paths import DATASETS_ROOT, VALIDATION_OUTPUT
-from globalmacro.validation.base import Check
+from globalmacro.utils.sync_fx import G10_FUTURES, build_sync_fx_panel
+from globalmacro.validation.base import Check, Invariant
 from globalmacro.validation.plots import plot_fx_vs_spot_grid
+from globalmacro.validation.synthetic import pre_splice_panel
 
 # mode label -> the sync subdirectory it reads from. "et" (mode a) is the shipped ET sync
 # panel; "london" (mode b) is the Task-6 4pm-London-aligned sync panel and may not exist
@@ -165,7 +167,63 @@ def _shipped_windows() -> dict[str, tuple[date, date]]:
     return windows
 
 
-def _fx_vs_spot_panels(comp_levels: pl.DataFrame) -> list[dict]:
+def _blend_corr_from_series(series: pl.DataFrame) -> float | None:
+    """Pearson corr(r_fut, r_spot) over the both-finite support, or None if < _MIN_OBS."""
+    valid = series.drop_nulls(["r_fut", "r_spot"])
+    if valid.height < _MIN_OBS:
+        return None
+    return valid.select(pl.corr("r_fut", "r_spot")).item()
+
+
+def _blend_series(comp_levels: pl.DataFrame) -> dict[str, pl.DataFrame]:
+    """For each G10 symbol: [date, r_fut, r_spot] where r_fut is the futures return the
+    blend used (pre_splice_synced[symbol], DM-spliced for 6E) and r_spot is the blend
+    level differenced over the same futures gaps. On futures-covered days r_spot == r_fut;
+    they diverge only the day after a futures holiday -> corr ~0.99.
+
+    Defensive (review C1): returns {} without touching the expensive pre_splice_panel
+    build if `comp_levels` carries no G10 currency (toy panels, non-G10-only runs), and
+    swallows build_sync_fx_panel's zero-override guard -- so this validation helper never
+    aborts the run; a genuinely all-USD real run surfaces as an empty {} -> the invariant
+    reports passed=False (a clean failure, not a traceback).
+    """
+    if not (set(G10_FUTURES.values()) & set(comp_levels.columns)):
+        return {}
+    pre = pre_splice_panel("sync")
+    try:
+        blended = build_sync_fx_panel(comp_levels, pre, SYMBOL_TO_CURCDD_MAPPING)
+    except ValueError:
+        return {}
+    out: dict[str, pl.DataFrame] = {}
+    for symbol, ccy in G10_FUTURES.items():
+        if symbol not in pre.columns or ccy not in blended.columns:
+            continue
+        fut = pre.select("date", pl.col(symbol).cast(pl.Float64, strict=False))
+        out[symbol] = daily_fx_vs_spot(fut, blended, symbol, ccy)
+    return out
+
+
+def _blend_invariant() -> list[Invariant]:
+    """min over G10 of corr(blend, its futures) >= 0.99. Min, not median: a median of 9
+    passes with up to 4 broken currencies; min fails on any single wrong-column/spot-leak."""
+    comp_levels = save_compustat_fx_rates()
+    corrs = {sym: _blend_corr_from_series(s) for sym, s in _blend_series(comp_levels).items()}
+    scored = {sym: c for sym, c in corrs.items() if c is not None}
+    if not scored:
+        return [Invariant(check="Futures vs Compustat spot (daily)",
+                          name="blend tracks its futures (min over G10)",
+                          value="no G10 blend series", passed=False)]
+    worst_sym = min(scored, key=lambda k: scored[k])
+    worst = scored[worst_sym]
+    return [Invariant(
+        check="Futures vs Compustat spot (daily)",
+        name="blend tracks its futures (min over G10 corr >= 0.99)",
+        value=f"min {worst:.4f} @ {G10_FUTURES[worst_sym]}",
+        passed=worst >= 0.99,
+    )]
+
+
+def _fx_vs_spot_panels(comp_levels: pl.DataFrame, blend: dict[str, pl.DataFrame] | None = None) -> list[dict]:
     """Build one per-currency panel record for `plot_fx_vs_spot_grid`, for every currency
     in `SYMBOL_TO_CURCDD_MAPPING` present in `comp_levels`.
 
@@ -198,6 +256,7 @@ def _fx_vs_spot_panels(comp_levels: pl.DataFrame) -> list[dict]:
     """
     panels: list[dict] = []
     windows = _shipped_windows()
+    blend = blend or {}   # symbol -> [date, r_fut, r_spot]; empty in the direct-call unit tests
     for symbol, ccy in SYMBOL_TO_CURCDD_MAPPING.items():
         if ccy not in comp_levels.columns:
             continue
@@ -258,6 +317,17 @@ def _fx_vs_spot_panels(comp_levels: pl.DataFrame) -> list[dict]:
             pl.col("r_spot").fill_null(0.0).log1p().cum_sum().alias("cum_spot"),
         )
 
+        blend_df = blend.get(symbol)
+        r_blend = _blend_corr_from_series(blend_df) if blend_df is not None else None
+        cum_blend = None
+        if blend_df is not None and blend_df.height:
+            cb = (
+                merged.select("date")
+                .join(blend_df.select("date", pl.col("r_spot")), on="date", how="left")
+                .with_columns(pl.col("r_spot").fill_null(0.0).log1p().cum_sum().alias("cum_blend"))
+            )
+            cum_blend = cb.get_column("cum_blend").to_numpy()
+
         panels.append({
             "ccy": ccy,
             "symbol": symbol,
@@ -265,8 +335,10 @@ def _fx_vs_spot_panels(comp_levels: pl.DataFrame) -> list[dict]:
             "cum_et": merged.get_column("cum_et").to_numpy() if "et" in mode_frames else None,
             "cum_lon": merged.get_column("cum_lon").to_numpy() if "london" in mode_frames else None,
             "cum_spot": merged.get_column("cum_spot").to_numpy(),
+            "cum_blend": cum_blend,
             "r_et": mode_corr.get("et"),
             "r_lon": mode_corr.get("london"),
+            "r_blend": r_blend,
         })
     return panels
 
@@ -279,7 +351,7 @@ def plot_fx_vs_spot_comparison(out_dir: str | Path) -> None:
     """
     out_dir = Path(out_dir)
     comp_levels = save_compustat_fx_rates()
-    panels = _fx_vs_spot_panels(comp_levels)
+    panels = _fx_vs_spot_panels(comp_levels, blend=_blend_series(comp_levels))
     plot_fx_vs_spot_grid(
         panels,
         "Futures vs Compustat spot: cumulative daily log returns, per currency",
@@ -361,6 +433,7 @@ fx_futures_vs_spot_check = Check(
     name="Futures vs Compustat spot (daily)",
     slug="fx_futures_vs_spot",
     run=_correlations,
+    invariants=_blend_invariant,
     figures=plot_fx_vs_spot_comparison,
 )
 
