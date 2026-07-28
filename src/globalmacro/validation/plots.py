@@ -65,7 +65,7 @@ def plot_comparison(pairs: pl.DataFrame, series_labels, title: str, path) -> Non
         ax.grid(alpha=0.25, lw=0.4)
         ax.tick_params(labelsize=4.5, length=2)
         ax.xaxis.set_major_locator(YearLocator(10))
-        ax.xaxis.set_major_formatter(DateFormatter("%y"))
+        ax.xaxis.set_major_formatter(DateFormatter("%Y"))
         for s in ax.spines.values():
             s.set_linewidth(0.4)
     for ax in axes[n:]:
@@ -124,8 +124,8 @@ def plot_fx_vs_spot_grid(panels: list[dict], title: str, path) -> None:
                     va="top", color=color)
         ax.grid(alpha=0.25, lw=0.4)
         ax.tick_params(labelsize=4.5, length=2)
-        ax.xaxis.set_major_locator(YearLocator(5))
-        ax.xaxis.set_major_formatter(DateFormatter("%y"))
+        ax.xaxis.set_major_locator(YearLocator(10))
+        ax.xaxis.set_major_formatter(DateFormatter("%Y"))
         for s in ax.spines.values():
             s.set_linewidth(0.4)
     for ax in axes[n:]:

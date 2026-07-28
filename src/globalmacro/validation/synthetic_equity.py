@@ -33,6 +33,7 @@ from globalmacro.validation.synthetic import (
     pre_splice_panel,
     shipped_panel,
     synthetic_correlations,
+    synthetic_pairs,
 )
 
 # The graded median below is computed on the ASYNC panel; the alignment invariant is what
@@ -94,6 +95,26 @@ def _correlations() -> pl.DataFrame:
         synth=_synthetic_base(),
         pre=pre_splice_panel("async"),
         ship=shipped_panel("async", tier=1),
+    )
+
+
+def _name_of() -> dict[str, str]:
+    """symbol -> index name, for the equities in EITHER tier (mirrors _synth_panels'
+    own universe: tier1 + tier2 futures carrying a dsindexcode)."""
+    t1f, _ = load_symbols(1)
+    t2f, _ = load_symbols(2)
+    return {f.symbol: f.name for f in (t1f + t2f) if f.dsindexcode is not None}
+
+
+def _pairs() -> pl.DataFrame:
+    """comparison.pdf. Same synth/pre/ship as _correlations() -- IDENTICAL window -- so
+    the plot shows exactly what was graded, never the sync (lagged) panel or the
+    pre-cutoff backfill."""
+    return synthetic_pairs(
+        synth=_synthetic_base(),
+        pre=pre_splice_panel("async"),
+        ship=shipped_panel("async", tier=1),
+        name_of=_name_of(),
     )
 
 
@@ -282,6 +303,8 @@ synthetic_equity_check = Check(
     name=NAME,
     slug=SLUG,
     run=_correlations,
+    pairs=_pairs,
+    series_labels=("spot synthetic", "real future"),
     invariants=_invariants,
     figures=_figures,
 )

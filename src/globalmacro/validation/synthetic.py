@@ -121,6 +121,28 @@ def daily_corr(window: pl.DataFrame, col: str = "x") -> float | None:
     return w.select(pl.corr(col, "y")).item()
 
 
+def _windowed(
+    synth: pl.DataFrame, pre: pl.DataFrame, ship: pl.DataFrame, symbol: str
+) -> tuple[date, pl.DataFrame] | None:
+    """(cutoff, window_df[date, x=synth, y=real-future]) over date >= cutoff, or None if
+    the symbol has no cutoff.
+
+    THE single source of truth for the real-future window: synthetic_correlations (the
+    grade) and synthetic_pairs (the comparison.pdf plot) both call this, so the plot can
+    never drift from what was graded. See the module docstring for why the cutoff must
+    come from `pre`, never `ship`.
+    """
+    if symbol not in ship.columns or symbol not in pre.columns:
+        return None
+    cutoff = first_valid_date(pre, symbol)
+    if cutoff is None:
+        return None
+    joined = synth.select("date", pl.col(symbol).alias("x")).join(
+        ship.select("date", pl.col(symbol).alias("y")), on="date", how="inner"
+    )
+    return cutoff, joined.filter(pl.col("date") >= cutoff)
+
+
 def synthetic_correlations(
     synth: pl.DataFrame,
     pre: pl.DataFrame,
@@ -139,29 +161,29 @@ def synthetic_correlations(
     """
     rows = []
     for symbol in sorted(c for c in synth.columns if c != "date"):
-        if symbol not in ship.columns or symbol not in pre.columns:
+        windowed = _windowed(synth, pre, ship, symbol)
+        if windowed is None:
             continue
-        cutoff = first_valid_date(pre, symbol)
-        if cutoff is None:
-            continue
+        cutoff, window = windowed
 
-        joined = synth.select("date", pl.col(symbol).alias("x")).join(
-            ship.select("date", pl.col(symbol).alias("y")), on="date", how="inner"
-        )
         if alt is not None and symbol in alt.columns:
-            joined = joined.join(
+            window = window.join(
                 alt.select("date", pl.col(symbol).alias("z")), on="date", how="left"
             )
         else:
-            joined = joined.with_columns(pl.lit(None, dtype=pl.Float64).alias("z"))
+            window = window.with_columns(pl.lit(None, dtype=pl.Float64).alias("z"))
 
         # Backfill is counted against the SHIPPED panel: it starts 1996-01-04 for sync,
-        # so a pre-splice grid row at 1996-01-03 cannot conjure a phantom backfill.
-        n_backfilled = joined.filter(
+        # so a pre-splice grid row at 1996-01-03 cannot conjure a phantom backfill. Computed
+        # below the cutoff, i.e. outside the window _windowed returns -- so it is rejoined
+        # here rather than sourced from the window itself.
+        below_cutoff = synth.select("date", pl.col(symbol).alias("x")).join(
+            ship.select("date", pl.col(symbol).alias("y")), on="date", how="inner"
+        )
+        n_backfilled = below_cutoff.filter(
             (pl.col("date") < cutoff) & _valid("x", "y")
         ).height
 
-        window = joined.filter(pl.col("date") >= cutoff)
         corr_m, n_months = _monthly_corr(window)
         # NaN is not None. A NaN correlation emitted with used=True would be filtered out
         # again by grade(), so the symbol would leave the median with nothing said about it.
@@ -196,3 +218,50 @@ def synthetic_correlations(
             }
         )
     return pl.DataFrame(rows).sort("correlation", descending=True)
+
+
+_PAIRS_SCHEMA = {
+    "instrument": pl.Utf8, "name": pl.Utf8, "month": pl.Date,
+    "ours": pl.Float64, "theirs": pl.Float64,
+}
+
+
+def synthetic_pairs(
+    synth: pl.DataFrame,
+    pre: pl.DataFrame,
+    ship: pl.DataFrame,
+    name_of: dict[str, str] | None = None,
+) -> pl.DataFrame:
+    """Long-form [instrument, name, month, ours, theirs] for comparison.pdf.
+
+    Uses the SAME `_windowed` cutoff+window as synthetic_correlations, so the plot shows
+    exactly the real-future window that was graded -- never the tautological backfill
+    region below the cutoff. Monthly aggregation is compute_monthly_returns, not a
+    hand-rolled product (see the module docstring: an all-null month must stay null).
+    """
+    name_of = name_of or {}
+    frames = []
+    for symbol in sorted(c for c in synth.columns if c != "date"):
+        windowed = _windowed(synth, pre, ship, symbol)
+        if windowed is None:
+            continue
+        _, window = windowed
+
+        mx = compute_monthly_returns(window.select("date", "x"))
+        my = compute_monthly_returns(window.select("date", "y"))
+        joined = (
+            mx.select(pl.col("year_month").alias("month"), pl.col("x").alias("ours"))
+            .join(
+                my.select(pl.col("year_month").alias("month"), pl.col("y").alias("theirs")),
+                on="month", how="inner",
+            )
+            .with_columns(
+                pl.lit(symbol).alias("instrument"),
+                pl.lit(name_of.get(symbol, symbol)).alias("name"),
+            )
+        )
+        frames.append(joined.select("instrument", "name", "month", "ours", "theirs"))
+
+    if not frames:
+        return pl.DataFrame(schema=_PAIRS_SCHEMA)
+    return pl.concat(frames).cast(_PAIRS_SCHEMA)

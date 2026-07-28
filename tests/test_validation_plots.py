@@ -110,6 +110,31 @@ def test_plot_fx_vs_spot_grid_tolerates_empty_panels(tmp_path):
     assert out.exists()
 
 
+def test_synthetic_fx_pairs_windowed_and_grade_unchanged():
+    from globalmacro.validation.synthetic_fx import _correlations, _pairs
+    pairs = _pairs()
+    assert set(pairs.columns) == {"instrument", "name", "month", "ours", "theirs"}
+    assert pairs.height > 0
+    used = _correlations().filter(pl.col("used"))
+    med = float(np.nanmedian(used.get_column("correlation").to_numpy()))
+    # Pinned against the pre-refactor (inline cutoff+join+filter) value: 0.9958916904621624.
+    # Fully deterministic -- reads fixed on-disk CSVs, no tick-history recompute -- so a
+    # tight tolerance is appropriate (unlike the tickhistory-derived sync panel).
+    assert med == pytest.approx(0.9958916904621624, abs=1e-6)
+
+
+def test_synthetic_equity_pairs_windowed_and_grade_unchanged():
+    from globalmacro.validation.synthetic_equity import _correlations, _pairs
+    pairs = _pairs()
+    assert set(pairs.columns) == {"instrument", "name", "month", "ours", "theirs"}
+    assert pairs.height > 0
+    used = _correlations().filter(pl.col("used"))
+    med = float(np.nanmedian(used.get_column("correlation").to_numpy()))
+    # Pinned against the pre-refactor value: 0.9901571257287533. Same determinism rationale
+    # as the fx test above (async panel, fixed on-disk CSVs).
+    assert med == pytest.approx(0.9901571257287533, abs=1e-6)
+
+
 def test_plot_paired_bars_writes_a_pdf(tmp_path):
     df = pl.DataFrame({
         "grp": ["sync", "sync", "async", "async"],

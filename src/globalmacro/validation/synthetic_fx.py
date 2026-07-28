@@ -13,6 +13,7 @@ from pathlib import Path
 import polars as pl
 
 from globalmacro.build import first_valid_date
+from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
 from globalmacro.utils.paths import FX_PATH
 from globalmacro.validation.base import Check, Invariant
 from globalmacro.validation.synthetic import (
@@ -21,6 +22,7 @@ from globalmacro.validation.synthetic import (
     pre_splice_panel,
     shipped_panel,
     synthetic_correlations,
+    synthetic_pairs,
 )
 
 # The graded median below is computed on the ASYNC panel. Say so in the name: a reader of
@@ -51,6 +53,19 @@ def _correlations() -> pl.DataFrame:
         pre=pre_splice_panel("async"),
         ship=shipped_panel("async", tier=1),
         alt=compustat,          # corr_daily_alt = the WRONG source, for contrast
+    )
+
+
+def _pairs() -> pl.DataFrame:
+    """comparison.pdf. Same synth/pre/ship as _correlations() -- IDENTICAL window -- so
+    the plot shows exactly what was graded, never the sync panel or the pre-cutoff
+    backfill."""
+    datastream, _compustat = _synthetics()
+    return synthetic_pairs(
+        synth=datastream,
+        pre=pre_splice_panel("async"),
+        ship=shipped_panel("async", tier=1),
+        name_of=SYMBOL_TO_CURCDD_MAPPING,
     )
 
 
@@ -131,6 +146,8 @@ synthetic_fx_check = Check(
     name=NAME,
     slug=SLUG,
     run=_correlations,
+    pairs=_pairs,
+    series_labels=("CIP synthetic", "real future"),
     invariants=_invariants,
     figures=_figures,
 )
