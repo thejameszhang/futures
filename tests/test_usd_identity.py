@@ -8,8 +8,11 @@ from globalmacro.build import (
     load_synthetic_returns,
     read_csv,
 )
+from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
 from globalmacro.pipeline.to_usd import usd_panel
 from globalmacro.utils.paths import DATASETS_ROOT, FX_PATH
+from globalmacro.utils.sync_fx import build_sync_fx_panel
+from globalmacro.validation.synthetic import pre_splice_panel
 
 TOLERANCE = 1e-10
 
@@ -23,6 +26,21 @@ def _panel(rel: str) -> pl.DataFrame:
     return df.with_columns(
         [pl.col(c).cast(pl.Float64, strict=False) for c in df.columns if c != "date"]
     )
+
+
+def _fx_panel(dataset: str, fx_file: str) -> pl.DataFrame:
+    """The FX level panel that actually produced the `dataset` `_usd` panel.
+
+    Async uses the raw on-disk Datastream file. SYNC applies the in-memory G10
+    FX-futures blend (`build_sync_fx_panel`) that `build.main` layers on `fx_sync`
+    before `save_usd_datasets` -- the blended panel is never written to disk, so it is
+    rebuilt here from the same inputs the pipeline uses (`pre_splice_panel("sync")` ==
+    `build.main`'s captured `pre_splice_synced`), giving an exact reconstruction.
+    """
+    fx = read_csv(FX_PATH / fx_file)
+    if dataset == "sync" and fx_file == "fx_sync.csv":
+        fx = build_sync_fx_panel(fx, pre_splice_panel("sync"), SYMBOL_TO_CURCDD_MAPPING)
+    return fx
 
 
 def _ccy_map():
@@ -55,8 +73,7 @@ def _max_deviation(published: pl.DataFrame, rebuilt: pl.DataFrame) -> float:
 def test_usd_panel_reconstructs_exactly(tier, dataset, fx_file):
     local = _panel(f"tier{tier}/{dataset}/{dataset}_daily.csv")
     published = _panel(f"tier{tier}/{dataset}/{dataset}_daily_usd.csv")
-    fx = read_csv(FX_PATH / fx_file)
-    rebuilt = usd_panel(local, _ccy_map(), fx)
+    rebuilt = usd_panel(local, _ccy_map(), _fx_panel(dataset, fx_file))
     assert _max_deviation(published, rebuilt) <= TOLERANCE
 
 
@@ -73,7 +90,7 @@ def test_usd_panel_uses_the_right_fx_source(tier, dataset, right_fx, wrong_fx):
     local = _panel(f"tier{tier}/{dataset}/{dataset}_daily.csv")
     published = _panel(f"tier{tier}/{dataset}/{dataset}_daily_usd.csv")
     ccy = _ccy_map()
-    assert _max_deviation(published, usd_panel(local, ccy, read_csv(FX_PATH / right_fx))) <= TOLERANCE
+    assert _max_deviation(published, usd_panel(local, ccy, _fx_panel(dataset, right_fx))) <= TOLERANCE
     wrong = _max_deviation(published, usd_panel(local, ccy, read_csv(FX_PATH / wrong_fx)))
     assert wrong > 1e-4, (
         f"tier{tier} {dataset}: the panel reconciles against BOTH FX sources "
