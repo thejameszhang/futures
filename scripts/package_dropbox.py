@@ -16,7 +16,6 @@ FORBIDDEN = ["passive_returns", ".parquet", "spot_equity_returns",
              "instrumentlists", "old-data/", "reference/"]
 MUST = ["data/datastream/equities/ds2indexdata.csv",
         "data/datastream/futures/datastream_continuous_series.csv",
-        "data/misc/VIX_History.csv",
         "data/tickhistory/trades", "data/tickhistory/quotes"]
 
 

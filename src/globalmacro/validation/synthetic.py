@@ -32,8 +32,6 @@ from globalmacro.build import (
     first_valid_date,
     keep_after_date,
     load_async_dataset,
-    load_rf,
-    load_vix,
 )
 from globalmacro.utils.paths import DATASETS_ROOT
 
@@ -54,11 +52,7 @@ def pre_splice_panel(dataset: str) -> pl.DataFrame:
         asynced = keep_after_date(asynced, "6Z", date(1997, 5, 8), inclusive=True)
         return asynced
     if dataset == "sync":
-        vix = load_vix(load_rf())
-        vix_open = vix.filter(pl.col("date") >= pl.date(1996, 1, 1)).select(
-            ["date", "vix_ret_rf_open"]
-        )
-        return build_synced_dataset(vix_open, tier=2)
+        return build_synced_dataset(tier=2)
     raise ValueError(f"dataset must be 'async' or 'sync', got {dataset!r}")
 
 

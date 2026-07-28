@@ -59,7 +59,6 @@ data/jkp/usa_jkp_factors.csv	file	C2	none	old-data/jkp/usa_jkp_factors.csv
 data/jkp/usa_all_153_jkp_factors.csv	file	C2	none	old-data/jkp/usa_all_153_jkp_factors.csv
 data/jkp/pfs.parquet	file	C2	none	old-data/jkp/pfs.parquet
 data/misc/F-F_Research_Data_Factors_daily.csv	file	A	producer:build.py	-
-data/misc/VIX_History.csv	file	A	producer:build.py	-
 data/misc/F-F_Research_Data_Factors.csv	file	C2	none	old-data/misc/F-F_Research_Data_Factors.csv
 data/misc/*.zip	glob	C2	none	old-data/misc
 data/misc/vxocurrent.csv	file	C2	none	old-data/misc/vxocurrent.csv

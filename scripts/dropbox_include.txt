@@ -15,6 +15,5 @@ data/datastream/fx/ds2fxrate.csv
 data/jkp/updated_daily_ind_gics.csv
 data/jkp/updated_daily_ind_gics_synced.csv
 data/misc/F-F_Research_Data_Factors_daily.csv
-data/misc/VIX_History.csv
 data/tickhistory/quotes
 data/tickhistory/trades

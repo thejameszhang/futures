@@ -303,19 +303,6 @@ def load_rf() -> pl.DataFrame:
     return rf.select(["date", (pl.col("rf") / 100).alias("rf")]).sort("date")
 
 
-def load_vix(rf: pl.DataFrame) -> pl.DataFrame:
-    vix = pl.read_csv(DATA_ROOT / "misc" / "VIX_History.csv", try_parse_dates=False).rename(
-        {"DATE": "date", "OPEN": "vix_ret_rf_open", "CLOSE": "vix_ret_rf_close"}
-    )
-    vix = vix.with_columns(pl.col("date").str.strptime(pl.Date, "%m/%d/%Y", strict=False))
-    vix = vix.sort("date").join(rf, on="date", how="left")
-    vix = vix.select(["date", "vix_ret_rf_open", "vix_ret_rf_close", "rf"]).with_columns(
-        (pl.col("vix_ret_rf_open").cast(pl.Float64).pct_change() - pl.col("rf")).alias("vix_ret_rf_open"),
-        (pl.col("vix_ret_rf_close").cast(pl.Float64).pct_change() - pl.col("rf")).alias("vix_ret_rf_close"),
-    )
-    return vix.drop("rf")
-
-
 def load_async_dataset(tier: int = 1) -> pl.DataFrame:
     daily_ct = read_csv(DATASETS_ROOT / f"tier{tier}" / "async" / "daily_ret_1_CT.csv")
     daily_cs = read_csv(DATASETS_ROOT / f"tier{tier}" / "async" / "daily_ret_1_CS.csv")
@@ -536,7 +523,7 @@ def fill_asynced_gaps_with_synthetic_returns(
     return asynced
 
 
-def build_synced_dataset(vix_open: pl.DataFrame, tier: int = 1) -> pl.DataFrame:
+def build_synced_dataset(tier: int = 1) -> pl.DataFrame:
     USE_TRAD = ["I", "SI", "HG", "L", "AP", "GE", "TIFEY"]
     trad = coerce_numeric_data(read_csv(DATASETS_ROOT / "tier1" / "sync" / "traditional_daily_returns.csv"))
     trad = set_null_on_date(trad, "HG", date(2006, 7, 4))
@@ -813,15 +800,13 @@ def main() -> None:
     asynced = keep_after_date(asynced, "PLN", date(2004, 8, 1), inclusive=True)
     asynced = keep_after_date(asynced, "6Z", date(1997, 5, 8), inclusive=True)
 
-    vix = load_vix(rf)
     sectors_async = load_sectors_async()
     asynced = asynced.join(sectors_async, on="date", how="left")
     asynced = splice_synthetic_returns(asynced, synthetic_returns, "Datastream")
     asynced = fill_asynced_gaps_with_synthetic_returns(asynced, synthetic_returns)
     asynced = drop_all_null_rows(asynced).filter(pl.col("date") <= pl.date(2025, 12, 31))
 
-    vix_open = vix.filter(pl.col("date") >= pl.date(1996, 1, 1)).select(["date", "vix_ret_rf_open"])
-    synced = build_synced_dataset(vix_open, tier=2)
+    synced = build_synced_dataset(tier=2)
     pre_splice_synced = synced  # BEFORE splice_synthetic_returns: real-splice-aware (6E<-DM), synthetic-blind
     synced = splice_synthetic_returns(synced, synthetic_returns_synced, "TickHistory", skip_if_before=date(1996, 1, 4))
     # Capture-site guard (criterion c-2, "never the CIP synthetic"): a late-listing G10 future
