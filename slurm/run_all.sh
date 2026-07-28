@@ -68,13 +68,25 @@ FUT="${FUT#:}"
 jFx=$(submit "$(join "$(dld fx comp futures)" "$jR")" $S/fx.sh)
 
 # --- tickhistory x10 (after ALL 4 futures parquets); heavy classes bump memory ---
-TICK=""
+# London currency runs (both tiers) go first: they write the same shared debug path
+# (data/tickhistory/debug/{tables,dates}/<sym>.csv, no sync_target in the path) as the
+# ET currency runs, so London->ET is serialized to avoid a write race and to leave the
+# ET (shipping) debug tables on disk afterward. validate's fx-vs-spot exercise also
+# needs the sync_london currency panels these produce.
+jLON1=$(submit "$FUT" $S/tickhistory.sh currency 1 london)
+jLON2=$(submit "$FUT" $S/tickhistory.sh currency 2 london)
+
+TICK="${jLON1}:${jLON2}"
 for c in commodity currency bond nonus_equity stir traditional us_equity volatility; do
   case "$c" in commodity|us_equity|nonus_equity) R="$HEAVY_MEM" ;; *) R="" ;; esac
-  id=$(submit "$FUT" $R $S/tickhistory.sh $c); TICK="${TICK}:${id}"
+  dep="$FUT"
+  [ "$c" = currency ] && dep="$(join "$FUT" "$jLON1")"
+  id=$(submit "$dep" $R $S/tickhistory.sh $c); TICK="${TICK}:${id}"
 done
 for c in currency equity; do
-  id=$(submit "$FUT" $S/tickhistory.sh $c 2); TICK="${TICK}:${id}"   # tier 2, standard mem
+  dep="$FUT"
+  [ "$c" = currency ] && dep="$(join "$FUT" "$jLON2")"
+  id=$(submit "$dep" $S/tickhistory.sh $c 2); TICK="${TICK}:${id}"   # tier 2, standard mem
 done
 TICK="${TICK#:}"
 
@@ -85,5 +97,6 @@ jV=$(submit "$jB" $S/validate.sh)
 if [ "$WITH_DL" = 1 ]; then echo "downloads=[${DLID[*]}]"; else echo "downloads=[skipped]"; fi
 echo "rates=$jR fx=$jFx equities=$jE instrumentlists=$jI"
 echo "futures=[$FUT]"
+echo "london_currency=[$jLON1:$jLON2]"
 echo "tickhistory=[$TICK]"
 echo "build=$jB validate=$jV"

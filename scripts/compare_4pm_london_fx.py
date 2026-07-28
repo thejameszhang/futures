@@ -4,41 +4,7 @@ import polars as pl
 
 from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING, save_compustat_fx_rates
 from globalmacro.utils.paths import COMPUSTAT_PATH, DATASETS_ROOT
-
-
-def compute_gap_aware_spot_return(futures_df: pl.DataFrame, spot_df: pl.DataFrame, symbol: str, ccy: str) -> pl.DataFrame:
-    spot = spot_df.select(["date", ccy]).rename({ccy: "__fx_level"})
-
-    fut = futures_df.select(["date", symbol])
-    panel_start = fut.filter(pl.col(symbol).is_not_null()).select(pl.col("date").min()).item()
-
-    if panel_start is None:
-        return pl.DataFrame(schema={"date": pl.Date, "r_fut": pl.Float64, "r_spot": pl.Float64})
-
-    seed = spot.filter((pl.col("date") < panel_start) & pl.col("__fx_level").is_not_null()).tail(1)
-    fut_filtered = fut.filter(pl.col("date") >= panel_start)
-
-    if seed.height > 0:
-        seed_date = seed["date"][0]
-        seed_fut = pl.DataFrame({"date": [seed_date], symbol: [None]}, schema={"date": pl.Date, symbol: pl.Float64})
-        fut_concat = pl.concat([seed_fut, fut_filtered])
-    else:
-        fut_concat = fut_filtered
-
-    df = fut_concat.join(spot, on="date", how="left").sort("date")
-    df = df.with_columns(pl.col("__fx_level").forward_fill())
-
-    observed = pl.when(pl.col(symbol).is_not_null()).then(pl.col("__fx_level")).otherwise(None)
-    df = df.with_columns(observed.alias("__observed_level"))
-
-    prev_observation = pl.col("__observed_level").forward_fill().shift(1)
-    denom = pl.coalesce([prev_observation, pl.col("__fx_level").shift(1)])
-
-    df = df.with_columns((pl.col("__fx_level") / denom - 1.0).alias("r_spot"))
-
-    df = df.filter(pl.col("date") >= panel_start)
-    df = df.rename({symbol: "r_fut"})
-    return df.select(["date", "r_fut", "r_spot"])
+from globalmacro.validation.fx_futures import daily_fx_vs_spot
 
 
 def evaluate_dataset(sync_target: str, spot_df: pl.DataFrame, start_date: str | None = None) -> pl.DataFrame:
@@ -61,7 +27,7 @@ def evaluate_dataset(sync_target: str, spot_df: pl.DataFrame, start_date: str | 
             if ccy not in spot_df.columns:
                 continue
 
-            df = compute_gap_aware_spot_return(futures_df, spot_df, symbol, ccy)
+            df = daily_fx_vs_spot(futures_df, spot_df, symbol, ccy)
 
             valid = df.drop_nulls(["r_fut", "r_spot"])
             if start_date:

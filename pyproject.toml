@@ -36,6 +36,10 @@ dev = ["pytest>=8", "ruff==0.15.12", "pyright==1.1.409", "black==25.1.0", "ipyke
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# scripts/ has no __init__.py and isn't installed as a package; add the repo
+# root to sys.path so tests can `from scripts.foo import bar` (native pytest
+# option since 7.0, no plugin required).
+pythonpath = ["."]
 
 [tool.ruff]
 # Rule families mirror jkp-data for cross-repo lint consistency. line-length is

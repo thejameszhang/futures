@@ -11,6 +11,7 @@ from globalmacro.utils.paths import DATASETS_ROOT, VALIDATION_OUTPUT
 from globalmacro.validation.base import Invariant, grade, write_summary
 from globalmacro.validation.consistency import consistency_check
 from globalmacro.validation.datastream_comparison import datastream_check
+from globalmacro.validation.fx_futures import fx_futures_vs_spot_check
 from globalmacro.validation.plots import plot_comparison, plot_symbol_counts
 from globalmacro.validation.spot_fx import spot_fx_check
 from globalmacro.validation.synthetic_equity import synthetic_equity_check
@@ -19,7 +20,7 @@ from globalmacro.validation.synthetic_fx import synthetic_fx_check
 
 def _available_checks():
     checks = [datastream_check, consistency_check, synthetic_fx_check,
-              synthetic_equity_check, spot_fx_check]
+              synthetic_equity_check, spot_fx_check, fx_futures_vs_spot_check]
     try:
         from globalmacro.validation.external_comparison import external_check
         checks.append(external_check)          # optional, gitignored, local-only

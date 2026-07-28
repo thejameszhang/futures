@@ -1,8 +1,11 @@
 # src/globalmacro/validation/plots.py
 """Rendering for the validation deliverables. The only matplotlib in the
-package; Agg backend (headless HPC). Two renderers:
+package; Agg backend (headless HPC). Renderers:
   - plot_comparison: small-multiples cumulative monthly log returns, ours vs
     theirs, one panel per Tier-1 instrument (title = name (ticker) + r).
+  - plot_fx_vs_spot_grid: sibling of plot_comparison -- small-multiples
+    cumulative DAILY log returns, one panel per currency, THREE lines (ET
+    futures / London futures / Compustat spot) + two correlation annotations.
   - plot_symbol_counts: instruments present per date (data-completeness).
 """
 from __future__ import annotations
@@ -71,6 +74,68 @@ def plot_comparison(pairs: pl.DataFrame, series_labels, title: str, path) -> Non
                 Line2D([], [], color=_C_THEIRS, lw=1.5)],
                list(series_labels), loc="upper right", fontsize=8, frameon=False,
                ncol=2, bbox_to_anchor=(0.995, 0.997))
+    fig.suptitle(title, fontsize=12, x=0.02, ha="left", y=0.997)
+    fig.tight_layout(rect=(0, 0, 1, 0.985))
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(str(path))
+    plt.close(fig)
+
+
+_C_ET, _C_LONDON, _C_SPOT = "#1f77b4", "#ff7f0e", "#444444"
+
+
+def _corr_label(prefix: str, r: float | None) -> tuple[str, str]:
+    """`"et r=0.83"` (or `"et r=n/a"`) + its color -- red if <0.8, matching
+    `plot_comparison`'s single-annotation convention."""
+    if r is None or (isinstance(r, float) and math.isnan(r)):
+        return f"{prefix} r=n/a", "#444"
+    return f"{prefix} r={r:.2f}", ("#c0392b" if r < 0.8 else "#444")
+
+
+def plot_fx_vs_spot_grid(panels: list[dict], title: str, path) -> None:
+    """Small-multiples grid, one panel per currency, THREE cumulative-daily-log-return
+    lines (ET futures / London futures / Compustat spot) with both correlations
+    annotated. A sibling of `plot_comparison` -- same grid/sizing/font/legend
+    conventions -- but 3 lines/panel and 2 annotations instead of 1.
+
+    `panels` is a list of per-currency records (built by
+    `fx_futures._fx_vs_spot_panels`):
+    `{"ccy", "symbol", "dates", "cum_et", "cum_lon", "cum_spot", "r_et", "r_lon"}`.
+    `cum_et`/`cum_lon` (and `r_et`/`r_lon`) are `None` when that mode has no panel for
+    the currency -- the line and its annotation are then simply skipped, rather than
+    drawing a misleading flat-zero line. `cum_spot` is always present.
+    """
+    panels = sorted(panels, key=lambda p: p["ccy"])
+    n = len(panels)
+    nrows = max(1, math.ceil(n / _NCOLS))
+    fig, axes = plt.subplots(nrows, _NCOLS, figsize=(_NCOLS * 2.7, nrows * 1.85), squeeze=False)
+    axes = axes.flatten()
+    for ax, p in zip(axes, panels, strict=False):
+        dates = p["dates"]
+        if p["cum_et"] is not None:
+            ax.plot(dates, p["cum_et"], color=_C_ET, lw=0.9)
+        if p["cum_lon"] is not None:
+            ax.plot(dates, p["cum_lon"], color=_C_LONDON, lw=0.9)
+        ax.plot(dates, p["cum_spot"], color=_C_SPOT, lw=1.0)
+        ax.set_title(f"{p['ccy']} ({p['symbol']})", fontsize=6.2, pad=2)
+        for i, (prefix, r) in enumerate((("et", p["r_et"]), ("lon", p["r_lon"]))):
+            txt, color = _corr_label(prefix, r)
+            ax.text(0.035, 0.93 - i * 0.17, txt, transform=ax.transAxes, fontsize=5.6,
+                    va="top", color=color)
+        ax.grid(alpha=0.25, lw=0.4)
+        ax.tick_params(labelsize=4.5, length=2)
+        ax.xaxis.set_major_locator(YearLocator(5))
+        ax.xaxis.set_major_formatter(DateFormatter("%y"))
+        for s in ax.spines.values():
+            s.set_linewidth(0.4)
+    for ax in axes[n:]:
+        ax.axis("off")
+    fig.legend([Line2D([], [], color=_C_ET, lw=1.5),
+                Line2D([], [], color=_C_LONDON, lw=1.5),
+                Line2D([], [], color=_C_SPOT, lw=1.5)],
+               ["ET futures", "London futures", "Compustat spot"],
+               loc="upper right", fontsize=8, frameon=False,
+               ncol=3, bbox_to_anchor=(0.995, 0.997))
     fig.suptitle(title, fontsize=12, x=0.02, ha="left", y=0.997)
     fig.tight_layout(rect=(0, 0, 1, 0.985))
     Path(path).parent.mkdir(parents=True, exist_ok=True)

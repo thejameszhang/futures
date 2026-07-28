@@ -7,6 +7,7 @@ import pytest
 from globalmacro.validation.plots import (
     _cum_and_corr,
     plot_comparison,
+    plot_fx_vs_spot_grid,
     plot_paired_bars,
     plot_symbol_counts,
 )
@@ -74,6 +75,39 @@ def test_consistency_pairs_tier1_and_grade_unchanged():
 
 
 
+
+
+def test_plot_fx_vs_spot_grid_writes_a_single_pdf(tmp_path):
+    dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 1), interval="1d", eager=True).to_numpy()
+    n = len(dates)
+    panels = [
+        {
+            "ccy": "EUR", "symbol": "6E",
+            "dates": dates,
+            "cum_et": np.linspace(0.0, 0.05, n),
+            "cum_lon": np.linspace(0.0, 0.06, n),
+            "cum_spot": np.linspace(0.0, 0.055, n),
+            "r_et": 0.83, "r_lon": 0.98,
+        },
+        {
+            # ET panel absent for this currency -- no cum_et/r_et line or annotation.
+            "ccy": "JPY", "symbol": "6J",
+            "dates": dates,
+            "cum_et": None,
+            "cum_lon": np.linspace(0.0, -0.02, n),
+            "cum_spot": np.linspace(0.0, -0.03, n),
+            "r_et": None, "r_lon": 0.5,   # < 0.8 -> annotated red
+        },
+    ]
+    out = tmp_path / "comparison.pdf"
+    plot_fx_vs_spot_grid(panels, "Test FX", out)
+    assert out.exists() and out.stat().st_size > 1000
+
+
+def test_plot_fx_vs_spot_grid_tolerates_empty_panels(tmp_path):
+    out = tmp_path / "empty.pdf"
+    plot_fx_vs_spot_grid([], "Empty", out)
+    assert out.exists()
 
 
 def test_plot_paired_bars_writes_a_pdf(tmp_path):

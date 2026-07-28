@@ -752,6 +752,37 @@ def save_usd_datasets(
     daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv")
 
 
+def currency_health(
+    synced: pl.DataFrame, currency_symbols: list[str], threshold: float = 0.30, max_gap: int = 5
+) -> list[str]:
+    """One line per currency that has a return spike (|ret| > threshold) or a null
+    run longer than max_gap, for validation_report.txt."""
+    df = synced.with_columns(pl.col("date").cast(pl.Date, strict=False)).sort("date")
+    lines: list[str] = []
+    for sym in currency_symbols:
+        if sym not in df.columns:
+            continue
+        r = df.get_column(sym).cast(pl.Float64, strict=False)
+        n_spike = int((r.abs() > threshold).sum())
+        # longest consecutive-null run within the symbol's observed span (first
+        # non-null to last non-null) — leading/trailing listing-boundary pads
+        # are not gaps.
+        not_null = r.is_not_null().to_list()
+        first_obs = next((i for i, v in enumerate(not_null) if v), None)
+        last_obs = next((i for i in range(len(not_null) - 1, -1, -1) if not_null[i]), None)
+        longest = 0
+        if first_obs is not None and last_obs is not None:
+            run = 0
+            for v in r.is_null().to_list()[first_obs : last_obs + 1]:
+                run = run + 1 if v else 0
+                longest = max(longest, run)
+        if n_spike:
+            lines.append(f"currency {sym}: {n_spike} spike(s) |ret|>{threshold:.0%} (SHIPPED)")
+        if longest > max_gap:
+            lines.append(f"currency {sym}: max null gap {longest} days")
+    return lines
+
+
 def load_symbols(tier: int) -> tuple[list[Future], list[str]]:
     futures = load_config(PROJECT_ROOT / f"tier{tier}.yaml")
     symbols = [f.symbol for f in futures]
@@ -808,6 +839,13 @@ def main() -> None:
     asynced, asynced_monthly = filter_dataset_by_monthly_returns(asynced)
 
     tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly = save_datasets(synced, asynced, asynced_monthly, load_symbols_to_save(tier1_futures), load_symbols_to_save(tier2_futures))
+
+    log_subsection("Currency spike / gap diagnostics")
+    currency_symbols = [
+        f.symbol for f in tier1_futures + tier2_futures if AssetClass.CURRENCY in f.asset_class
+    ]
+    for line in currency_health(tier2_synced, currency_symbols):
+        logger.warning(line)
 
     log_subsection("USD-converted datasets")
     fx_async = read_csv(FX_PATH / "fx_async.csv")

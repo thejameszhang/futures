@@ -201,6 +201,42 @@ def manual_corrections(FUTURE: Future, daily_vwaps: pl.DataFrame) -> pl.DataFram
         ])
     elif FUTURE.symbol == "WDC":
         daily_vwaps = daily_vwaps.filter(pl.col("settlement_c1") > 1).filter(pl.col("settlement_c2") > 1)
+    elif FUTURE.symbol == "KRW":
+        # Bad settlement prints (the vwap is corrupt; the TickHistory last trade is clean).
+        # Front is c1 on 2006-09-20 & 2007-03-27, c2 on 2014-02-14. Values verified against
+        # the ET debug table and WM/Reuters 4pm spot (match <0.5%); the raw spikes have no
+        # counterpart in spot -> data errors, not macro. See em-fx-scrubbing design.
+        daily_vwaps = daily_vwaps.with_columns([
+            pl.when(pl.col("date_").is_in([date(2006, 9, 20), date(2007, 3, 27)]))
+              .then(pl.col("lasttrdprice_c1")).otherwise(pl.col("settlement_c1")).alias("settlement_c1"),
+            pl.when(pl.col("date_") == date(2014, 2, 14))
+              .then(pl.col("lasttrdprice_c2")).otherwise(pl.col("settlement_c2")).alias("settlement_c2"),
+        ])
+    elif FUTURE.symbol == "PLN":
+        # Front-contract (c1) bad print in BOTH settlement and lasttrdprice; the independent
+        # Datastream open_1 is the clean value (same tactic as HE "all tick data wrong"/ZB/TF).
+        # The 2008-11-24 print also causes the flagged +32% rebound on 2008-11-25. Verified vs
+        # WM/Reuters 4pm spot (open_1 within <0.5%; spot moved -0.06% / +3.8%, not -36% / -19%).
+        daily_vwaps = daily_vwaps.with_columns([
+            pl.when(pl.col("date_").is_in([date(2008, 7, 16), date(2008, 11, 24)]))
+              .then(pl.col("open_1")).otherwise(pl.col("settlement_c1")).alias("settlement_c1"),
+        ])
+    return daily_vwaps
+
+
+def apply_unit_transforms(FUTURE: Future, daily_vwaps: pl.DataFrame) -> pl.DataFrame:
+    """Post-adjustment units/orientation transforms for specific FX futures. MUST run
+    after FUTURE.adjustments (6J is non-commutative with the rescale). Migrated verbatim
+    from the former inline block: 6J units (<0.1 -> x100), 6Z orientation (>10 -> 100 - x)."""
+    cols = ["front_month_settlement", "settlement_c1", "settlement_c2", "settlement_c3", "settlement_c4"]
+    if FUTURE.symbol == "6J":
+        return daily_vwaps.with_columns(
+            [pl.when(pl.col(c) < 0.1).then(pl.col(c) * 100).otherwise(pl.col(c)).alias(c) for c in cols]
+        )
+    if FUTURE.symbol == "6Z":
+        return daily_vwaps.with_columns(
+            [pl.when(pl.col(c) > 10).then(100 - pl.col(c)).otherwise(pl.col(c)).alias(c) for c in cols]
+        )
     return daily_vwaps
 
 
@@ -538,23 +574,7 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
                 pl.when(pl.col("settlement_c3") > adjustment.get("threshold")).then(pl.col("settlement_c3") / adjustment.get("divisor")).otherwise(pl.col("settlement_c3")).alias("settlement_c3"),
                 pl.when(pl.col("settlement_c4") > adjustment.get("threshold")).then(pl.col("settlement_c4") / adjustment.get("divisor")).otherwise(pl.col("settlement_c4")).alias("settlement_c4"),
             ])
-    # This is intentional; this is a bad way to do it but it's okay
-    if FUTURE.symbol == "6J":
-        daily_vwaps = daily_vwaps.with_columns([
-            pl.when(pl.col("front_month_settlement") < 0.1).then(pl.col("front_month_settlement") * 100).otherwise(pl.col("front_month_settlement")).alias("front_month_settlement"),
-            pl.when(pl.col("settlement_c1") < 0.1).then(pl.col("settlement_c1") * 100).otherwise(pl.col("settlement_c1")).alias("settlement_c1"),
-            pl.when(pl.col("settlement_c2") < 0.1).then(pl.col("settlement_c2") * 100).otherwise(pl.col("settlement_c2")).alias("settlement_c2"),
-            pl.when(pl.col("settlement_c3") < 0.1).then(pl.col("settlement_c3") * 100).otherwise(pl.col("settlement_c3")).alias("settlement_c3"),
-            pl.when(pl.col("settlement_c4") < 0.1).then(pl.col("settlement_c4") * 100).otherwise(pl.col("settlement_c4")).alias("settlement_c4"),
-        ])
-    elif FUTURE.symbol == "6Z":
-        daily_vwaps = daily_vwaps.with_columns([
-            pl.when(pl.col("front_month_settlement") > 10).then(100 - pl.col("front_month_settlement")).otherwise(pl.col("front_month_settlement")).alias("front_month_settlement"),
-            pl.when(pl.col("settlement_c1") > 10).then(100 - pl.col("settlement_c1")).otherwise(pl.col("settlement_c1")).alias("settlement_c1"),
-            pl.when(pl.col("settlement_c2") > 10).then(100 - pl.col("settlement_c2")).otherwise(pl.col("settlement_c2")).alias("settlement_c2"),
-            pl.when(pl.col("settlement_c3") > 10).then(100 - pl.col("settlement_c3")).otherwise(pl.col("settlement_c3")).alias("settlement_c3"),
-            pl.when(pl.col("settlement_c4") > 10).then(100 - pl.col("settlement_c4")).otherwise(pl.col("settlement_c4")).alias("settlement_c4"),
-        ])
+    daily_vwaps = apply_unit_transforms(FUTURE, daily_vwaps)
 
     # Returns ret1 without any price adjustment + other returns ret_c1 and ret_c2 which are just the returns for c1 and c2 series
     symbol_data = daily_vwaps.with_columns([
