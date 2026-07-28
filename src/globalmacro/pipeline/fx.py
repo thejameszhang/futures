@@ -1,15 +1,17 @@
 from datetime import date
 from functools import lru_cache
+
 import pandas_market_calendars as pmc
 import polars as pl
+
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass
 from globalmacro.utils.paths import (
     COMPUSTAT_PATH,
-    PROJECT_ROOT,
     ECONOMICS_PATH,
-    FX_PATH,
     FUTURES_PATH,
+    FX_PATH,
+    PROJECT_ROOT,
 )
 
 SYMBOL_TO_CURCDD_MAPPING = {
@@ -126,7 +128,7 @@ def __estimate_fx_rates(fx_rates: pl.DataFrame) -> pl.DataFrame:
         .fill_null(strategy="forward")
     )
     wide_fx1 = wide_fx1.select(["date"] + [col for col in wide_fx1.columns if col != "date"])
-    return wide_fx1    
+    return wide_fx1
 
 
 def save_compustat_fx_rates() -> pl.DataFrame:
@@ -200,7 +202,7 @@ def build_synthetic(spot_panel: pl.DataFrame) -> pl.DataFrame:
     )
     # TODO: Add the other (symbols x clscode) pairs for the tier 2 currencies. Algorithmically
     symbol_clscode_pairs = [(f.symbol, f.clscode) for f in fx_list if f.symbol not in ("6A", "6B", "6C", "6E", "6J", "6S")]
-    for symbol, clscode in symbol_clscode_pairs:
+    for _symbol, clscode in symbol_clscode_pairs:
         symbol_start_date = (
             expiry_dates
             .filter(pl.col("clscode") == clscode)
@@ -214,13 +216,13 @@ def build_synthetic(spot_panel: pl.DataFrame) -> pl.DataFrame:
             .filter(pl.col("lasttrddate") < symbol_start_date)
         )
         expiry_dates = pl.concat([expiry_dates, pre_symbol])
-    
+
     expiry_dates = (
         expiry_dates
         .sort(["clscode", "lasttrddate"])
         .with_columns(pl.col("lasttrddate").shift(-1).over("clscode").alias("next_lasttrddate"))
     )
-    
+
     datastream_fx_rates = spot_panel.with_columns(
         [pl.col(c).cast(pl.Float64).alias(c) for c in spot_panel.columns if c != "date"]
     )
@@ -236,7 +238,7 @@ def build_synthetic(spot_panel: pl.DataFrame) -> pl.DataFrame:
             .rename({SYMBOL_TO_CURCDD_MAPPING[symbol]: "rate"})
             .join(key, on="symbol", how="left")
         )
-        
+
         fx_rates = ds2fxrate.join_asof(
             expiry_dates,
             by="clscode",

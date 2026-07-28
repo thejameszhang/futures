@@ -8,9 +8,11 @@ per-instrument Pearson correlations. A check returns a frame with columns
 write_summary() renders all results into VALIDATION_SUMMARY.md.
 """
 from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+
 import polars as pl
 
 PASS_THRESHOLD = 0.95   # PASS iff median per-instrument correlation >= this
@@ -51,12 +53,12 @@ class Check:
     run: Callable[[], pl.DataFrame]  # returns columns: instrument, correlation, n_obs
     # Optional Tier-1 comparison-plot support: pairs() returns long-form
     # [instrument, name, month, ours, theirs]; series_labels names the two lines.
-    pairs: "Callable[[], pl.DataFrame] | None" = None
+    pairs: Callable[[], pl.DataFrame] | None = None
     series_labels: tuple[str, str] = ("ours", "reference")
     # Optional non-correlation assertions; a failure fails the run.
-    invariants: "Callable[[], list[Invariant]] | None" = None
+    invariants: Callable[[], list[Invariant]] | None = None
     # Optional one-off justification figures; called with the check's out_dir.
-    figures: "Callable[[Path], None] | None" = None
+    figures: Callable[[Path], None] | None = None
 
 
 def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
@@ -66,10 +68,10 @@ def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
     if n == 0:
         return CheckResult(name, slug, 0, float("nan"), float("nan"),
                            float("nan"), 0, False)
-    median = float(c.median())
+    median = float(c.median())  # pyright: ignore[reportArgumentType]  # n>0 guarded above
     return CheckResult(
         name=name, slug=slug, n=n,
-        mean=float(c.mean()), median=median, minimum=float(c.min()),
+        mean=float(c.mean()), median=median, minimum=float(c.min()),  # pyright: ignore[reportArgumentType]
         n_below=int((c < FLAG_THRESHOLD).sum()),
         passed=median >= PASS_THRESHOLD,
     )

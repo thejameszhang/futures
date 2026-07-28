@@ -7,14 +7,14 @@ import os
 
 import polars as pl
 
-from globalmacro.utils.paths import VALIDATION_OUTPUT, DATASETS_ROOT
-from globalmacro.validation.base import grade, write_summary, Invariant
-from globalmacro.validation.plots import plot_comparison, plot_symbol_counts
-from globalmacro.validation.datastream_comparison import datastream_check
+from globalmacro.utils.paths import DATASETS_ROOT, VALIDATION_OUTPUT
+from globalmacro.validation.base import Invariant, grade, write_summary
 from globalmacro.validation.consistency import consistency_check
-from globalmacro.validation.synthetic_fx import synthetic_fx_check
-from globalmacro.validation.synthetic_equity import synthetic_equity_check
+from globalmacro.validation.datastream_comparison import datastream_check
+from globalmacro.validation.plots import plot_comparison, plot_symbol_counts
 from globalmacro.validation.spot_fx import spot_fx_check
+from globalmacro.validation.synthetic_equity import synthetic_equity_check
+from globalmacro.validation.synthetic_fx import synthetic_fx_check
 
 
 def _available_checks():

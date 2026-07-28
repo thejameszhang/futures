@@ -52,8 +52,9 @@ def main(argv=None):
             return 0
         try:
             creds = get_wrds_credentials()
-            import wrds
             import os
+
+            import wrds
             if creds.password is not None:
                 os.environ["PGPASSWORD"] = creds.password
             # Actively test connection against WRDS
@@ -70,6 +71,7 @@ def main(argv=None):
             return 1
     if stage == "run":
         import subprocess
+
         from globalmacro.utils.paths import PROJECT_ROOT
         script = PROJECT_ROOT / "slurm" / "run_all.sh"
         return subprocess.call(["bash", str(script), *rest])

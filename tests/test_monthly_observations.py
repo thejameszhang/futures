@@ -1,6 +1,7 @@
+from datetime import date
+
 import polars as pl
 import pytest
-from datetime import date
 
 from globalmacro.build import compute_monthly_returns, filter_dataset_by_monthly_returns
 

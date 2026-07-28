@@ -1,4 +1,5 @@
 import polars as pl
+
 from globalmacro.utils.config import load_config
 from globalmacro.utils.paths import DATASTREAM_PATH, PROJECT_ROOT
 from globalmacro.validation.base import Check
@@ -6,33 +7,33 @@ from globalmacro.validation.base import Check
 DATASET = "constructed_no_price_adjustment"
 """
 This script compares our constructed futures time series with the official Datastream continuous series.
-We compare the correlations between the two types of series and plot of cumulative returns as a 
-visualization test. 
+We compare the correlations between the two types of series and plot of cumulative returns as a
+visualization test.
 
 Known errors in the Datastream continuous series data include:
 1. A return of 2420% on 1988-01-19 for clscode 983 (Hang Seng Index Future)
 2. A few days of erroneous data where abs(returns) > 900% for clscode 2094 (Swiss Franc) in late 1973
 3. A return of >100% on 1996-06-19 for clscode 3630 (AEX Index Future)
-4. A return of -3.059 on 2020-04-20 and -1.307 on 2020-04-21 for clscode 1482 (Crude Oil Futures); the drop is due 
-to COVID-19. Our constructed returns also decline steeply on these days but are closer to 18% and 43%, respectively. 
+4. A return of -3.059 on 2020-04-20 and -1.307 on 2020-04-21 for clscode 1482 (Crude Oil Futures); the drop is due
+to COVID-19. Our constructed returns also decline steeply on these days but are closer to 18% and 43%, respectively.
 5. A return of inf on 2018-01-02, 2018-04-02 and 2019-01-02 for clscode 1175 (Brent Crude Oil Futures) when the
-our corresponding constructed returns are finite. 
-6. A return of 21.46% on 1989-10-06 for clscode 221 (10 Year Canadian Government Bond Futures) when 
-our corresponding constructed returns are much more reasonable at 0.81%. 
+our corresponding constructed returns are finite.
+6. A return of 21.46% on 1989-10-06 for clscode 221 (10 Year Canadian Government Bond Futures) when
+our corresponding constructed returns are much more reasonable at 0.81%.
 
 Known errors in the underlying futures that cause issues with the constructed futures time series are:
 1. Clscode 1025, Norwegian Krone to USD
-- 3 consecutive drops in returns of more than 80% for clscode 1025 Norwegian Krone to USD, so for these 3 data points, 
-we're using the Datastream continuous series' returns instead. 
+- 3 consecutive drops in returns of more than 80% for clscode 1025 Norwegian Krone to USD, so for these 3 data points,
+we're using the Datastream continuous series' returns instead.
 2. Clscode 1622, Nikkei 225 Index Future
-- >5 returns of greater than 60,000% between 2017 and 2018, so we're using the Datastream continuous series' returns instead. 
+- >5 returns of greater than 60,000% between 2017 and 2018, so we're using the Datastream continuous series' returns instead.
 3. Clscode 3829, OMX30 Index Future
-- >3 returns points of greater than 1,000%, sowe're using the Datastream continuous series' returns instead. 
+- >3 returns points of greater than 1,000%, sowe're using the Datastream continuous series' returns instead.
 4. Clcode 1602, 90-Day New Zealand Bank Bill
 
 We stitch full-size contracts series to e-minis series when the e-mini volume first exceeds the full-size volume.
 - Russell 2000, which is an exception, 3-way stitch.
-- There does not exist a day in whiich the volume of FVS > volume of FVSX. In this case, we use the last trading 
+- There does not exist a day in whiich the volume of FVS > volume of FVSX. In this case, we use the last trading
 day of the full-size contract.
 """
 def _datastream_monthly(tier: int = 1, verbose: bool = False) -> pl.DataFrame:

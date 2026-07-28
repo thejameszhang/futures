@@ -57,10 +57,10 @@ SPLICING_MAP = {
     "6E": "DM",
     # FIB
     "FIB": "IFX",
-    # VIX with VIX spot returns from CBOE 
+    # VIX with VIX spot returns from CBOE
     "VX": "vix_ret_rf_open",
 
-    # Tier 2 now 
+    # Tier 2 now
     # OMXC20 Denmark Index
     "C20CAP": "OMXC20",
     "FXC25": "C20CAP",

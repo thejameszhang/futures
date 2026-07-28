@@ -1,5 +1,6 @@
 import polars as pl
 import pytest
+
 from globalmacro.build import GICS_SECTOR_TICKERS, rename_gics_to_tickers
 
 

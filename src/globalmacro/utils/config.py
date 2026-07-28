@@ -1,17 +1,17 @@
 import os
 from pathlib import Path
-from typing import List
 
 import yaml
 
 from .models import Future
 
-def load_config(yaml_file: str | Path = "../../tier1.yaml") -> List[Future]:
+
+def load_config(yaml_file: str | Path = "../../tier1.yaml") -> list[Future]:
     """Load symbols data from a single YAML file and return list of Future objects."""
     yaml_file = os.fspath(yaml_file)
     futures = []
 
-    with open(yaml_file, 'r') as f:
+    with open(yaml_file) as f:
         data = yaml.safe_load(f)
 
     for symbol, future_data in data.items():
@@ -19,5 +19,5 @@ def load_config(yaml_file: str | Path = "../../tier1.yaml") -> List[Future]:
         if symbol.startswith('#'):
             continue
         futures.append(Future.from_dict(symbol, future_data))
-    
+
     return futures

@@ -4,8 +4,11 @@ import io
 import os
 import sys
 from contextlib import closing
+from typing import Any, cast
+
 import wrds
 from tqdm import tqdm
+
 from globalmacro.utils.paths import COMPUSTAT_PATH, DATASTREAM_PATH
 
 # database -> (WRDS library, explicit table list). Tightened to ONLY the tables
@@ -47,17 +50,17 @@ def main():
     if creds.password is not None:
         os.environ["PGPASSWORD"] = creds.password
     conn = wrds.Connection(wrds_username=creds.username)
-    dbapi_conn = conn.engine.raw_connection()
+    dbapi_conn = cast(Any, conn.engine).raw_connection()
 
     # List all tables in the library
-    tables = conn.list_tables(library=LIBRARY)
+    tables = cast(list[str], conn.list_tables(library=LIBRARY))
     if TABLES is not None:
         tables = list(filter(lambda x: x in TABLES, tables))
     elif TABLE_PREFIX is not None:
-        tables = list(filter(lambda x: x.startswith(TABLE_PREFIX), tables))
+        tables = list(filter(lambda x: x.startswith(cast(str, TABLE_PREFIX)), tables))
     else:
         raise ValueError("Either TABLES or TABLE_PREFIX must be provided")
-    
+
     if not tables:
         print(f"No tables found in library '{LIBRARY}'.")
         sys.exit(1)

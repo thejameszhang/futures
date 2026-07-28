@@ -1,5 +1,6 @@
 import polars as pl
 
+
 def calc_price_with_roll(i: int, price_type: str) -> list[pl.Expr]:
     """
     Calculate price of the futures contract
@@ -27,7 +28,7 @@ def calc_returns_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     return ([
         pl.when((pl.col('daystomaturity_1').shift(1) == 0) | (pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1)))
         .then((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i + 1}').shift(1)) - 1)
-        .otherwise(((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1))
+        .otherwise((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1)
         .over('clscode').alias(f'ret_temp_{i}'),
     ])
 
@@ -116,13 +117,13 @@ def calc_spot_returns_until_expiry(i: int) -> list[pl.Expr]:
     return ([
         pl.when(pl.col('daystomaturity_1').shift(1) == 0)\
         .then((pl.col(f'spot_price_{i}') / pl.col(f'spot_price_{i + 1}').shift(1)) - 1)
-        .otherwise(((pl.col(f'spot_price_{i}') / pl.col(f'spot_price_{i}').shift(1)) - 1))
+        .otherwise((pl.col(f'spot_price_{i}') / pl.col(f'spot_price_{i}').shift(1)) - 1)
         .over('clscode')
         .alias(f'spot_ret_temp_{i}'),
 
         pl.when(pl.col('daystomaturity_1').shift(1) == 0)
         .then((pl.col(f'spot_price_local_{i}') / pl.col(f'spot_price_local_{i + 1}').shift(1)) - 1)
-        .otherwise(((pl.col(f'spot_price_local_{i}') / pl.col(f'spot_price_local_{i}').shift(1)) - 1))
+        .otherwise((pl.col(f'spot_price_local_{i}') / pl.col(f'spot_price_local_{i}').shift(1)) - 1)
         .over('clscode')
         .alias(f'spot_ret_temp_local_{i}'),
     ])
@@ -148,7 +149,7 @@ def calc_spot_return_with_price_adj_and_roll(i: int) -> list[pl.Expr]:
         .over(pl.col('clscode'))
         .alias(f'spot_ret_local_{i}'),
     ])
-    
+
 # Calculate the the futures-implied basis until expiry
 def calc_basis_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     """
@@ -168,7 +169,7 @@ def calc_basis_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
         .over(pl.col('clscode'))
         .alias(f'basis_local_{i}'),
     ])
-    
+
 def calc_basis_with_roll(i: int) -> list[pl.Expr]:
     """
     Calculate the the futures-implied basis with roll

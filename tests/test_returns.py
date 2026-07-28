@@ -1,5 +1,7 @@
-import polars as pl
 from datetime import date
+
+import polars as pl
+
 from globalmacro.utils.characteristics import calc_returns_until_expiry
 
 

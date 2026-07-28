@@ -14,14 +14,16 @@ value across ~21 daily rows and collapses to median ~0.19. Tier 2 is the graded
 universe.
 """
 from __future__ import annotations
+
 import polars as pl
-from globalmacro.utils.paths import DATASETS_ROOT, PROJECT_ROOT
-from globalmacro.utils.config import load_config
-from globalmacro.validation.base import Check
+
 # Pure, side-effect-free transform (importing build runs no heavy code: build has
 # no module-level work outside the __main__ guard). compute_monthly_returns is the
 # exact monthly aggregation build uses, so Exercise 2 matches build's numbers.
 from globalmacro.build import compute_monthly_returns
+from globalmacro.utils.config import load_config
+from globalmacro.utils.paths import DATASETS_ROOT, PROJECT_ROOT
+from globalmacro.validation.base import Check
 
 
 def _present(col: str) -> pl.Expr:

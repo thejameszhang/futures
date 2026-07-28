@@ -12,6 +12,7 @@ from pathlib import Path
 
 import polars as pl
 
+from globalmacro.build import first_valid_date
 from globalmacro.utils.paths import FX_PATH
 from globalmacro.validation.base import Check, Invariant
 from globalmacro.validation.synthetic import (
@@ -21,7 +22,6 @@ from globalmacro.validation.synthetic import (
     shipped_panel,
     synthetic_correlations,
 )
-from globalmacro.build import first_valid_date
 
 # The graded median below is computed on the ASYNC panel. Say so in the name: a reader of
 # VALIDATION_SUMMARY.md must not read "PASS" as a verdict on a panel that was not graded.

@@ -1,5 +1,7 @@
-import polars as pl
 from datetime import date
+
+import polars as pl
+
 from globalmacro.build import coerce_numeric_data, keep_after_date, set_null_on_date
 
 

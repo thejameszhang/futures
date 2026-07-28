@@ -47,19 +47,22 @@ and files that must be acquired externally and pre-placed by hand.
 
 | Branch | Library | Files → location |
 |---|---|---|
-| `futures` | `tr_ds_fut` | `dsf*` (dsfutclass, dsfutcontr, dsfuttrdcycle, dsfutcontrinfo, dsfutcontrval) → `data/datastream/futures/` |
-| `equities` | `tr_ds_equities` | `ds2indexdata`, `ds2equityindex` → `data/datastream/equities/` |
-| `fx` | `tr_ds_equities` | `ds2fxrate`, `ds2fxcode`, `ds2mktval`, `ds2primqt*`, `ds2scdqt*` → `data/datastream/fx/` |
-| `economics` | `tr_ds_econ` | `eco*` incl. `ecodata.csv` → `data/datastream/economics/` |
+| `futures` | `tr_ds_fut` | `dsfutclass`, `dsfutcontr`, `dsfuttrdcycle`, `dsfutcontrinfo`, `dsfutcontrval` → `data/datastream/futures/` |
+| `equities` | `tr_ds_equities` | `ds2indexdata` → `data/datastream/equities/` |
+| `fx` | `tr_ds_equities` | `ds2fxrate`, `ds2fxcode` → `data/datastream/fx/` |
+| `economics` | `tr_ds_econ` | `ecodata` → `data/datastream/economics/` |
 | `comp` | `comp` | `exrt_dly` → `data/comp/` |
 
 ### Manual Prerequisite Data Files
 
-In addition, some prerequisite files must be pre-placed manually in the `data/` folder:
-- **Compustat**: `comp/exrt_dly.csv`
+In addition, some prerequisite files must be pre-placed manually in the `data/` folder (they cannot be downloaded automatically via `globalmacro download`):
+- **Economics / Interest Rates**:
+  - `datastream/economics/ded3_wrds.csv` (3M Eurodollar interest rates)
+  - `datastream/economics/oecd.csv` (OECD benchmark short-term interest rates)
+- **Datastream Continuous Futures Benchmark** (for validation QA):
+  - `datastream/futures/datastream_continuous_series.csv`
 - **JKP**: `jkp/updated_daily_ind_gics.csv`, `jkp/updated_daily_ind_gics_synced.csv`
+- **Misc**: `misc/F-F_Research_Data_Factors_daily.csv`, `misc/VIX_History.csv`
 - **TickHistory** (LSEG TickHistory extractions; use `globalmacro instrumentlists` to generate the RIC pull-lists, then place the resulting CSVs):
   - `tickhistory/trades/`: `tier1_bond_trades.csv`, `tier1_commodity_trades.csv`, `tier1_currency_trades.csv`, `tier1_equity_trades.csv`, `tier1_stir_trades.csv`, `tier1_traditional_trades.csv`, `tier1_volatility_trades.csv`, `tier2_cryptocurrency_trades.csv`, `tier2_currency_trades.csv`, `tier2_equity_trades.csv`, `tier2_housing_trades.csv`
   - `tickhistory/quotes/`: `tier1_bond_quotes.csv`, `tier1_commodity_quotes.csv`, `tier1_currency_quotes.csv`, `tier1_equity_quotes.csv`, `tier1_stir_quotes.csv`, `tier1_traditional_quotes.csv`, `tier1_volatility_quotes.csv`, `tier2_cryptocurrency_quotes.csv`, `tier2_currency_quotes.csv`, `tier2_equity_quotes.csv`, `tier2_housing_quotes.csv`
-- **Misc**: `misc/F-F_Research_Data_Factors_daily.csv`, `misc/VIX_History.csv`
-

@@ -6,14 +6,17 @@ package; Agg backend (headless HPC). Two renderers:
   - plot_symbol_counts: instruments present per date (data-completeness).
 """
 from __future__ import annotations
+
 import math
 from pathlib import Path
+
+import matplotlib
 import numpy as np
 import polars as pl
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.dates import YearLocator, DateFormatter
+from matplotlib.dates import DateFormatter, YearLocator
 from matplotlib.lines import Line2D
 
 _C_OURS, _C_THEIRS = "#1f77b4", "#ff7f0e"
@@ -49,7 +52,7 @@ def plot_comparison(pairs: pl.DataFrame, series_labels, title: str, path) -> Non
     nrows = max(1, math.ceil(n / _NCOLS))
     fig, axes = plt.subplots(nrows, _NCOLS, figsize=(_NCOLS * 2.7, nrows * 1.85), squeeze=False)
     axes = axes.flatten()
-    for ax, (inst, name, r, months, cum_o, cum_t) in zip(axes, panels):
+    for ax, (inst, name, r, months, cum_o, cum_t) in zip(axes, panels, strict=False):
         ax.plot(months, cum_o, color=_C_OURS, lw=0.9)
         ax.plot(months, cum_t, color=_C_THEIRS, lw=0.9)
         ax.set_title(f"{name} ({inst})", fontsize=6.2, pad=2)
@@ -125,7 +128,7 @@ def plot_paired_bars(
     fig, axes = plt.subplots(
         1, len(groups), figsize=(7.5 * len(groups), 4.6), squeeze=False
     )
-    for ax, group in zip(axes[0], groups):
+    for ax, group in zip(axes[0], groups, strict=False):
         sub = df.filter(pl.col(group_col) == group)
         labels = sub.get_column(label_col).to_list()
         left = [0.0 if v is None else float(v) for v in sub.get_column(left_col).to_list()]

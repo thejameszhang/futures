@@ -2,8 +2,16 @@ from datetime import date
 from pathlib import Path
 
 import polars as pl
-from globalmacro.validation.base import grade, PASS_THRESHOLD, Check, Invariant, write_summary
+
+from globalmacro.validation.base import (
+    PASS_THRESHOLD,
+    Check,
+    Invariant,
+    grade,
+    write_summary,
+)
 from globalmacro.validation.consistency import consistency_correlations
+
 
 def _df(corrs):
     return pl.DataFrame({"instrument": [f"X{i}" for i in range(len(corrs))],

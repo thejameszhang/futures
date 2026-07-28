@@ -3,7 +3,13 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 import pytest
-from globalmacro.validation.plots import _cum_and_corr, plot_comparison, plot_symbol_counts, plot_paired_bars
+
+from globalmacro.validation.plots import (
+    _cum_and_corr,
+    plot_comparison,
+    plot_paired_bars,
+    plot_symbol_counts,
+)
 
 
 def test_cum_and_corr_identical_series_is_perfectly_correlated():
@@ -38,7 +44,10 @@ def test_plot_symbol_counts_writes_nontrivial_pdf(tmp_path):
 
 
 def test_datastream_pairs_shape_and_grade_unchanged():
-    from globalmacro.validation.datastream_comparison import _datastream_pairs, _datastream_correlations
+    from globalmacro.validation.datastream_comparison import (
+        _datastream_correlations,
+        _datastream_pairs,
+    )
     pairs = _datastream_pairs()
     assert set(pairs.columns) == {"instrument", "name", "month", "ours", "theirs"}
     assert pairs.height > 0
@@ -49,7 +58,10 @@ def test_datastream_pairs_shape_and_grade_unchanged():
 
 
 def test_consistency_pairs_tier1_and_grade_unchanged():
-    from globalmacro.validation.consistency import _consistency_pairs, _consistency_correlations
+    from globalmacro.validation.consistency import (
+        _consistency_correlations,
+        _consistency_pairs,
+    )
     pairs = _consistency_pairs()
     assert set(pairs.columns) == {"instrument", "name", "month", "ours", "theirs"}
     assert pairs.height > 0

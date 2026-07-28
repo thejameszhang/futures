@@ -1,4 +1,5 @@
 import polars as pl
+
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass
 from globalmacro.utils.paths import ECONOMICS_PATH, PROJECT_ROOT
@@ -11,7 +12,7 @@ def main():
         .pivot(index="perioddate", on="symbol", values="series_value")
         .sort("perioddate")
     )
-    
+
     # Join daily 3M Eurodollar data from WRDS
     ded3 = (
         pl.read_csv(ECONOMICS_PATH / "ded3_wrds.csv", schema_overrides={"date": pl.Date, "ded3": pl.Float64})
@@ -46,7 +47,7 @@ def main():
 if __name__ == "__main__":
     futures = load_config(PROJECT_ROOT / "tier1.yaml")
     stirs = list(filter(lambda f: f.asset_class[0] == AssetClass.STIR and f.ecoseriesid, futures))
-    
+
     # Universe's short-term interest rate + additional interbank rate series.
     extra_rates = [
         {

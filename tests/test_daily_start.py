@@ -22,7 +22,11 @@ import pandas_market_calendars as pmc
 import polars as pl
 import pytest
 
-from globalmacro.pipeline.equities import _build_equity_indices, first_daily_date, get_schedule_dates
+from globalmacro.pipeline.equities import (
+    _build_equity_indices,
+    first_daily_date,
+    get_schedule_dates,
+)
 from globalmacro.utils.config import load_config
 from globalmacro.utils.paths import EQUITIES_PATH, PROJECT_ROOT
 

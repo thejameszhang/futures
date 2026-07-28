@@ -32,7 +32,29 @@ globalmacro = "globalmacro.cli:main"
 packages = ["src/globalmacro"]
 
 [dependency-groups]
-dev = ["pytest>=8", "black==25.1.0", "ipykernel==6.30.1", "debugpy==1.8.17"]
+dev = ["pytest>=8", "ruff==0.15.12", "pyright==1.1.409", "black==25.1.0", "ipykernel==6.30.1", "debugpy==1.8.17"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+# Rule families mirror jkp-data for cross-repo lint consistency. line-length is
+# 88 (not jkp's 100), but width only affects a formatter, never the linter here:
+# E501 is ignored, and the tree is currently hand-formatted (no black or
+# ruff-format has ever been applied). Adopting a formatter is a separate ~4k-line
+# decision, deliberately out of scope for this lint-reproducibility change.
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+# BLE and RUF are intentionally omitted: the connect stage's broad
+# `except Exception` (catching both RuntimeError and psycopg2 OperationalError)
+# is deliberate, and we don't want BLE001 flagging it.
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM"]
+ignore = ["E501", "B008", "SIM102", "SIM108"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false

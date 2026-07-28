@@ -1,10 +1,12 @@
 import logging
 import os
+from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any
 
 import polars as pl
+
 from globalmacro.pipeline.to_usd import usd_panel
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass, Future
@@ -15,8 +17,8 @@ from globalmacro.utils.paths import (
     DATASTREAM_PATH,
     ECONOMICS_PATH,
     EQUITIES_PATH,
-    FX_PATH,
     FUTURES_PATH,
+    FX_PATH,
     PROJECT_ROOT,
     TICKHISTORY_PATH,
     VALIDATION_OUTPUT,
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 # columns match the ticker-based schema used for every other asset (see the
 # "US Equity Sector" rows in universe.xlsx). Keep this the single source of truth
 # for the GICS -> ticker relationship in the pipeline.
-GICS_SECTOR_TICKERS: Dict[str, str] = {
+GICS_SECTOR_TICKERS: dict[str, str] = {
     "10": "XAE",  # Energy
     "15": "XAB",  # Materials
     "20": "XAI",  # Industrials
@@ -62,10 +64,10 @@ def rename_gics_to_tickers(sectors: pl.DataFrame) -> pl.DataFrame:
     return sectors.rename({c: GICS_SECTOR_TICKERS[c] for c in gics_cols})
 
 
-def build_currency_map(futures: List[Future]) -> Dict[str, str]:
+def build_currency_map(futures: list[Future]) -> dict[str, str]:
     """Every published symbol -> its return currency (curcdd); JKP sectors are US -> USD.
     Fails loudly on a missing curcdd so an unmapped symbol can't slip into USD conversion."""
-    ccy: Dict[str, str] = {}
+    ccy: dict[str, str] = {}
     for future in futures:
         if not future.curcdd:
             raise ValueError(f"Future {future.symbol} has no curcdd in config")
@@ -143,7 +145,7 @@ def read_csv(
     path: Path,
     *,
     date_col: str | None = "date",
-    schema_overrides: Dict[str, Any] | None = None,
+    schema_overrides: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> pl.DataFrame:
     df = pl.read_csv(
@@ -389,7 +391,7 @@ def lag_one_session(df: pl.DataFrame, symbols: Iterable[str]) -> pl.DataFrame:
     return df.with_columns(exprs) if exprs else df
 
 
-def load_synthetic_returns(rf: pl.DataFrame, equities: List[Any]) -> tuple[pl.DataFrame, pl.DataFrame]:
+def load_synthetic_returns(rf: pl.DataFrame, equities: list[Any]) -> tuple[pl.DataFrame, pl.DataFrame]:
     fx_async = coerce_numeric_data(drop_all_null_rows(
         read_csv(FX_PATH / "synthetic_fx_returns_async.csv").select(["date", "NOK", "SEK", "6N", "6A"])))
     fx_sync = coerce_numeric_data(drop_all_null_rows(
@@ -573,7 +575,7 @@ def build_synced_dataset(vix_open: pl.DataFrame, tier: int = 1) -> pl.DataFrame:
 
     tables = [commodities, currencies, nonus, us, volatilities, stirs, sectors]
     if tier == 2:
-        for t in ["currency", "equity"]: 
+        for t in ["currency", "equity"]:
             table = coerce_numeric_data(read_csv(DATASETS_ROOT / "tier2" / "sync" / f"{t}_daily_returns.csv"))
             if t == "currency":
                 table = keep_after_date(table, "6Z", date(1997, 5, 8), inclusive=True)
@@ -626,7 +628,7 @@ def filter_dataset_by_monthly_returns(dataset: pl.DataFrame) -> tuple[pl.DataFra
         first_valid_months = dataset_monthly.select(
             [pl.col("year_month").filter(is_present_expr(col)).min().alias(col) for col in dataset_monthly_cols]
         ).row(0)
-        cutoff_by_col = dict(zip(dataset_monthly_cols, first_valid_months))
+        cutoff_by_col = dict(zip(dataset_monthly_cols, first_valid_months, strict=False))
         cutoff_exprs = []
         for col in dataset_monthly_cols:
             cutoff = cutoff_by_col[col]
@@ -643,12 +645,12 @@ def filter_dataset_by_monthly_returns(dataset: pl.DataFrame) -> tuple[pl.DataFra
     return dataset, dataset_monthly
 
 def save_datasets(
-        synced: pl.DataFrame, 
-        asynced: pl.DataFrame, 
-        asynced_monthly: pl.DataFrame, 
-        tier1_symbols: list[str], 
+        synced: pl.DataFrame,
+        asynced: pl.DataFrame,
+        asynced_monthly: pl.DataFrame,
+        tier1_symbols: list[str],
         tier2_symbols: list[str]
-    ) -> None:
+    ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     tier1_symbols = sorted(tier1_symbols)
     all_symbols = sorted(set(tier1_symbols + tier2_symbols))
 
@@ -659,7 +661,7 @@ def save_datasets(
     tier1_asynced_monthly.write_csv(DATASETS_ROOT / "tier1" / "async" / "async_monthly.csv")
     tier1_asynced.write_csv(DATASETS_ROOT / "tier1" / "async" / "async_daily.csv")
     tier1_synced.write_csv(DATASETS_ROOT / "tier1" / "sync" / "sync_daily.csv")
-    
+
     logger.info(f"Saving Tier 2 datasets: {len(tier2_symbols)} symbols")
     tier2_asynced_monthly = drop_all_null_rows(asynced_monthly.select(["date"] + all_symbols))
     tier2_asynced = drop_all_null_rows(asynced.select(["date"] + all_symbols))
@@ -681,7 +683,7 @@ def save_datasets(
 def save_usd_datasets(
     tier1_synced: pl.DataFrame, tier1_asynced: pl.DataFrame,
     tier2_synced: pl.DataFrame, tier2_asynced: pl.DataFrame,
-    symbol_to_ccy: Dict[str, str], fx_async: pl.DataFrame, fx_sync: pl.DataFrame,
+    symbol_to_ccy: dict[str, str], fx_async: pl.DataFrame, fx_sync: pl.DataFrame,
     out_root: Path = DATASETS_ROOT,
 ) -> None:
     """Write *_usd.csv siblings. async panels use Datastream FX (fx_async); sync panels
@@ -759,9 +761,7 @@ def load_symbols(tier: int) -> tuple[list[Future], list[str]]:
 def load_symbols_to_save(futures: list[Future]) -> list[str]:
     to_save = []
     for future in futures:
-        if future.ric is not None and len(future.ric) > 1:
-            to_save.append(future.symbol)
-        elif AssetClass.HISTORICAL not in future.asset_class:
+        if future.ric is not None and len(future.ric) > 1 or AssetClass.HISTORICAL not in future.asset_class:
             to_save.append(future.symbol)
 
     # Add the JKP equity sectors, using their Select Sector futures tickers

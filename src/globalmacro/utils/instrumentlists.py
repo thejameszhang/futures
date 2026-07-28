@@ -1,10 +1,13 @@
-import pandas as pd
 import os
+
+import pandas as pd
+
 from .config import load_config
 from .models import AssetClass, Future
 from .paths import DATA_ROOT, PROJECT_ROOT
 
-def get_asset_class_rics(futures: list[Future], assetclass: AssetClass, tier: int) -> tuple[list[str], int]:
+
+def get_asset_class_rics(futures: list[Future], assetclass: AssetClass, tier: int) -> pd.DataFrame:
     rics = []
     for future in futures:
         if future.ric and future.asset_class[0] == assetclass:
@@ -22,7 +25,7 @@ def get_asset_class_rics(futures: list[Future], assetclass: AssetClass, tier: in
     if not rics:
         # No instruments in this (asset_class, tier) group (e.g. tier-2 crypto/housing
         # are declared in the loop but absent from the config) -> empty pull-list.
-        df = pd.DataFrame(columns=["RIC"])
+        df = pd.DataFrame(columns=pd.Index(["RIC"]))
         df.to_csv(out_path, index=False)
         return df
     df = pd.DataFrame([["RIC"] * len(rics), rics]).T

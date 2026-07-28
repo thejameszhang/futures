@@ -3,9 +3,13 @@ from datetime import date
 import polars as pl
 import pytest
 
-from globalmacro.build import load_synthetic_returns, load_symbols
-from globalmacro.build import build_currency_map, load_symbols_to_save
-from globalmacro.build import save_usd_datasets
+from globalmacro.build import (
+    build_currency_map,
+    load_symbols,
+    load_symbols_to_save,
+    load_synthetic_returns,
+    save_usd_datasets,
+)
 
 
 def test_load_synthetic_returns_uses_source_specific_fx():

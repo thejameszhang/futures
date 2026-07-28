@@ -1,8 +1,10 @@
-import os
 import argparse
 import logging
+import os
 from datetime import date
+
 import polars as pl
+
 from globalmacro.utils.characteristics import (
     calc_price_with_roll,
     calc_returns_until_expiry,
@@ -10,13 +12,13 @@ from globalmacro.utils.characteristics import (
     calc_total_returns_with_roll,
 )
 from globalmacro.utils.config import load_config
-from globalmacro.utils.splice import SPLICING_MAP
 from globalmacro.utils.paths import (
     CHARACTERISTICS_ROOT,
     DATASETS_ROOT,
     FUTURES_PATH,
     PROJECT_ROOT,
 )
+from globalmacro.utils.splice import SPLICING_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -190,13 +192,13 @@ def main():
     contr_data = contr_data.with_columns(
         (contr_data["date_"].dt.year() * 100 + contr_data["date_"].dt.month()).alias("month")
     )
-    
+
     contr_data = contr_data.with_columns(
         ((contr_data["lasttrddate"].dt.year() * 100 + contr_data["lasttrddate"].dt.month()) == contr_data["month"])
         .cast(pl.Int8)  # makes it 1/0
         .alias("exp")
     )
-    
+
     contr_data = contr_data.with_columns(
         contr_data["exp"].fill_null(0).alias("exp")
     )
@@ -232,12 +234,12 @@ def main():
 
 
     """
-    Manual fixes for erroneous data points in the data: 
+    Manual fixes for erroneous data points in the data:
     1. Clscode 1025 - Norwegian Krone to USD
     - Around 2003-06-16, erroneous data points where the price is ~99 -> TODO: 100 - price
     2. Clscode 1065 - Kospi 200 Index Future
-    - Around 2013-2014, erroneous data points with a common last trade date of 2015-12-10 
-    where the price is ~800 
+    - Around 2013-2014, erroneous data points with a common last trade date of 2015-12-10
+    where the price is ~800
     3. Clscode 3829 - OMX30 Index Future
     - Around 2006-2007, erroneous data points with a common last trade date of 2006-06-16
     where the price is ~97, 98
@@ -262,7 +264,7 @@ def main():
         .filter((pl.col('clscode') != 1025) | (pl.col(PRICE_TYPE) < 1))
         .filter((pl.col('clscode') != 1065) | (pl.col(PRICE_TYPE) < 800))
         .filter((pl.col('clscode') != 3829) | (pl.col(PRICE_TYPE) > 100))
-        .filter((pl.col('clscode') != 2181) | (pl.col("daystomaturity") < 1000))  
+        .filter((pl.col('clscode') != 2181) | (pl.col("daystomaturity") < 1000))
         .filter((pl.col('clscode') != 259) | (pl.col(PRICE_TYPE) > 1))
     )
 
@@ -298,7 +300,7 @@ def main():
 
     wide_contr_data = wide_contr_data.filter(
         (pl.col("clscode") != 1602) | (
-            (pl.col('volume_1').is_not_null() & (pl.col('volume_1') > 0)) & 
+            (pl.col('volume_1').is_not_null() & (pl.col('volume_1') > 0)) &
             (pl.col('volume_2').is_not_null() & (pl.col('volume_2') > 0))
         )
     )
@@ -314,7 +316,7 @@ def main():
     wide_contr_data = wide_contr_data.with_columns(
         flatten(calc_price_with_roll_exprs)
     )
-    
+
     calc_returns_until_expiry_exprs = [
         calc_returns_until_expiry(1, PRICE_TYPE),
         calc_returns_until_expiry(2, PRICE_TYPE),
@@ -323,7 +325,7 @@ def main():
     wide_contr_data = wide_contr_data.with_columns(
         flatten(calc_returns_until_expiry_exprs)
     )
-    
+
     calc_returns_with_price_adj_and_roll_exprs = [
         calc_returns_with_price_adj_and_roll(1),
         calc_returns_with_price_adj_and_roll(2),
@@ -331,7 +333,7 @@ def main():
     wide_contr_data = wide_contr_data.with_columns(
         flatten(calc_returns_with_price_adj_and_roll_exprs)
     )
-    
+
     wide_contr_data = (
         wide_contr_data
         .with_columns(pl.coalesce(pl.col("ret_2"), pl.col("ret_temp_2"), pl.col("ret_1"), pl.col("ret_temp_1")).alias("ret_2"))
@@ -353,7 +355,7 @@ def main():
     wide_contr_data = wide_contr_data.with_columns(
         flatten(calc_total_returns_with_roll_exprs)
     )
-    
+
     # Save a parquet file for comparison with Datastream continuous series and for us in tickhistory script
     wide_contr_data.write_parquet(FUTURES_PATH / f"datastream_futures_{PRICE_TYPE}_{CT}.parquet")
 
@@ -423,7 +425,7 @@ if __name__ == "__main__":
     tier2_futures = load_config(PROJECT_ROOT / "tier2.yaml")
     futures = tier1_futures + tier2_futures
     tier1_symbols = [f.symbol for f in tier1_futures]
-    
+
     symbols = [f.symbol for f in futures]
     clscodes = [f.clscode for f in futures]
     types = [f.asset_class[0] for f in futures]

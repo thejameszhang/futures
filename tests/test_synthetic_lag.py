@@ -5,9 +5,9 @@ import polars as pl
 from globalmacro.build import (
     AMERICAS_CASH_INDICES,
     lag_one_session,
-    load_synthetic_returns,
     load_rf,
     load_symbols,
+    load_synthetic_returns,
 )
 
 
@@ -44,7 +44,7 @@ def test_lag_preserves_null_mask_except_first_observation():
     after = [v is not None for v in out["X"].to_list()]
     # exactly one observation lost (the first); none invented
     assert sum(before) - sum(after) == 1
-    for b, a in zip(before, after):
+    for b, a in zip(before, after, strict=False):
         assert not (a and not b), "lag invented an observation on a non-trading date"
 
 

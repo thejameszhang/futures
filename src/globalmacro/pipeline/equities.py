@@ -1,12 +1,14 @@
 import copy
 from datetime import date
+from typing import cast
 
 import pandas_market_calendars as pmc
 import polars as pl
 from tqdm import tqdm
+
 from globalmacro.utils.config import load_config
 from globalmacro.utils.paths import EQUITIES_PATH, PROJECT_ROOT
-        
+
 CACHE = {}
 
 def get_schedule_dates(exchange: str, start_date: str = "1950-01-01", end_date: str = "2025-12-31") -> pl.Series:
@@ -91,7 +93,7 @@ def first_daily_date(returns: pl.DataFrame, schedule_dates) -> date | None:
         if len(window) < DAILY_WINDOW:
             break                      # a partial window can never establish "daily"
         if all(window):
-            return start if i == 0 else months[i]
+            return cast(date, start if i == 0 else months[i])
     return None
 
 

@@ -21,11 +21,11 @@ import polars as pl
 
 from globalmacro.build import (
     AMERICAS_CASH_INDICES,
+    first_valid_date,
     lag_one_session,
     load_rf,
     load_symbols,
     load_synthetic_returns,
-    first_valid_date,
 )
 from globalmacro.validation.base import Check, Invariant
 from globalmacro.validation.synthetic import (

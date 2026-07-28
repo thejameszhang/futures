@@ -1,6 +1,8 @@
 from datetime import date
+
 import polars as pl
 import pytest
+
 from globalmacro.pipeline.to_usd import usd_panel
 
 

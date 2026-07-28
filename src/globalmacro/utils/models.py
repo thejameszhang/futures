@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any
 from datetime import time
 from enum import Enum
+from typing import Any
+
 import polars as pl
 
 FuturesPanel = pl.DataFrame
@@ -35,35 +36,35 @@ class Future:
     clscode: int
     calcseriesname: str
     name: str
-    asset_class: List[AssetClass]
+    asset_class: list[AssetClass]
     curcdd: str | None = None
     # Datastream Commodities data
-    comcode: Optional[List[int]] = None
-    ct: Optional[List[int]] = None  # Allowed contract expiry months
-    historical: Optional[bool] = None # T if the contract is no longer traded but useful for longer time series
+    comcode: list[int] | None = None
+    ct: list[int] | None = None  # Allowed contract expiry months
+    historical: bool | None = None # T if the contract is no longer traded but useful for longer time series
     # Datastream Equities data
-    dsindexcode: Optional[List[int]] = None
-    dsindexmnem: Optional[List[str]] = None
+    dsindexcode: list[int] | None = None
+    dsindexmnem: list[str] | None = None
     # Datastream FX data
-    exrateintcode: Optional[int] = None
-    fwd_exrateintcode: Optional[int] = None
-    inverted_pair: Optional[bool] = False
+    exrateintcode: int | None = None
+    fwd_exrateintcode: int | None = None
+    inverted_pair: bool | None = False
     # Datastream Economics data
-    ecoseriesid: Optional[int] = None
-    dsnumber: Optional[str] = None
-    dsmnemonic: Optional[str] = None
-    libor: Optional[str] = None
+    ecoseriesid: int | None = None
+    dsnumber: str | None = None
+    dsmnemonic: str | None = None
+    libor: str | None = None
     # CFTC data
-    cftc_contract_market_codes: Optional[List[str]] = None
+    cftc_contract_market_codes: list[str] | None = None
     # LSEG TickHistory data
-    ric: Optional[List[str]] = None
-    settlement_start: Optional[time] = None
-    settlement_end: Optional[time] = None
-    round: Optional[float] = None
-    adjustments: Optional[List[Dict[str, Any]]] = None  # Historical price adjustments
-    is_us_asset: Optional[bool] = False 
-    exchange_pmc_name: Optional[str] = None
-    
+    ric: list[str] | None = None
+    settlement_start: time | None = None
+    settlement_end: time | None = None
+    round: float | None = None
+    adjustments: list[dict[str, Any]] | None = None  # Historical price adjustments
+    is_us_asset: bool | None = False
+    exchange_pmc_name: str | None = None
+
     @classmethod
     def from_dict(cls, symbol: str, data: dict) -> 'Future':
         """Create a Future instance from a symbol and data dictionary."""
@@ -129,7 +130,7 @@ class Future:
             exchange_pmc_name=data.get('exchange_pmc_name'),
         )
 
-def parse_time(time_str: Optional[str]) -> Optional[time]:
+def parse_time(time_str: str | None) -> time | None:
     """Parse time string in format 'HH:MM' or 'HH:MM:SS' to time object."""
     if time_str is None:
         return None
@@ -140,7 +141,7 @@ def parse_time(time_str: Optional[str]) -> Optional[time]:
     return time(hour, minute, second)
 
 
-def _normalize_string_list(values: Optional[Any]) -> Optional[List[str]]:
+def _normalize_string_list(values: Any | None) -> list[str] | None:
     if values is None:
         return None
     if isinstance(values, str):

@@ -12,8 +12,9 @@
 # and need more memory: submit with `sbatch --mem=1450G --cpus-per-task=32 slurm/tickhistory.sh <class>`
 # (run_all.sh does this automatically; partition stays dynamic).
 source ~/futures/slurm/_common.sh || exit 1
-ASSET_CLASS="${1:?usage: tickhistory.sh <asset_class> [tier]}"
+ASSET_CLASS="${1:?usage: tickhistory.sh <asset_class> [tier] [sync_target]}"
 TIER="${2:-1}"
-echo "[tickhistory $ASSET_CLASS tier$TIER] $(date)"
-globalmacro tickhistory --asset_class "$ASSET_CLASS" --tier "$TIER"
-echo "[tickhistory $ASSET_CLASS tier$TIER] complete $(date)"
+SYNC_TARGET="${3:-et}"
+echo "[tickhistory $ASSET_CLASS tier$TIER sync=$SYNC_TARGET] $(date)"
+globalmacro tickhistory --asset_class "$ASSET_CLASS" --tier "$TIER" --sync_target "$SYNC_TARGET"
+echo "[tickhistory $ASSET_CLASS tier$TIER sync=$SYNC_TARGET] complete $(date)"
