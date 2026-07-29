@@ -41,7 +41,7 @@ HEAVY_MEM="--mem=1450G --cpus-per-task=32"
 # join non-empty colon-lists into one afterok list
 join() { local out=""; for x in "$@"; do [ -n "$x" ] && out="${out}:${x}"; done; echo "${out#:}"; }
 
-# --- optional download (5 WRDS branches, parallel); each consumer depends ONLY on
+# --- optional download (6 WRDS branches, parallel); each consumer depends ONLY on
 #     the branch(es) it actually reads, so downloads don't serialize consumers ---
 declare -A DLID
 if [ "$WITH_DL" = 1 ]; then
@@ -56,7 +56,7 @@ if [ "$WITH_DL" = 1 ]; then
   else
     .venv/bin/python -m globalmacro.pipeline.download_public
   fi
-  for db in economics fx equities futures comp; do
+  for db in economics fx equities futures comp datastream_continuous; do
     DLID[$db]=$(submit "" $S/download.sh --database $db)
   done
 fi
@@ -103,7 +103,7 @@ TICK="${TICK#:}"
 
 # --- build (needs equities + fx + all tickhistory; futures covered via tickhistory) ---
 jB=$(submit "${jE}:${jFx}:${TICK}" $S/build.sh)
-jV=$(submit "$jB" $S/validate.sh)
+jV=$(submit "$(join "$jB" "$(dld datastream_continuous)")" $S/validate.sh)   # +datastream_continuous benchmark
 
 if [ "$WITH_DL" = 1 ]; then echo "downloads=[${DLID[*]}]"; else echo "downloads=[skipped]"; fi
 echo "rates=$jR fx=$jFx equities=$jE instrumentlists=$jI"

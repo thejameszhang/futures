@@ -9,8 +9,9 @@ self-describing). Unpack so that a `data/` directory sits at the repo root
 - `data/tickhistory/{trades,quotes}/` — LSEG TickHistory pulls (large).
 - `data/datastream/{futures,equities,fx,economics}/` — Datastream WRDS pulls
   (all `dsf*` / `eco*` / the equities & fx table sets), the public
-  `ded3_wrds.csv` and `oecd.csv` (fetchable via `globalmacro download-public`), and the 49 GB `datastream_continuous_series.csv`
-  (used by the datastream validation cross-check).
+  `ded3_wrds.csv` and `oecd.csv` (fetchable via `globalmacro download-public`), and
+  `datastream_continuous_series.csv` (fetchable via `globalmacro download --database datastream_continuous`;
+  used by the datastream validation cross-check).
 - `data/comp/exrt_dly.csv`, `data/jkp/updated_daily_ind_gics*.csv`,
   `data/misc/F-F_Research_Data_Factors_daily.csv` — prerequisite (F-F fetchable via `globalmacro download-public`).
 

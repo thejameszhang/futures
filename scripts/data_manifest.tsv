@@ -12,7 +12,7 @@ data/datastream/futures/dsfuttrdcycle.csv	file	A	download:futures	-
 data/datastream/futures/dsfutcontrinfo.csv	file	A	download:futures	-
 data/datastream/futures/dsfutcontrval.csv	file	A	download:futures	-
 data/datastream/futures/dsf*.csv	glob	C2	none	old-data/datastream/futures
-data/datastream/futures/datastream_continuous_series.csv	file	A	validation:datastream_comparison.py	-
+data/datastream/futures/datastream_continuous_series.csv	file	A	producer:download.py	-
 data/datastream/futures/datastream_futures_*.parquet	glob	B	producer:tickhistory.py	-
 data/datastream/futures/debug	dir	C2	producer-output	old-data/datastream/futures/debug
 data/datastream/equities/ds2indexdata.csv	file	A	producer:equities.py	-

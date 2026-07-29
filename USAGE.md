@@ -59,12 +59,11 @@ and files that must be acquired externally and pre-placed by hand.
 | `fx` | `tr_ds_equities` | `ds2fxrate`, `ds2fxcode` → `data/datastream/fx/` |
 | `economics` | `tr_ds_econ` | `ecodata` → `data/datastream/economics/` |
 | `comp` | `comp` | `exrt_dly` → `data/comp/` |
+| `datastream_continuous` | `tr_ds_fut` | `dsfutcalcserval` ⋈ `dsfutcalcserinfo` (6-col validation slice) → `data/datastream/futures/datastream_continuous_series.csv` |
 
 ### Manual Prerequisite Data Files
 
 In addition, some prerequisite files must be pre-placed manually in the `data/` folder (they cannot be downloaded automatically via `globalmacro download`):
-- **Datastream Continuous Futures Benchmark** (for validation QA):
-  - `datastream/futures/datastream_continuous_series.csv`
 - **JKP**: `jkp/updated_daily_ind_gics.csv`, `jkp/updated_daily_ind_gics_synced.csv`
 - **TickHistory** (LSEG TickHistory extractions; use `globalmacro instrumentlists` to generate the RIC pull-lists, then place the resulting CSVs):
   - `tickhistory/trades/`: `tier1_bond_trades.csv`, `tier1_commodity_trades.csv`, `tier1_currency_trades.csv`, `tier1_equity_trades.csv`, `tier1_stir_trades.csv`, `tier1_traditional_trades.csv`, `tier1_volatility_trades.csv`, `tier2_cryptocurrency_trades.csv`, `tier2_currency_trades.csv`, `tier2_equity_trades.csv`, `tier2_housing_trades.csv`
