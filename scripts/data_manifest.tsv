@@ -28,8 +28,8 @@ data/datastream/fx/synthetic_fx_returns_sync.csv	file	B	producer:fx.py	-
 data/datastream/fx/datastream_fx_rates.csv	file	C2	producer-output	old-data/datastream/fx/datastream_fx_rates.csv
 data/datastream/fx/fx_forwards_1m.csv	file	C1	analysis:main.py	analysis/forwards/fx_forwards_1m.csv
 data/datastream/fx/synthetic_fx_forwards_returns.csv	file	C2	none	old-data/datastream/fx/synthetic_fx_forwards_returns.csv
-data/datastream/economics/ded3_wrds.csv	file	A	producer:rates.py	-
-data/datastream/economics/oecd.csv	file	A	producer:rates.py	-
+data/datastream/economics/ded3_wrds.csv	file	A	producer:download_public.py	-
+data/datastream/economics/oecd.csv	file	A	producer:download_public.py	-
 data/datastream/economics/ecodata.csv	file	A	download:economics	-
 data/datastream/economics/eco*.csv	glob	C2	none	old-data/datastream/economics
 data/datastream/economics/3month_libor_rates.csv	file	B	producer:fx.py	-
@@ -58,7 +58,7 @@ data/jkp/industry_gics.parquet	file	C2	none	old-data/jkp/industry_gics.parquet
 data/jkp/usa_jkp_factors.csv	file	C2	none	old-data/jkp/usa_jkp_factors.csv
 data/jkp/usa_all_153_jkp_factors.csv	file	C2	none	old-data/jkp/usa_all_153_jkp_factors.csv
 data/jkp/pfs.parquet	file	C2	none	old-data/jkp/pfs.parquet
-data/misc/F-F_Research_Data_Factors_daily.csv	file	A	producer:build.py	-
+data/misc/F-F_Research_Data_Factors_daily.csv	file	A	producer:download_public.py	-
 data/misc/F-F_Research_Data_Factors.csv	file	C2	none	old-data/misc/F-F_Research_Data_Factors.csv
 data/misc/*.zip	glob	C2	none	old-data/misc
 data/misc/vxocurrent.csv	file	C2	none	old-data/misc/vxocurrent.csv

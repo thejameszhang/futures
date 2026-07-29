@@ -14,6 +14,7 @@ import sys
 # subcommand -> module executed as __main__ via runpy
 _STAGE_MODULES = {
     "download": "globalmacro.pipeline.download",
+    "download-public": "globalmacro.pipeline.download_public",
     "equities": "globalmacro.pipeline.equities",
     "futures": "globalmacro.pipeline.futures",
     "fx": "globalmacro.pipeline.fx",

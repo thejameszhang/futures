@@ -32,7 +32,7 @@ commands through uv without activating using `uv run <command>`.
 
 ### Data Prerequisites
 
-Before running the pipeline, required raw vendor inputs must be in place within the `data/` directory. Some files can be pulled via WRDS, while others must be acquired externally and pre-placed by hand. For exact file lists and locations, please refer to [USAGE.md](USAGE.md).
+Before running the pipeline, required raw vendor inputs must be in place within the `data/` directory. Most are fetched automatically — via WRDS (`globalmacro download`) or public HTTPS (`globalmacro download-public`, no credentials). Only the licensed extractions (LSEG TickHistory, JKP, and the Datastream continuous-futures benchmark) must be acquired externally and pre-placed by hand. For exact file lists and locations, see [USAGE.md](USAGE.md).
 
 ### Running the Pipeline
 

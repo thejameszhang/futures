@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scaffold the isolated verification tree ~/futures_verify and symlink the
-# non-downloadable prerequisites from the real repo. Idempotent. Prints the
+# raw prerequisite inputs from the real repo. Idempotent. Prints the
 # env exports needed to run the pipeline against this tree.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

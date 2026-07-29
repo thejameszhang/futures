@@ -8,10 +8,11 @@ The single entry point is `globalmacro <stage>`. List all available stages with:
 globalmacro --help
 ```
 
-which prints all 11 stages (alphabetically):
+which prints all 12 stages (alphabetically):
 - **`build`**: Aggregates all asset classes into the final tier 1 and tier 2 datasets.
 - **`connect`**: Sets up and securely saves your WRDS credentials. Honors `WRDS_USERNAME` and `WRDS_PASSWORD` environment variables for non-interactive authentication, and accepts `--reset` to clear saved credentials.
 - **`download`**: Pulls the required tables from the WRDS API.
+- **`download-public`**: Fetches the public, no-credentials inputs (Ken French factors, FRED interbank/eurodollar rates, OECD short-term rates). Skip-if-present; pass `--force` to refresh.
 - **`equities`**: Processes equity indices and U.S. equity sector data.
 - **`futures`**: Processes futures data for commodities, bonds, and volatility indices.
 - **`fx`**: Processes daily currency exchange rates from Datastream.
@@ -62,13 +63,9 @@ and files that must be acquired externally and pre-placed by hand.
 ### Manual Prerequisite Data Files
 
 In addition, some prerequisite files must be pre-placed manually in the `data/` folder (they cannot be downloaded automatically via `globalmacro download`):
-- **Economics / Interest Rates**:
-  - `datastream/economics/ded3_wrds.csv` (3M Eurodollar interest rates)
-  - `datastream/economics/oecd.csv` (OECD benchmark short-term interest rates)
 - **Datastream Continuous Futures Benchmark** (for validation QA):
   - `datastream/futures/datastream_continuous_series.csv`
 - **JKP**: `jkp/updated_daily_ind_gics.csv`, `jkp/updated_daily_ind_gics_synced.csv`
-- **Misc**: `misc/F-F_Research_Data_Factors_daily.csv`
 - **TickHistory** (LSEG TickHistory extractions; use `globalmacro instrumentlists` to generate the RIC pull-lists, then place the resulting CSVs):
   - `tickhistory/trades/`: `tier1_bond_trades.csv`, `tier1_commodity_trades.csv`, `tier1_currency_trades.csv`, `tier1_equity_trades.csv`, `tier1_stir_trades.csv`, `tier1_traditional_trades.csv`, `tier1_volatility_trades.csv`, `tier2_cryptocurrency_trades.csv`, `tier2_currency_trades.csv`, `tier2_equity_trades.csv`, `tier2_housing_trades.csv`
   - `tickhistory/quotes/`: `tier1_bond_quotes.csv`, `tier1_commodity_quotes.csv`, `tier1_currency_quotes.csv`, `tier1_equity_quotes.csv`, `tier1_stir_quotes.csv`, `tier1_traditional_quotes.csv`, `tier1_volatility_quotes.csv`, `tier2_cryptocurrency_quotes.csv`, `tier2_currency_quotes.csv`, `tier2_equity_quotes.csv`, `tier2_housing_quotes.csv`

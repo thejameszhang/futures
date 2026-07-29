@@ -45,6 +45,17 @@ join() { local out=""; for x in "$@"; do [ -n "$x" ] && out="${out}:${x}"; done;
 #     the branch(es) it actually reads, so downloads don't serialize consumers ---
 declare -A DLID
 if [ "$WITH_DL" = 1 ]; then
+  # Public HTTPS inputs (Ken French rf, FRED ded3, OECD stir) -- fetched INLINE on the
+  # login node (which has egress; compute-node HTTPS egress is not guaranteed) BEFORE any
+  # sbatch job is submitted, so under set -e a fetch failure aborts before ANYTHING is
+  # queued (no orphaned WRDS jobs). The files land on disk pre-submission, so rates/build
+  # find them with no afterok dependency needed. skip-if-present: a machine that already
+  # has them does zero network.
+  if [ "$DRY" = 1 ]; then
+    echo "  .venv/bin/python -m globalmacro.pipeline.download_public" >&2
+  else
+    .venv/bin/python -m globalmacro.pipeline.download_public
+  fi
   for db in economics fx equities futures comp; do
     DLID[$db]=$(submit "" $S/download.sh --database $db)
   done
