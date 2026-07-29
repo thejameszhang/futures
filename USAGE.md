@@ -46,6 +46,8 @@ globalmacro validate
 into two classes: files `globalmacro download --database <db>` can pull from WRDS,
 and files that must be acquired externally and pre-placed by hand.
 
+> **Relocating the data directory.** These inputs default to `<repo>/data/`, but you can store them elsewhere (e.g. the large TickHistory files on a scratch/volume) by setting `FUTURES_DATA_ROOT` in a repo-root `.env` — or override individual vendor paths (`TICKHISTORY_PATH`, `DATASTREAM_PATH`, `COMPUSTAT_PATH`) and the repo root (`FUTURES_ROOT`). All knobs are listed in `.env.example`.
+
 ### Downloadable via `globalmacro download --database <db>` (WRDS)
 
 > **Note on WRDS Credentials:** Before downloading WRDS data or submitting `globalmacro run --with-download` to the cluster, you must first configure your WRDS credentials. You can run `globalmacro connect` interactively in your terminal, or supply credentials non-interactively via the `WRDS_USERNAME` and `WRDS_PASSWORD` environment variables. This securely saves them in a `~/.pgpass` file in your home directory (keyring is disabled for HPC compute-node compatibility) so SLURM background jobs don't hang waiting for input. You can clear saved credentials anytime using `globalmacro connect --reset`.

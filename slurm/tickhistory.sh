@@ -11,7 +11,7 @@
 # HEAVY classes {commodity, us_equity, nonus_equity} read the ~400GB trades files
 # and need more memory: submit with `sbatch --mem=1450G --cpus-per-task=32 slurm/tickhistory.sh <class>`
 # (run_all.sh does this automatically; partition stays dynamic).
-source ~/futures/slurm/_common.sh || exit 1
+source "${SLURM_SUBMIT_DIR:-$PWD}/slurm/_common.sh" || exit 1
 ASSET_CLASS="${1:?usage: tickhistory.sh <asset_class> [tier] [sync_target]}"
 TIER="${2:-1}"
 SYNC_TARGET="${3:-et}"

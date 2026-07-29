@@ -1,7 +1,7 @@
 import polars as pl
 
 from globalmacro.utils.config import load_config
-from globalmacro.utils.paths import DATASTREAM_PATH, PROJECT_ROOT
+from globalmacro.utils.paths import FUTURES_PATH, PROJECT_ROOT
 from globalmacro.validation.base import Check
 
 DATASET = "constructed_no_price_adjustment"
@@ -37,7 +37,6 @@ We stitch full-size contracts series to e-minis series when the e-mini volume fi
 day of the full-size contract.
 """
 def _datastream_monthly(tier: int = 1, verbose: bool = False) -> pl.DataFrame:
-    FUTURES_PATH = DATASTREAM_PATH / "futures"
     RETURNS_VARIABLE = "ret_total_1"
     columns_of_interest = ["ret_constructed", f"ret_{DATASET}"]
 

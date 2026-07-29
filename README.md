@@ -34,6 +34,8 @@ commands through uv without activating using `uv run <command>`.
 
 Before running the pipeline, required raw vendor inputs must be in place within the `data/` directory. Most are fetched automatically — via WRDS (`globalmacro download`) or public HTTPS (`globalmacro download-public`, no credentials). Only the licensed extractions (LSEG TickHistory, JKP, and the Datastream continuous-futures benchmark) must be acquired externally and pre-placed by hand. For exact file lists and locations, see [USAGE.md](USAGE.md).
 
+**Relocating `data/`.** The `data/` directory (especially the large LSEG TickHistory files) does not have to live inside the repo. Set `FUTURES_DATA_ROOT` in a `.env` at the repo root (or export it) to point it at other storage; per-vendor paths (`TICKHISTORY_PATH`, `DATASTREAM_PATH`, `COMPUSTAT_PATH`) and the repo root itself (`FUTURES_ROOT`) are overridable too. See `.env.example` for the full list.
+
 ### Running the Pipeline
 
 For comprehensive CLI usage, execution stages, and SLURM instructions, see [USAGE.md](USAGE.md).

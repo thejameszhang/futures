@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=192G
 #SBATCH --partition=cpunormal,build
-source ~/futures/slurm/_common.sh || exit 1
+source "${SLURM_SUBMIT_DIR:-$PWD}/slurm/_common.sh" || exit 1
 echo "[validate] $(date)"
 globalmacro validate "$@"
 echo "[validate] complete $(date)"

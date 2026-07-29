@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --partition=cpunormal,build
-source ~/futures/slurm/_common.sh || exit 1
+source "${SLURM_SUBMIT_DIR:-$PWD}/slurm/_common.sh" || exit 1
 echo "[instrumentlists] $(date)"
 globalmacro instrumentlists "$@"
 echo "[instrumentlists] complete $(date)"

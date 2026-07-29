@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=256G
 #SBATCH --partition=cpunormal,build
-source ~/futures/slurm/_common.sh || exit 1
+source "${SLURM_SUBMIT_DIR:-$PWD}/slurm/_common.sh" || exit 1
 echo "[download] $(date)"
 globalmacro download "$@"
 echo "[download] complete $(date)"

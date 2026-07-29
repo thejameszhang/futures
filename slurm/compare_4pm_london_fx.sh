@@ -8,7 +8,7 @@
 #SBATCH --mem=32G
 #SBATCH --partition=cpunormal,build
 
-source ~/futures/slurm/_common.sh || exit 1
+source "${SLURM_SUBMIT_DIR:-$PWD}/slurm/_common.sh" || exit 1
 SYNC_TARGET="${1:-both}"
 echo "[compare_4pm_london_fx] $(date)"
 python scripts/compare_4pm_london_fx.py --sync_target "$SYNC_TARGET"

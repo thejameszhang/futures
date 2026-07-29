@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=640G
 #SBATCH --partition=cpunormal,build
-source ~/futures/slurm/_common.sh || exit 1
+source "${SLURM_SUBMIT_DIR:-$PWD}/slurm/_common.sh" || exit 1
 PRICE_TYPE="${1:?usage: futures.sh <settlement|open> <ct|cs>}"
 CONTRACT="${2:?usage: futures.sh <settlement|open> <ct|cs>}"
 case "$PRICE_TYPE" in settlement|open) ;; *) echo "bad price_type: $PRICE_TYPE" >&2; exit 2 ;; esac
