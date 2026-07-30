@@ -6,6 +6,7 @@ from datetime import date, time
 import polars as pl
 from tqdm import tqdm
 
+from globalmacro.pipeline.tickhistory_shards import shard_dir_name
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass, Future
 from globalmacro.utils.paths import (
@@ -25,7 +26,7 @@ def load_trades_data(path: str) -> pl.DataFrame:
         pl.DataFrame: Trades data.
     """
     return (
-        pl.scan_csv(TICKHISTORY_PATH / "trades" / path, schema_overrides={"Price": pl.Float64, "Volume": pl.Int64})
+        pl.scan_parquet(TICKHISTORY_PATH / "trades" / shard_dir_name(path) / "*.parquet")
         .filter(pl.col("#RIC").is_in(ALL_RICS))
         .select(["#RIC", "Date-Time", "Price", "Volume", "GMT Offset"])
         .with_columns([
@@ -61,7 +62,7 @@ def load_quotes_data(path: str) -> pl.DataFrame:
         pl.DataFrame: Quotes data.
     """
     return (
-        pl.scan_csv(TICKHISTORY_PATH / "quotes" / path, schema_overrides={"Close Bid": pl.Float64, "Close Ask": pl.Float64, "GMT Offset": pl.Float32})
+        pl.scan_parquet(TICKHISTORY_PATH / "quotes" / shard_dir_name(path) / "*.parquet")
         .filter((pl.col("#RIC").is_in(ALL_RICS)) & (pl.col("Type") == "Intraday 1Min"))
         .select(["#RIC", "Date-Time", "Close Bid", "Close Ask", "GMT Offset"])
         .with_columns([

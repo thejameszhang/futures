@@ -63,3 +63,4 @@ data/misc/F-F_Research_Data_Factors.csv	file	C2	none	old-data/misc/F-F_Research_
 data/misc/*.zip	glob	C2	none	old-data/misc
 data/misc/vxocurrent.csv	file	C2	none	old-data/misc/vxocurrent.csv
 data/misc/vme.xlsx	file	C1	analysis:factors/vme.py	analysis/factors/vme.xlsx
+data/tickhistory/_monoliths_archive	dir	C2	producer-output	old-data/tickhistory/_monoliths_archive

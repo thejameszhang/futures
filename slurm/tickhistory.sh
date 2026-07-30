@@ -2,10 +2,12 @@
 #SBATCH --job-name=gm-tick
 #SBATCH --output=slurm/logs/tick-%j.out
 #SBATCH --error=slurm/logs/tick-%j.err
-#SBATCH --time=12:00:00
+#SBATCH --time=6:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=1000G
+# --time 12h->6h: a class consumer runs ~15-60 min; 6h is ample and lets the heavy
+# 1450G jobs backfill on a busy queue instead of waiting for a full 12h slot to free.
 #SBATCH --partition=cpunormal,build
 # Partition is dynamic (SLURM picks cpunormal or build, whichever frees first).
 # HEAVY classes {commodity, us_equity, nonus_equity} read the ~400GB trades files
