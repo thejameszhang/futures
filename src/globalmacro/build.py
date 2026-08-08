@@ -60,7 +60,7 @@ GICS_SECTOR_TICKERS: dict[str, str] = {
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="globalmacro build")
+    p = argparse.ArgumentParser(prog="globalmacro build", allow_abbrev=False)
     g = p.add_mutually_exclusive_group()
     g.add_argument("--async-only", dest="mode", action="store_const", const="async-only",
                    help="build only the async datasets (no tick data required)")
@@ -861,6 +861,9 @@ def main(mode: str = "full") -> None:
 
 
 if __name__ == "__main__":
+    _args = _parse_args(sys.argv[1:])
+    _mode = resolve_mode(_args.mode, sync_stage_outputs_ready(), "build")
+
     VALIDATION_DIR = VALIDATION_OUTPUT
     os.makedirs(VALIDATION_DIR, exist_ok=True)  # must exist before the FileHandler opens the report
     logger = logging.getLogger(__name__)
@@ -870,9 +873,6 @@ if __name__ == "__main__":
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     logger.propagate = False
-
-    _args = _parse_args(sys.argv[1:])
-    _mode = resolve_mode(_args.mode, sync_stage_outputs_ready(), "build")
 
     folders_to_create = [
         VALIDATION_DIR,
