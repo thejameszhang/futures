@@ -1,5 +1,7 @@
+import argparse
 import logging
 import os
+import sys
 from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
@@ -9,6 +11,7 @@ import polars as pl
 
 from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
 from globalmacro.pipeline.to_usd import usd_panel
+from globalmacro.utils.capabilities import resolve_mode, sync_stage_outputs_ready
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass, Future
 from globalmacro.utils.panels import (
@@ -54,6 +57,17 @@ GICS_SECTOR_TICKERS: dict[str, str] = {
     "55": "XAU",  # Utilities
     "60": "XAR",  # Real Estate
 }
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(prog="globalmacro build")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--async-only", dest="mode", action="store_const", const="async-only",
+                   help="build only the async datasets (no tick data required)")
+    g.add_argument("--full", dest="mode", action="store_const", const="full",
+                   help="require the sync inputs; fail rather than silently degrade")
+    p.set_defaults(mode=None)
+    return p.parse_args(argv)
 
 
 def rename_gics_to_tickers(sectors: pl.DataFrame) -> pl.DataFrame:
@@ -782,7 +796,7 @@ def load_symbols_to_save(futures: list[Future]) -> list[str]:
     return to_save
 
 
-def main() -> None:
+def main(mode: str = "full") -> None:
     tier1_futures, tier1_symbols = load_symbols(1)
     tier2_futures, tier2_symbols = load_symbols(2)
 
@@ -857,6 +871,9 @@ if __name__ == "__main__":
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
+    _args = _parse_args(sys.argv[1:])
+    _mode = resolve_mode(_args.mode, sync_stage_outputs_ready(), "build")
+
     folders_to_create = [
         VALIDATION_DIR,
         DATA_ROOT,
@@ -876,7 +893,7 @@ if __name__ == "__main__":
     for folder in folders_to_create:
         os.makedirs(folder, exist_ok=True)
 
-    main()
+    main(_mode)
 
     logger.removeHandler(handler)
     handler.close()
