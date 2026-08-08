@@ -5,7 +5,7 @@ import sys
 from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict, cast
 
 import polars as pl
 
@@ -854,7 +854,24 @@ def build_sync(synthetic_returns_synced: pl.DataFrame) -> SyncOutputs:
     return {"synced": synced, "pre_splice_synced": pre_splice_synced}
 
 
-def main(mode: str = "full") -> None:
+def _validate_mode(mode: str) -> None:
+    """`main()` is a public function callable directly with any string -- not just
+    through the `__main__` CLI path, which already validates via `resolve_mode`.
+    `main("Full")` or a typo'd `main("aysnc-only")` would otherwise silently take
+    the async-only branch (mode == "full" is False for anything but the exact
+    string) and report success on a truncated deliverable. Raise loudly instead.
+
+    Factored out of `main()` so it can be exercised directly in tests -- this repo's
+    tests must never call `main()` itself (it would build the real datasets).
+    """
+    if mode not in ("full", "async-only"):
+        raise ValueError(
+            f'globalmacro build: unrecognized mode {mode!r}; expected "full" or "async-only"'
+        )
+
+
+def main(mode: Literal["full", "async-only"] = "full") -> None:
+    _validate_mode(mode)
     tier1_futures, tier1_symbols = load_symbols(1)
     tier2_futures, tier2_symbols = load_symbols(2)
 
@@ -934,7 +951,12 @@ if __name__ == "__main__":
     for folder in folders_to_create:
         os.makedirs(folder, exist_ok=True)
 
-    main(_mode)
+    # resolve_mode()'s declared return type is `str` (it is a general-purpose
+    # validator, not scoped to build's own Literal), but it only ever returns
+    # "full" or "async-only" -- enforced dynamically by main()'s own
+    # _validate_mode() check immediately below, so this narrows a value that is
+    # already runtime-checked rather than asserting past a real gap.
+    main(cast(Literal["full", "async-only"], _mode))
 
     logger.removeHandler(handler)
     handler.close()

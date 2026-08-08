@@ -51,6 +51,24 @@ def test_main_accepts_mode_parameter():
     assert params["mode"].default == "full"
 
 
+def test_validate_mode_rejects_anything_but_the_two_valid_strings():
+    """`main()` is directly callable with any string -- `main("Full")` or a typo'd
+    `main("aysnc-only")` would otherwise silently take the async-only branch and
+    report success on a truncated deliverable. `_validate_mode` is the runtime
+    guard `main()` calls as its first statement.
+
+    Tested directly, never via `main()` itself: this repo's tests must never
+    invoke `main()` (it would build the real datasets against the real
+    DATASETS_ROOT). Calling `_validate_mode` alone does no I/O.
+    """
+    from globalmacro.build import _validate_mode
+    for valid in ("full", "async-only"):
+        _validate_mode(valid)  # must not raise
+    for invalid in ("Full", "FULL", "aysnc-only", "", "sync", "async"):
+        with pytest.raises(ValueError):
+            _validate_mode(invalid)
+
+
 def _find_main_block(tree: ast.Module) -> ast.If:
     """The top-level `if __name__ == "__main__":` block. Fails closed (raises rather
     than returning None) so a caller can't accidentally treat "not found" as success."""
@@ -156,6 +174,87 @@ def _find_folders_to_create_assign_lineno(if_block: ast.If) -> int:
             '`if __name__ == "__main__":` block'
         )
     return min(linenos)
+
+
+def _find_resolve_mode_target_name(if_block: ast.If) -> str:
+    """The name bound by `<name> = resolve_mode(...)` in the __main__ block."""
+    for node in ast.walk(ast.Module(body=if_block.body, type_ignores=[])):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "resolve_mode"
+        ):
+            return node.targets[0].id
+    raise AssertionError(
+        f"{BUILD_PY}: no `<name> = resolve_mode(...)` assignment found inside the "
+        '`if __name__ == "__main__":` block'
+    )
+
+
+def _find_folders_to_create_for_loop_lineno(if_block: ast.If) -> int:
+    """Smallest lineno of any `for folder in folders_to_create:` loop in the
+    __main__ block."""
+    linenos = [
+        node.lineno
+        for node in ast.walk(ast.Module(body=if_block.body, type_ignores=[]))
+        if (
+            isinstance(node, ast.For)
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "folders_to_create"
+        )
+    ]
+    if not linenos:
+        raise AssertionError(
+            f"{BUILD_PY}: no `for folder in folders_to_create:` loop found inside "
+            'the `if __name__ == "__main__":` block'
+        )
+    return min(linenos)
+
+
+def test_folders_to_create_is_mode_dependent():
+    """Static AST assertion, no filesystem access and no import of build.
+
+    Nothing in the test suite otherwise checks that async-only mode skips
+    creating datasets/tier{1,2}/sync (Step 6) -- a future edit could delete the
+    mode-dependent filter and stay green while `globalmacro build --async-only`
+    advertised a sync/ tree it never fills. This pins the shape of the fix rather
+    than its exact filter expression: the resolved-mode variable bound by
+    `<name> = resolve_mode(...)` must be referenced somewhere between the
+    `folders_to_create = [...]` assignment and the
+    `for folder in folders_to_create:` loop that consumes it.
+    """
+    source = BUILD_PY.read_text()
+    tree = ast.parse(source, filename=str(BUILD_PY))
+    if_block = _find_main_block(tree)
+    mode_name = _find_resolve_mode_target_name(if_block)
+    folders_lineno = _find_folders_to_create_assign_lineno(if_block)
+    for_lineno = _find_folders_to_create_for_loop_lineno(if_block)
+    assert folders_lineno < for_lineno, (
+        f"folders_to_create assignment (line {folders_lineno}) must precede its "
+        f"consuming for-loop (line {for_lineno})"
+    )
+
+    mode_ref_linenos = [
+        node.lineno
+        for node in ast.walk(ast.Module(body=if_block.body, type_ignores=[]))
+        if (
+            isinstance(node, ast.Name)
+            and node.id == mode_name
+            and isinstance(node.ctx, ast.Load)
+            and folders_lineno <= node.lineno < for_lineno
+        )
+    ]
+    assert mode_ref_linenos, (
+        f"expected a reference to `{mode_name}` (the value bound by "
+        f"`{mode_name} = resolve_mode(...)`) between the folders_to_create "
+        f"assignment (line {folders_lineno}) and its for-loop (line {for_lineno}) "
+        'in build.py\'s `if __name__ == "__main__":` block -- folder creation '
+        "must be mode-dependent, or async-only mode would create sync/ "
+        "directories it never fills"
+    )
 
 
 def test_main_block_parses_args_before_creating_folders():
