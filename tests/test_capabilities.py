@@ -40,8 +40,13 @@ def test_partial_names_the_missing_directories(tmp_path, monkeypatch):
     _make_shards(tmp_path, cap.SHARD_STEMS[:-1])
     c = cap.shards_ready()
     assert c.ready is False
+    # Pin the `missing` branch's own phrasing, not just the directory names it shares
+    # with the `unverified` branch (a nonexistent directory also lacks _GATE1_OK, so
+    # asserting only the names passes even if the `missing` branch is deleted).
+    assert "missing tick shard directories" in c.message
     assert "tier2_equity_trades" in c.message
     assert "tier2_equity_quotes" in c.message
+    assert cap.GATE1_MARKER not in c.message
 
 
 def test_unverified_names_a_command_that_exists(tmp_path, monkeypatch):
@@ -63,6 +68,25 @@ def test_unsplit_monoliths_name_the_split_script(tmp_path, monkeypatch):
     assert "split_tickhistory.sh" in c.message
 
 
+def test_partial_with_leftover_monoliths_names_the_split_hint(tmp_path, monkeypatch):
+    """The natural intermediate state: split_tickhistory.sh takes one side at a time,
+    so trades can be fully split (with markers) while quotes is still bare monolith
+    CSVs. The researcher should get the split-script hint, not just bare dir names."""
+    monkeypatch.setattr(cap, "TICKHISTORY_PATH", tmp_path)
+    for stem in cap.SHARD_STEMS:
+        d = tmp_path / "trades" / f"{stem}_trades"
+        d.mkdir(parents=True)
+        (d / cap.GATE1_MARKER).write_text("gate1 ok\n")
+    (tmp_path / "quotes").mkdir(parents=True)
+    for stem in cap.SHARD_STEMS:
+        (tmp_path / "quotes" / f"{stem}_quotes.csv").write_text("#RIC\n")
+
+    c = cap.shards_ready()
+    assert c.ready is False
+    assert "missing tick shard directories" in c.message
+    assert "split_tickhistory.sh" in c.message
+
+
 def test_stage_outputs_do_not_collapse_like_shard_stems():
     names = {f"{tier}/{cls}" for tier, cls in cap.SYNC_STAGE_OUTPUTS}
     assert "tier1/us_equity" in names and "tier1/nonus_equity" in names
@@ -81,6 +105,82 @@ def test_resolve_mode():
         cap.resolve_mode("full", absent, "build")
 
 
+def test_resolve_mode_rejects_unrecognized_flags():
+    """A flag that isn't exactly "full" or "async-only" must not silently fall through
+    to auto-detection -- that's the exact silent degradation --full exists to prevent."""
+    ready = cap.Capability(True, None)
+    absent = cap.Capability(False, None)
+    with pytest.raises(ValueError, match="Full"):
+        cap.resolve_mode("Full", absent, "build")
+    with pytest.raises(ValueError, match="bogus"):
+        cap.resolve_mode("bogus", ready, "build")
+
+
+def _make_sync_stage_outputs(root, pairs):
+    for tier, cls in pairs:
+        d = root / tier / "sync"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{cls}_daily_returns.csv").write_text("date\n")
+
+
+def test_sync_stage_outputs_all_present_is_ready(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    _make_sync_stage_outputs(tmp_path, cap.SYNC_STAGE_OUTPUTS)
+    c = cap.sync_stage_outputs_ready()
+    assert c.ready is True
+    assert c.message is None
+
+
+def test_sync_stage_outputs_none_present_is_not_ready_and_silent(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    c = cap.sync_stage_outputs_ready()
+    assert c.ready is False
+    assert c.message is None
+
+
+def test_sync_stage_outputs_partial_names_the_missing_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    _make_sync_stage_outputs(tmp_path, cap.SYNC_STAGE_OUTPUTS[:-1])
+    c = cap.sync_stage_outputs_ready()
+    assert c.ready is False
+    assert "tier2/sync/equity_daily_returns.csv" in c.message
+
+
+def _make_sync_panels(root, present):
+    all_paths = {
+        "tier1_daily": root / "tier1" / "sync" / "sync_daily.csv",
+        "tier2_daily": root / "tier2" / "sync" / "sync_daily.csv",
+        "tier2_currency": root / "tier2" / "sync" / "currency_daily_returns.csv",
+    }
+    for key in present:
+        p = all_paths[key]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("date\n")
+
+
+def test_sync_panels_all_present_is_ready(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
+    c = cap.sync_panels_ready()
+    assert c.ready is True
+    assert c.message is None
+
+
+def test_sync_panels_none_present_is_not_ready_and_silent(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    c = cap.sync_panels_ready()
+    assert c.ready is False
+    assert c.message is None
+
+
+def test_sync_panels_partial_names_the_missing_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily"])
+    c = cap.sync_panels_ready()
+    assert c.ready is False
+    assert "tier2/sync/currency_daily_returns.csv" in c.message
+
+
 def _collapse(cls: str) -> str:
     """Mirrors tickhistory.py:719 -- us_equity and nonus_equity share one shard set."""
     return "equity" if "equity" in cls else cls
@@ -97,3 +197,33 @@ def test_shard_stems_match_run_all_sh():
                 | {f"tier2_{_collapse(c)}" for c in tier2_classes})
     assert set(cap.SHARD_STEMS) == expected, (
         f"SHARD_STEMS drifted from run_all.sh: {set(cap.SHARD_STEMS) ^ expected}")
+
+
+def test_sync_stage_outputs_match_build_synced_dataset():
+    """SYNC_STAGE_OUTPUTS must equal the (tier, class) pairs build_synced_dataset
+    actually reads via DATASETS_ROOT -- guards the 10 filename literals against
+    drift, the way test_shard_stems_match_run_all_sh guards SHARD_STEMS."""
+    text = (REPO / "src" / "globalmacro" / "build.py").read_text()
+    start = text.index("def build_synced_dataset(")
+    end = text.index("\ndef ", start + 1)
+    body = text[start:end]
+
+    literal_pairs = set(re.findall(
+        r'DATASETS_ROOT\s*/\s*"(tier\d)"\s*/\s*"sync"\s*/\s*"(\w+)_daily_returns\.csv"',
+        body))
+
+    loop_match = re.search(
+        r'for (\w+) in \[([^\]]+)\]:'
+        r'(?:.*\n)*?.*DATASETS_ROOT\s*/\s*"(tier\d)"\s*/\s*"sync"\s*/\s*f"\{(\w+)\}_daily_returns\.csv"',
+        body)
+    assert loop_match, "expected the tier-2 f-string read_csv loop in build_synced_dataset"
+    loop_var, items, loop_tier, used_var = loop_match.groups()
+    assert loop_var == used_var
+    loop_pairs = {(loop_tier, item.strip().strip('"').strip("'")) for item in items.split(",")}
+
+    found = literal_pairs | loop_pairs
+    assert found, "parser found zero read_csv(DATASETS_ROOT...) calls; fix the regex " \
+                   "before trusting this guard"
+    assert found == set(cap.SYNC_STAGE_OUTPUTS), (
+        "SYNC_STAGE_OUTPUTS drifted from build_synced_dataset: "
+        f"{found ^ set(cap.SYNC_STAGE_OUTPUTS)}")

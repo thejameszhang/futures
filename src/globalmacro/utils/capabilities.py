@@ -22,9 +22,12 @@ SHARD_STEMS: tuple[str, ...] = (
     "tier2_currency", "tier2_equity",
 )
 
-# The 10 files build_synced_dataset reads (build.py:528-559). Deliberately NOT the
-# same shape as SHARD_STEMS: us_equity and nonus_equity are separate outputs produced
-# by two jobs sharing the one tier1_equity shard set.
+# The 10 tickhistory-stage outputs build_synced_dataset reads (build.py:528-559). NOT
+# the full list of files that function reads: it also reads a MANUAL prerequisite,
+# DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv (build.py:550, see USAGE.md), which
+# is deliberately excluded here -- see sync_stage_outputs_ready()'s docstring.
+# Deliberately NOT the same shape as SHARD_STEMS: us_equity and nonus_equity are
+# separate outputs produced by two jobs sharing the one tier1_equity shard set.
 SYNC_STAGE_OUTPUTS: tuple[tuple[str, str], ...] = (
     ("tier1", "traditional"), ("tier1", "commodity"), ("tier1", "currency"),
     ("tier1", "bond"), ("tier1", "nonus_equity"), ("tier1", "us_equity"),
@@ -48,12 +51,16 @@ def shard_dirs() -> list[Path]:
             for stem in SHARD_STEMS for side in _SIDES]
 
 
+def _monolith_csvs() -> list[str]:
+    return [p.name for side in _SIDES
+            for p in sorted((TICKHISTORY_PATH / side).glob("*.csv"))]
+
+
 def shards_ready() -> Capability:
     dirs = shard_dirs()
     present = [d for d in dirs if d.is_dir()]
     if not present:
-        monoliths = [p.name for side in _SIDES
-                     for p in sorted((TICKHISTORY_PATH / side).glob("*.csv"))]
+        monoliths = _monolith_csvs()
         if monoliths:
             return Capability(False, (
                 f"found {len(monoliths)} monolith CSV(s) under {TICKHISTORY_PATH} but no "
@@ -62,7 +69,16 @@ def shards_ready() -> Capability:
 
     missing = [d.name for d in dirs if not d.is_dir()]
     if missing:
-        return Capability(False, "missing tick shard directories: " + ", ".join(sorted(missing)))
+        message = "missing tick shard directories: " + ", ".join(sorted(missing))
+        # The natural intermediate state: split_tickhistory.sh takes one side at a
+        # time, so trades can be fully split while quotes is still bare monolith
+        # CSVs (or vice versa). Without this, the researcher gets bare directory
+        # names and no hint that a split is what closes the gap.
+        monoliths = _monolith_csvs()
+        if monoliths:
+            message += (f"; {len(monoliths)} monolith CSV(s) still unsplit: "
+                         + _SPLIT_HINT)
+        return Capability(False, message)
 
     unverified = [d.name for d in dirs if not (d / GATE1_MARKER).exists()]
     if unverified:
@@ -82,6 +98,12 @@ def _missing_files(paths: list[Path]) -> list[str]:
 
 
 def sync_stage_outputs_ready() -> Capability:
+    """True does not guarantee build_synced_dataset can run. That function also reads
+    one file outside this predicate: DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv
+    (build.py:550), a MANUAL prerequisite (see USAGE.md) that must be hand-placed and
+    is not produced by any tickhistory stage. It is deliberately excluded here -- a
+    missing manual prerequisite should crash loudly in full mode, not silently
+    downgrade the machine to async-only."""
     paths = [DATASETS_ROOT / tier / "sync" / f"{cls}_daily_returns.csv"
              for tier, cls in SYNC_STAGE_OUTPUTS]
     missing = _missing_files(paths)
@@ -115,4 +137,8 @@ def resolve_mode(flag: str | None, cap: Capability, stage: str) -> str:
         return "full"
     if flag == "async-only":
         return "async-only"
+    if flag is not None:
+        raise ValueError(
+            f"globalmacro {stage}: unrecognized mode {flag!r}; "
+            'expected "full", "async-only", or unset for auto-detection')
     return "full" if cap.ready else "async-only"
