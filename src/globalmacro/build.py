@@ -796,19 +796,8 @@ def load_symbols_to_save(futures: list[Future]) -> list[str]:
     return to_save
 
 
-def main(mode: str = "full") -> None:
-    tier1_futures, tier1_symbols = load_symbols(1)
-    tier2_futures, tier2_symbols = load_symbols(2)
-
-    equities = [
-        future
-        for future in (tier1_futures + tier2_futures)
-        if future.dsindexcode is not None
-    ]
-    rf = load_rf()
-    synthetic_returns, synthetic_returns_synced = load_synthetic_returns(rf, equities)
-
-    log_section("Dataset preparation")
+def build_async(synthetic_returns) -> dict:
+    """Everything the async datasets need. No tick data, no sync panel."""
     asynced = load_async_dataset(tier=2)
     asynced = keep_after_date(asynced, "FBTP", date(2009, 9, 14), inclusive=True)
     asynced = keep_after_date(asynced, "PLN", date(2004, 8, 1), inclusive=True)
@@ -819,7 +808,12 @@ def main(mode: str = "full") -> None:
     asynced = splice_synthetic_returns(asynced, synthetic_returns, "Datastream")
     asynced = fill_asynced_gaps_with_synthetic_returns(asynced, synthetic_returns)
     asynced = drop_all_null_rows(asynced).filter(pl.col("date") <= pl.date(2025, 12, 31))
+    asynced, asynced_monthly = filter_dataset_by_monthly_returns(asynced)
+    return {"asynced": asynced, "asynced_monthly": asynced_monthly}
 
+
+def build_sync(synthetic_returns_synced) -> dict:
+    """Everything that needs the tickhistory stage's outputs."""
     synced = build_synced_dataset(tier=2)
     pre_splice_synced = synced  # BEFORE splice_synthetic_returns: real-splice-aware (6E<-DM), synthetic-blind
     synced = splice_synthetic_returns(synced, synthetic_returns_synced, "TickHistory", skip_if_before=date(1996, 1, 4))
@@ -837,10 +831,26 @@ def main(mode: str = "full") -> None:
     )
     synced = keep_after_date(synced, "PLN", date(2004, 7, 14), inclusive=True)
     synced = keep_after_date(synced, "CZK", date(2004, 7, 14), inclusive=True)
+    return {"synced": synced, "pre_splice_synced": pre_splice_synced}
 
-    asynced, asynced_monthly = filter_dataset_by_monthly_returns(asynced)
 
-    tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly = save_datasets(synced, asynced, asynced_monthly, load_symbols_to_save(tier1_futures), load_symbols_to_save(tier2_futures))
+def main(mode: str = "full") -> None:
+    tier1_futures, tier1_symbols = load_symbols(1)
+    tier2_futures, tier2_symbols = load_symbols(2)
+
+    equities = [
+        future
+        for future in (tier1_futures + tier2_futures)
+        if future.dsindexcode is not None
+    ]
+    rf = load_rf()
+    synthetic_returns, synthetic_returns_synced = load_synthetic_returns(rf, equities)
+
+    log_section("Dataset preparation")
+    a = build_async(synthetic_returns)
+    s = build_sync(synthetic_returns_synced)
+
+    tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly = save_datasets(s["synced"], a["asynced"], a["asynced_monthly"], load_symbols_to_save(tier1_futures), load_symbols_to_save(tier2_futures))
 
     log_subsection("Currency spike / gap diagnostics")
     currency_symbols = [
@@ -854,7 +864,7 @@ def main(mode: str = "full") -> None:
     fx_sync = read_csv(FX_PATH / "fx_sync.csv")
     # Blend the G10 FX-futures return into the sync Compustat levels (sync _usd only; async
     # untouched). Uses SYMBOL_TO_CURCDD_MAPPING (6E->EUR), NOT build_currency_map (all-USD).
-    fx_sync = build_sync_fx_panel(fx_sync, pre_splice_synced, SYMBOL_TO_CURCDD_MAPPING)
+    fx_sync = build_sync_fx_panel(fx_sync, s["pre_splice_synced"], SYMBOL_TO_CURCDD_MAPPING)
     symbol_to_ccy = build_currency_map(tier1_futures + tier2_futures)
     save_usd_datasets(tier1_synced, tier1_asynced, tier2_synced, tier2_asynced,
                       symbol_to_ccy, fx_async, fx_sync)
