@@ -201,6 +201,9 @@ def _make_sync_panels(root, present):
 
 def test_sync_panels_all_present_is_ready(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    # F3a: sync_panels_ready() now consults sync_stage_outputs_ready() first, so a
+    # healthy check needs the 10 stage outputs on disk too, not just the 3 aggregates.
+    _make_sync_stage_outputs(tmp_path, cap.SYNC_STAGE_OUTPUTS)
     _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
     c = cap.sync_panels_ready()
     assert c.ready is True
@@ -216,10 +219,77 @@ def test_sync_panels_none_present_is_not_ready_and_silent(tmp_path, monkeypatch)
 
 def test_sync_panels_partial_names_the_missing_files(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
-    _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily"])
+    _make_sync_stage_outputs(tmp_path, cap.SYNC_STAGE_OUTPUTS)
+    # tier2_currency's path IS one of SYNC_STAGE_OUTPUTS (both predicates check the
+    # same tier2/sync/currency_daily_returns.csv -- see sync_panels_fresh's comment),
+    # so it's already present from the stage-outputs fixture above; the only
+    # genuinely independent missing panel is sync_daily.csv itself, a build.py-written
+    # aggregate that is not a raw stage output.
+    _make_sync_panels(tmp_path, ["tier1_daily", "tier2_currency"])
     c = cap.sync_panels_ready()
     assert c.ready is False
-    assert "tier2/sync/currency_daily_returns.csv" in c.message
+    assert "tier2/sync/sync_daily.csv" in c.message
+
+
+# --- F3a: sync_panels_ready() must agree with sync_stage_outputs_ready() -----------
+
+
+def test_sync_panels_ready_defers_to_stage_outputs_when_they_disagree(tmp_path, monkeypatch):
+    """Reviewer B's exact defect: the 3 aggregate panels present, but the raw
+    tickhistory stage outputs gone (a researcher reclaiming disk after a full run).
+    Before F3a this reported ready=True (validate resolves full) while build's own
+    sync_stage_outputs_ready()-based check reported not-ready (build resolves
+    async-only) -- a silent disagreement. Now both must agree: not ready."""
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
+    stage = cap.sync_stage_outputs_ready()
+    panels = cap.sync_panels_ready()
+    assert stage.ready is False
+    assert panels.ready is False
+    assert panels.message == stage.message
+
+
+def test_sync_panels_ready_propagates_partial_stage_outputs_message(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    _make_sync_stage_outputs(tmp_path, cap.SYNC_STAGE_OUTPUTS[:-1])
+    _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
+    c = cap.sync_panels_ready()
+    assert c.ready is False
+    assert "tier2/sync/equity_daily_returns.csv" in c.message
+
+
+def test_sync_panels_ready_silent_on_genuinely_clean_tree(tmp_path, monkeypatch):
+    """Nothing on disk anywhere: stage outputs are cleanly absent (message=None), and
+    that must still propagate as message=None -- not a warning for the researcher's
+    normal starting state."""
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    c = cap.sync_panels_ready()
+    assert c.ready is False
+    assert c.message is None
+
+
+def test_healthy_full_machine_all_four_predicates_ready(tmp_path, monkeypatch):
+    """F3a must be a no-op on a healthy full machine: all 10 stage outputs, all 3
+    sync panels, matching async panels (for freshness), and a full tick-shard tree
+    all present -> every predicate reports ready."""
+    monkeypatch.setattr(cap, "TICKHISTORY_PATH", tmp_path / "tick")
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path / "datasets")
+    _make_shards(tmp_path / "tick", cap.SHARD_STEMS)
+    _make_sync_stage_outputs(tmp_path / "datasets", cap.SYNC_STAGE_OUTPUTS)
+    # async_daily.csv BEFORE the sync panels: build.py always writes the async
+    # aggregate first and the sync aggregate immediately after (sync_panels_fresh's
+    # own rule), so sync must not predate async here or freshness would (correctly)
+    # flag this fixture as stale.
+    for tier in ("tier1", "tier2"):
+        d = tmp_path / "datasets" / tier / "async"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "async_daily.csv").write_text("date\n")
+    _make_sync_panels(tmp_path / "datasets", ["tier1_daily", "tier2_daily", "tier2_currency"])
+
+    assert cap.shards_ready().ready is True
+    assert cap.sync_stage_outputs_ready().ready is True
+    assert cap.sync_panels_ready().ready is True
+    assert cap.sync_panels_fresh().ready is True
 
 
 def _collapse(cls: str) -> str:

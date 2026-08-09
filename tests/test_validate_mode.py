@@ -7,7 +7,7 @@ import pytest
 
 from globalmacro.utils import capabilities as cap
 from globalmacro.validation import run as vrun
-from globalmacro.validation.base import Check
+from globalmacro.validation.base import Check, Invariant
 from globalmacro.validation.mode import current_mode, validation_mode
 
 
@@ -155,6 +155,108 @@ def test_sync_panels_stale_after_async_only_rebuild(tmp_path, monkeypatch):
     assert c.ready is False
     assert "tier1" in c.message and "sync_daily.csv" in c.message
     assert "tier2" in c.message
+
+
+# --- F3: validate can resolve full and then die with a raw traceback --------------
+
+
+def _make_sync_stage_outputs(root, pairs):
+    for tier, cls in pairs:
+        d = root / tier / "sync"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{cls}_daily_returns.csv").write_text("date\n")
+
+
+def _make_sync_panels(root, present):
+    all_paths = {
+        "tier1_daily": root / "tier1" / "sync" / "sync_daily.csv",
+        "tier2_daily": root / "tier2" / "sync" / "sync_daily.csv",
+        "tier2_currency": root / "tier2" / "sync" / "currency_daily_returns.csv",
+    }
+    for key in present:
+        p = all_paths[key]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("date\n")
+
+
+def test_f3a_disagreement_state_now_resolves_async_only(tmp_path, monkeypatch):
+    """Reviewer B's exact scratch-root scenario: a researcher reclaims disk after a
+    full run -- the 3 aggregate sync panels remain, but the raw tickhistory stage
+    outputs are gone. Before F3a, sync_panels_ready() (validate's own predicate)
+    only checked those 3 files and reported ready=True, so an unflagged `globalmacro
+    validate` resolved "full" while `globalmacro build` (which checks
+    sync_stage_outputs_ready() directly) resolved "async-only" -- a silent
+    disagreement. F3a makes sync_panels_ready() consult sync_stage_outputs_ready()
+    first, so validate's own auto-resolution now agrees with build's: async-only."""
+    monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
+    _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
+    assert cap.sync_stage_outputs_ready().ready is False
+    resolved = cap.resolve_mode(None, cap.sync_panels_ready(), "validate")
+    assert resolved == "async-only"
+
+
+def test_f3b_residual_filenotfounderror_from_invariants_is_actionable(monkeypatch, tmp_path):
+    """F3b covers the gap F3a deliberately leaves open: even with all 10 tickhistory
+    stage outputs AND all 3 sync panels present (so resolve_mode cleanly resolves
+    "full", never reaching its own not-ready SystemExit), build_synced_dataset()
+    still reads one file neither predicate covers -- the hand-placed MANUAL JKP
+    prerequisite (sync_stage_outputs_ready()'s own docstring: 'a missing manual
+    prerequisite should crash loudly in full mode, not silently downgrade'). Before
+    F3b, that FileNotFoundError propagated as a raw traceback with no remedy and no
+    mention of --async-only; check.invariants() sits outside any try, unlike
+    pairs/figures. Hermetic: a stub Check reproduces the raise directly rather than
+    exercising the real synthetic_fx chain, following this file's own established
+    stub-Check pattern (see test_validation_mode_does_not_leak_between_two_runs_in_one_process)."""
+    def _boom():
+        raise FileNotFoundError("data/jkp/updated_daily_ind_gics_synced.csv")
+
+    stub_check = Check(name="stub", slug="stub", run=_stub_correlations, invariants=_boom)
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", lambda mode: [stub_check])
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
+    monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
+
+    with pytest.raises(SystemExit) as exc_info:
+        vrun.main(["--full"])
+    msg = str(exc_info.value)
+    assert "updated_daily_ind_gics_synced.csv" in msg
+    assert "--full" in msg
+    assert "--async-only" in msg
+
+
+def test_f3b_genuine_invariant_failure_still_fails_the_run(monkeypatch, tmp_path):
+    """F3b must not blanket-catch: a genuine invariant FAILURE (Invariant.passed is
+    False, not an exception) is untouched by the new try/except and still fails the
+    run through the normal ok=False path."""
+    def _fails():
+        return [Invariant(check="stub", name="x beats y", value="no", passed=False)]
+
+    stub_check = Check(name="stub", slug="stub", run=_stub_correlations, invariants=_fails)
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", lambda mode: [stub_check])
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
+    monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
+
+    assert vrun.main(["--full"]) == 1
+
+
+def test_f3b_non_filenotfound_exceptions_propagate_unconverted(monkeypatch, tmp_path):
+    """F3b's except clause is FileNotFoundError ONLY -- any other exception is a real
+    bug and must still surface as itself, not be swallowed or relabeled."""
+    def _boom():
+        raise ValueError("genuine bug, not a missing file")
+
+    stub_check = Check(name="stub", slug="stub", run=_stub_correlations, invariants=_boom)
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", lambda mode: [stub_check])
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
+    monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
+
+    with pytest.raises(ValueError, match="genuine bug"):
+        vrun.main(["--full"])
 
 
 def test_sync_panels_fresh_ignores_missing_files(tmp_path, monkeypatch):

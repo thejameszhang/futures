@@ -116,6 +116,28 @@ def sync_stage_outputs_ready() -> Capability:
 
 
 def sync_panels_ready() -> Capability:
+    """True does not guarantee full-mode validate can safely run: it transitively
+    reads all 10 tickhistory stage outputs too (synthetic_fx._invariants() ->
+    source_diagonal(...) -> pre_splice_panel(...) -> build_synced_dataset()), a
+    strict superset of the 3 aggregate files this predicate checks directly. A
+    researcher reclaiming disk after a full run can delete those raw stage outputs
+    while the aggregated panels remain on disk -- consult sync_stage_outputs_ready()
+    FIRST and propagate its result if it isn't ready, so that state resolves
+    async-only here too instead of disagreeing with build's own resolution.
+
+    Propagating the Capability object wholesale (not just a bool) preserves the
+    "cleanly absent -> message is None" convention for free: sync_stage_outputs_ready()
+    is cleanly absent exactly when all 10 stage outputs are missing, which on a
+    genuinely fresh researcher tree implies these 3 aggregate files are absent too, so
+    there is nothing this function's own check would add.
+
+    On a healthy full machine (all 10 stage outputs AND all 3 panels present) this is
+    a no-op: the stage-outputs check reports ready and falls through to the original
+    3-file check unchanged.
+    """
+    stage = sync_stage_outputs_ready()
+    if not stage.ready:
+        return stage
     paths = [DATASETS_ROOT / "tier1" / "sync" / "sync_daily.csv",
              DATASETS_ROOT / "tier2" / "sync" / "sync_daily.csv",
              DATASETS_ROOT / "tier2" / "sync" / "currency_daily_returns.csv"]

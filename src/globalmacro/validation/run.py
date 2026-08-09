@@ -141,7 +141,28 @@ def main(argv=None):
                   f"mean={r.mean:.4f} min={r.minimum:.4f} (<0.80: {r.n_below})")
 
             if check.invariants is not None:
-                for inv in check.invariants():
+                # F3b: sync_panels_ready()/sync_stage_outputs_ready() (F3a) still don't
+                # cover EVERY file this can transitively read -- build_synced_dataset()
+                # also reads a hand-placed MANUAL prerequisite (see
+                # sync_stage_outputs_ready()'s docstring) that is deliberately excluded
+                # from both predicates, so a full-mode resolution can still reach here
+                # with a file missing. Unlike `pairs`/`figures` below, this call sits
+                # outside any try -- without this, the researcher gets a raw
+                # FileNotFoundError traceback, no remedy, and no mention of
+                # --async-only. Only FileNotFoundError is caught: a genuine invariant
+                # FAILURE is not an exception (it's a False Invariant.passed, handled
+                # by the loop below and the final `ok` check) and any OTHER exception
+                # is a real bug that must still fail the run loudly.
+                try:
+                    computed_invariants = check.invariants()
+                except FileNotFoundError as e:
+                    raise SystemExit(
+                        f"globalmacro validate: {check.name} needs a file that is "
+                        f"missing ({e}). Either rerun `globalmacro build --full` to "
+                        "rebuild the sync half, or run `globalmacro validate "
+                        "--async-only` to skip the checks that need it."
+                    ) from e
+                for inv in computed_invariants:
                     invariants.append(inv)
                     tag = "PASS" if inv.passed else "FAIL"
                     print(f"        [{tag}] {inv.name}: {inv.value}")
