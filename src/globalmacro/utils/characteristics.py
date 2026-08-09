@@ -66,6 +66,45 @@ def contract_identity_exprs(i: int) -> tuple[pl.Expr, pl.Expr]:
                       .otherwise(pl.col(f'lasttrddate_{i}').shift(1).over('clscode'))))
     return num, den
 
+def cross_contract_cells(df: pl.DataFrame, i: int = 1) -> pl.DataFrame:
+    """Non-null ret_1 cells whose numerator and denominator are different contracts.
+
+    This is the defect's definition rather than a proxy for it, so it cannot miss a case.
+    An expiry-monotonicity invariant was tried and rejected: 42 classes carried
+    cross-contract cells while reporting zero expiry decreases, because a substitution that
+    skips forward and never returns is monotone non-decreasing.
+
+    ret_1 is ret_temp_2 when exp_1 == 1, else ret_temp_1 (calc_returns_with_price_adj_and_roll),
+    so the numerator slot shifts with exp_1. After the fix this must return zero rows.
+    """
+    num, den = contract_identity_exprs(i)
+    return (
+        df.sort(['clscode', 'date'])
+        .with_columns(num=num, den=den)
+        .filter(pl.col(f'ret_{i}').is_not_null() & (pl.col('num') != pl.col('den')))
+        .select('clscode', 'date', pl.col(f'ret_{i}').alias('ret'), 'num', 'den')
+    )
+
+
+def unadjudicable_cells(df: pl.DataFrame, i: int = 1) -> pl.DataFrame:
+    """Non-null ret_i cells whose denominator contract is unknown.
+
+    cross_contract_cells' `num != den` is null-propagating, so these are silently skipped.
+    A zero from that checker means "no cell I could adjudicate is cross-contract", NOT "no
+    cell is". Either contract being unknown makes a cell unadjudicable, so both are counted:
+    a null numerator (exp_1 == 1 with lasttrddate_2 absent) is no more verifiable than a null
+    denominator. Measured pre-fix: 1,082 for ret_1, 22,258 for ret_2. Report these alongside
+    the zero rather than letting the difference hide.
+    """
+    num, den = contract_identity_exprs(i)
+    return (
+        df.sort(['clscode', 'date'])
+        .with_columns(num=num, den=den)
+        .filter(pl.col(f'ret_{i}').is_not_null() & (pl.col('num').is_null() | pl.col('den').is_null()))
+        .select('clscode', 'date', pl.col(f'ret_{i}').alias('ret'))
+    )
+
+
 def calc_returns_with_price_adj_and_roll(i: int) -> list[pl.Expr]:
     """
     Calculate the returns of the futures contracts with price adjustment and roll

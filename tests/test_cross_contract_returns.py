@@ -121,3 +121,54 @@ def test_the_guard_is_scoped_per_class():
         "settlement_2": [101.0, 111.0],
     })
     assert _apply(df).get_column("ret_temp_1").to_list() == [None, None]
+
+
+def test_cross_contract_cells_finds_the_defect_and_nothing_else():
+    from globalmacro.utils.characteristics import cross_contract_cells
+    df = pl.DataFrame({
+        "clscode": [1, 1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3), date(2020, 3, 4)],
+        "exp_1": [0, 0, 0],
+        "daystomaturity_1": [19, 1000, 17],
+        "lasttrddate_1": [date(2020, 3, 21), date(2022, 12, 1), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2023, 3, 1), date(2020, 5, 15)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2023, 6, 1), date(2020, 8, 20)],
+        "ret_1": [None, 4.0, -0.8],
+    })
+    got = cross_contract_cells(df)
+    # 03-03 jumps to a far contract; 03-04 comes back. Both ratios span two contracts.
+    assert got.get_column("date").to_list() == [date(2020, 3, 3), date(2020, 3, 4)]
+
+
+def test_unadjudicable_cells_reports_an_unknown_contract():
+    """A non-null return whose denominator contract is unknown cannot be certified either
+    way. It must be counted, not silently excluded by the null-propagating `num != den`."""
+    from globalmacro.utils.characteristics import unadjudicable_cells
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 0],
+        "daystomaturity_1": [19, 18],
+        "lasttrddate_1": [date(2020, 3, 21), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 5, 15)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2020, 8, 20)],
+        "lasttrddate_4": [date(2020, 11, 20), date(2020, 11, 20)],
+        "ret_1": [0.01, 0.02],
+    })
+    # row 0 has no previous row within its class, so its denominator contract is unknown
+    assert unadjudicable_cells(df).get_column("date").to_list() == [date(2020, 3, 2)]
+
+
+def test_cross_contract_cells_ignores_null_returns():
+    from globalmacro.utils.characteristics import cross_contract_cells
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 0],
+        "daystomaturity_1": [19, 1000],
+        "lasttrddate_1": [date(2020, 3, 21), date(2022, 12, 1)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2023, 3, 1)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2023, 6, 1)],
+        "ret_1": [None, None],
+    })
+    assert cross_contract_cells(df).height == 0
