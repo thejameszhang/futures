@@ -103,9 +103,85 @@ def test_explicit_full_fails_fast_without_shards(tmp_path):
 
 
 def test_autodetects_async_only_with_no_shards(tmp_path):
-    """The headline feature: no flag, no tick data, correct mode."""
-    env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path)}
+    """The headline feature: no flag, no tick data, no sync artifacts either (a
+    genuinely clean researcher tree) -> correct mode, no abort.
+
+    FUTURES_DATASETS_ROOT is overridden alongside TICKHISTORY_PATH: this machine
+    (like the owner's) has already built the sync half, so leaving DATASETS_ROOT at
+    its default would make this test collide with the F1 guard below -- the "sync
+    artifacts present" case, not the clean-tree case this test means to cover.
+    """
+    env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
+           "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets")}
     assert "mode=async-only" in _dry_run(env=env)
+
+
+def _make_sync_panels(root: Path) -> None:
+    """Just sync_panels_ready()'s three files -- enough on its own to trip the F1
+    guard (either predicate reporting ready is enough)."""
+    for rel in (
+        "tier1/sync/sync_daily.csv",
+        "tier2/sync/sync_daily.csv",
+        "tier2/sync/currency_daily_returns.csv",
+    ):
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("date\n")
+
+
+def _make_sync_stage_outputs(root: Path) -> None:
+    """The OTHER of F1's two predicates: tickhistory-stage outputs, not the
+    aggregated sync panels. Exercises sync_stage_outputs_ready() specifically, so
+    the "either" in F1's guard is proved on both branches, not just one."""
+    from globalmacro.utils.capabilities import SYNC_STAGE_OUTPUTS
+    for tier, cls in SYNC_STAGE_OUTPUTS:
+        p = root / tier / "sync" / f"{cls}_daily_returns.csv"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("date\n")
+
+
+def test_shards_absent_sync_panels_present_no_flag_aborts(tmp_path):
+    """F1 (Reviewer A): auto-detect must not silently downgrade a machine that has
+    already built the sync half. Sync panels on disk + no tick shards + no explicit
+    flag -> exit 1, message names the cause and both remedies."""
+    env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
+           "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets")}
+    _make_sync_panels(tmp_path / "datasets")
+    r = subprocess.run(["bash", "slurm/run_all.sh", "--dry-run"],
+                       cwd=REPO, capture_output=True, text=True, env=env)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "already has sync" in out
+    assert "sync panels" in out
+    assert "repair the tick shards" in out
+    assert "--async-only" in out
+
+
+def test_shards_absent_stage_outputs_present_no_flag_aborts(tmp_path):
+    """Same defect, other predicate: tickhistory stage outputs (not the aggregated
+    sync panels) present with no tick shards and no explicit flag -> exit 1."""
+    env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
+           "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets")}
+    _make_sync_stage_outputs(tmp_path / "datasets")
+    r = subprocess.run(["bash", "slurm/run_all.sh", "--dry-run"],
+                       cwd=REPO, capture_output=True, text=True, env=env)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "already has sync" in out
+    assert "tickhistory stage outputs" in out
+
+
+def test_shards_absent_sync_present_explicit_async_only_proceeds(tmp_path):
+    """Same on-disk state as the abort tests above, but --async-only is explicit --
+    the flag makes the downgrade deliberate, so it must proceed normally: exit 0,
+    async-only DAG submitted, no abort message."""
+    env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
+           "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets")}
+    _make_sync_panels(tmp_path / "datasets")
+    out = _dry_run("--async-only", env=env)
+    assert "build.sh --async-only" in out
+    assert "validate.sh --async-only" in out
+    assert "already has sync" not in out
 
 
 def test_unknown_flag_still_rejected():

@@ -65,6 +65,48 @@ print(c.message or '')
 fi
 echo "mode=$MODE" >&2
 
+# Refuse to silently downgrade a machine that has already built the sync half. Only
+# reachable when the mode was AUTO-detected to async-only (MODE_EXPLICIT=0): an
+# explicit --async-only means the researcher asked for this deliberately, and must
+# proceed unchanged. Losing the shards but keeping stale sync artifacts on disk (a
+# scratch purge, an unmounted TICKHISTORY_PATH, a split_tickhistory.sh job killed
+# before it writes a _GATE1_OK marker) would otherwise submit the async-only DAG,
+# skip all 12 tickhistory jobs, and leave the previous run's sync_daily.csv on disk
+# now stale, with only one stderr line as the signal. Guarded the same defensive way
+# as the capability probe above: `|| _X=""` on a crash, and an empty/unparseable
+# result means "cannot tell" -- do NOT abort on it, a broken venv must not brick the
+# DAG. Two predicates because build reads the tickhistory stage's raw outputs while
+# validate reads the aggregated sync panels; either one being ready on disk is
+# enough to mean "this machine already has sync artifacts".
+if [ "$MODE" = async-only ] && [ "$MODE_EXPLICIT" = 0 ] && [ -x .venv/bin/python ]; then
+  _SYNC_CHECK=$(.venv/bin/python -c "
+from globalmacro.utils.capabilities import sync_panels_ready, sync_stage_outputs_ready
+found = []
+if sync_stage_outputs_ready().ready:
+    found.append('tickhistory stage outputs under datasets/tier{1,2}/sync/')
+if sync_panels_ready().ready:
+    found.append('sync panels (datasets/tier{1,2}/sync/sync_daily.csv)')
+print('yes' if found else 'no')
+print('; '.join(found))
+" 2>/dev/null) || _SYNC_CHECK=""
+  if [ -n "$_SYNC_CHECK" ]; then
+    _SYNC_FOUND=$(printf '%s\n' "$_SYNC_CHECK" | head -1)
+    case "$_SYNC_FOUND" in
+      yes)
+        _SYNC_WHICH=$(printf '%s\n' "$_SYNC_CHECK" | sed -n 2p)
+        {
+          echo "run_all.sh: tick shards are not ready, but this machine already has sync"
+          echo "artifacts on disk (${_SYNC_WHICH}). Refusing to silently downgrade to"
+          echo "async-only and leave them stale. Either repair the tick shards, or pass"
+          echo "--async-only explicitly to proceed."
+        } >&2
+        exit 1
+        ;;
+      *) ;;   # "no", or garbage -- cannot tell; do not abort
+    esac
+  fi
+fi
+
 # An *explicitly requested* --full fails fast if the sync inputs aren't ready. Gated on
 # MODE_EXPLICIT so the auto-detect fallback above (capability check failed -> assume
 # full) stays reachable: re-running the same import here would raise the same error.
