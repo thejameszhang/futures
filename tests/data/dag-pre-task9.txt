@@ -1,0 +1,22 @@
+  sbatch --parsable  slurm/rates.sh
+  sbatch --parsable  slurm/equities.sh
+  sbatch --parsable  slurm/instrumentlists.sh
+  sbatch --parsable  slurm/futures.sh settlement ct
+  sbatch --parsable  slurm/futures.sh settlement cs
+  sbatch --parsable  slurm/futures.sh open ct
+  sbatch --parsable  slurm/futures.sh open cs
+  sbatch --parsable --dependency=afterok:DRY1 slurm/fx.sh
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 slurm/tickhistory.sh currency 1 london
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 slurm/tickhistory.sh currency 2 london
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 --mem=1450G --cpus-per-task=32 slurm/tickhistory.sh commodity
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7:DRY9 slurm/tickhistory.sh currency
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 slurm/tickhistory.sh bond
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 --mem=1450G --cpus-per-task=32 slurm/tickhistory.sh nonus_equity
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 slurm/tickhistory.sh stir
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 slurm/tickhistory.sh traditional
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 --mem=1450G --cpus-per-task=32 slurm/tickhistory.sh us_equity
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 slurm/tickhistory.sh volatility
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7:DRY10 slurm/tickhistory.sh currency 2
+  sbatch --parsable --dependency=afterok:DRY4:DRY5:DRY6:DRY7 slurm/tickhistory.sh equity 2
+  sbatch --parsable --dependency=afterok:DRY2:DRY8:DRY9:DRY10:DRY11:DRY12:DRY13:DRY14:DRY15:DRY16:DRY17:DRY18:DRY19:DRY20 slurm/build.sh --full
+  sbatch --parsable --dependency=afterok:DRY21 slurm/validate.sh --full

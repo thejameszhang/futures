@@ -17,8 +17,14 @@ for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
     --with-download) WITH_DL=1 ;;
-    --async-only) MODE=async-only; MODE_EXPLICIT=1 ;;
-    --full) MODE=full; MODE_EXPLICIT=1 ;;
+    --async-only)
+      [ "$MODE_EXPLICIT" = 1 ] && [ "$MODE" != async-only ] \
+        && { echo "run_all.sh: --async-only conflicts with an earlier --full" >&2; exit 2; }
+      MODE=async-only; MODE_EXPLICIT=1 ;;
+    --full)
+      [ "$MODE_EXPLICIT" = 1 ] && [ "$MODE" != full ] \
+        && { echo "run_all.sh: --full conflicts with an earlier --async-only" >&2; exit 2; }
+      MODE=full; MODE_EXPLICIT=1 ;;
     -h|--help) echo "usage: run_all.sh [--with-download] [--async-only|--full] [--dry-run]"; exit 0 ;;
     *) echo "unknown arg: $a" >&2; exit 2 ;;
   esac
@@ -39,6 +45,16 @@ print(c.message or '')
       echo "[run_all] capability check failed; assuming --full" >&2
     else
       MODE=$(printf '%s\n' "$_CAP" | head -1)
+      # Allowlist: `head -1` takes whatever line lands first, so a stray banner
+      # ahead of the two `print`s (e.g. a library that logs on import) must not
+      # silently become the mode -- that both degrades the DAG (a garbage $MODE
+      # fails `[ "$MODE" = full ]`, so async-only wins by default) and, unquoted,
+      # would word-split into extra sbatch args wherever $MODE is interpolated.
+      case "$MODE" in
+        full|async-only) ;;
+        *) MODE=full
+           echo "[run_all] unparseable capability output; assuming --full" >&2 ;;
+      esac
       _MSG=$(printf '%s\n' "$_CAP" | sed -n 2p)
       [ -n "$_MSG" ] && echo "[run_all] $_MSG" >&2
     fi
@@ -47,7 +63,7 @@ print(c.message or '')
     echo "[run_all] no .venv/bin/python; assuming --full" >&2
   fi
 fi
-echo "mode=$MODE"
+echo "mode=$MODE" >&2
 
 # An *explicitly requested* --full fails fast if the sync inputs aren't ready. Gated on
 # MODE_EXPLICIT so the auto-detect fallback above (capability check failed -> assume
@@ -56,7 +72,7 @@ if [ "$MODE" = full ] && [ "$MODE_EXPLICIT" = 1 ] && [ -x .venv/bin/python ]; th
   .venv/bin/python -c "
 from globalmacro.utils.capabilities import resolve_mode, shards_ready
 resolve_mode('full', shards_ready(), 'run')
-" || exit 1
+" || { echo "[run_all] --full check failed (see error above)" >&2; exit 1; }
 fi
 
 # dry-run job-id counter lives in a temp file: submit() runs inside $(...), so a
@@ -158,11 +174,11 @@ if [ "$MODE" = full ]; then
 else
   jB=$(submit "$(join "$jE" "$jFx" "$FUT_SETTLE")" $S/build.sh --async-only)
 fi
-jV=$(submit "$(join "$jB" "$(dld datastream_continuous)")" $S/validate.sh --$MODE)   # +datastream_continuous benchmark
+jV=$(submit "$(join "$jB" "$(dld datastream_continuous)")" $S/validate.sh "--$MODE")   # +datastream_continuous benchmark
 
 if [ "$WITH_DL" = 1 ]; then echo "downloads=[${DLID[*]}]"; else echo "downloads=[skipped]"; fi
 echo "rates=$jR fx=$jFx equities=$jE instrumentlists=$jI"
 echo "futures=[$FUT]"
-[ -n "$jLON1" ] && echo "london_currency=[$jLON1:$jLON2]"
+if [ -n "$jLON1" ]; then echo "london_currency=[$jLON1:$jLON2]"; fi
 echo "tickhistory=[$TICK]"
 echo "build=$jB validate=$jV"
