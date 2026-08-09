@@ -21,6 +21,64 @@ def _has_fx_synthetic_data() -> bool:
     return (FX_PATH / "synthetic_fx_returns_async.csv").exists()
 
 
+# --- Task 6: pin the OTHER hardcoded loop -------------------------------------------
+#
+# source_diagonal(datasets: tuple[str, ...] = ("sync", "async")) has its own default,
+# which mirrors the default _grade_sync() steers _invariants() away from. Both stubs
+# above this point (`lambda *a, **k: ...`) accept and discard whatever argument the
+# call site passes, so neither one can tell "source_diagonal(datasets)" apart from a
+# bare "source_diagonal()" -- and with real sync+async data on disk (this dev box),
+# or with both roots empty (nothing to read either way), the bare call is silently
+# harmless too: the fixed tests above pass regardless. Only a stub that RECORDS its
+# argument can tell the two call sites apart -- which is the entire point here, since
+# on the real async-only machine (symlinked async panels, no sync/ directory at all)
+# the bare call reaches pre_splice_panel("sync") and raises FileNotFoundError with no
+# summary written: the exact failure this project exists to prevent.
+_FX_DIAGONAL_STUB = pl.DataFrame(
+    {
+        "dataset": ["sync", "async"],
+        "winner": ["compustat", "datastream"],
+        "expected": ["compustat", "datastream"],
+    }
+)
+
+
+def test_async_only_never_asks_source_diagonal_for_the_sync_panel(monkeypatch):
+    """_grade_sync() False -> _invariants() computes datasets = ("async",). If the call
+    site ever regresses to source_diagonal() bare, source_diagonal's own default
+    parameter -- ("sync", "async") -- silently substitutes back in, and the recorded
+    argument reveals it even though the RETURNED frame (and therefore every assertion
+    in the two stub-based tests above) is unaffected."""
+    seen: list[tuple[str, ...]] = []
+
+    def _fake_source_diagonal(datasets: tuple[str, ...] = ("sync", "async")) -> pl.DataFrame:
+        seen.append(datasets)
+        return _FX_DIAGONAL_STUB
+
+    monkeypatch.setattr(synthetic_fx, "_grade_sync", lambda: False)
+    monkeypatch.setattr(synthetic_fx, "source_diagonal", _fake_source_diagonal)
+    synthetic_fx._invariants()
+    assert seen == [("async",)]
+
+
+def test_full_mode_asks_source_diagonal_for_both_panels(monkeypatch):
+    """Companion to the test above. In full mode the CORRECT datasets tuple happens to
+    equal source_diagonal's own default, so this test alone cannot distinguish a
+    passed-through argument from a dropped one -- the async-only test above is the one
+    that catches the bare-call mutation. This one pins that the call is still explicit,
+    not that the result happens to match."""
+    seen: list[tuple[str, ...]] = []
+
+    def _fake_source_diagonal(datasets: tuple[str, ...] = ("sync", "async")) -> pl.DataFrame:
+        seen.append(datasets)
+        return _FX_DIAGONAL_STUB
+
+    monkeypatch.setattr(synthetic_fx, "_grade_sync", lambda: True)
+    monkeypatch.setattr(synthetic_fx, "source_diagonal", _fake_source_diagonal)
+    synthetic_fx._invariants()
+    assert seen == [("sync", "async")]
+
+
 def _has_sync_and_async_panels() -> bool:
     """Real data needed for a full-mode figures() call: fx_source_diagonal.pdf and
     equity_alignment.pdf each read both the sync AND async tier-1/tier-2 daily panels."""
