@@ -59,10 +59,15 @@ _SYMBOL_COUNT_SOURCES = [
 
 
 def _symbol_count_sources(mode: str = "full"):
-    # Filter on the PATH, not the stem: "sync" is a substring of "async", so a stem
-    # filter (e.g. "sync" in "tier1_async_daily") would silently drop every source.
+    # Match the parent directory NAME, not the stem or a path substring. A stem filter
+    # (e.g. "sync" in "tier1_async_daily") would silently drop every source, since
+    # "sync" is a substring of "async". A path-substring filter ("/sync/" in the full
+    # path) has the same failure mode one level up: DATASETS_ROOT is env-configurable
+    # (paths.py, FUTURES_DATASETS_ROOT) and can itself contain a "sync" path component
+    # (e.g. a relocated data directory under .../sync/datasets) -- every source's path
+    # would then contain "/sync/" and every source would be silently dropped.
     if mode == "async-only":
-        return [s for s in _SYMBOL_COUNT_SOURCES if "/sync/" not in s[1].as_posix()]
+        return [s for s in _SYMBOL_COUNT_SOURCES if s[1].parent.name != "sync"]
     return _SYMBOL_COUNT_SOURCES
 
 

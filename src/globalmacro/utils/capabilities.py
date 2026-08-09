@@ -128,13 +128,16 @@ def sync_panels_ready() -> Capability:
 
 # The pair compared per tier by sync_panels_fresh(). Deliberately just the two final
 # aggregates, NOT sync_panels_ready()'s third path (tier2/.../currency_daily_returns.csv):
-# that file is an intermediate component build.py writes well before a tier's
-# sync_daily.csv/async_daily.csv pair (both written back-to-back at the end of that
-# tier's build), so comparing its mtime against the *other* tier's async aggregate
-# produces false positives on a single, legitimate full build. Confirmed against the
-# real datasets/ directory on this machine: tier2/sync/currency_daily_returns.csv sits
-# ~4 minutes older than tier2/async/async_daily.csv from the same build run, while the
-# two sync_daily.csv/async_daily.csv pairs land in the same second.
+# that file is a tickhistory-stage OUTPUT (tickhistory.py:672, also tracked in
+# SYNC_STAGE_OUTPUTS above), one that build.py only ever READS (build.py:547, :573) and
+# never writes. As a stage *input*, it has no bearing on whether the sync and async
+# *panels* came from the same build() call -- comparing it against a different stage's
+# aggregate output is a category error, not a timing inconvenience. On a cluster run
+# the tickhistory stage can finish hours or days before build runs, so its mtime lag
+# against async_daily.csv is unbounded. Confirmed against the real datasets/ directory
+# on this machine: the two sync_daily.csv/async_daily.csv pairs land within ~30ms of
+# each other -- close enough that the comparison below uses st_mtime_ns, not the float
+# st_mtime, to stay exact.
 _STALENESS_TIERS: tuple[str, ...] = ("tier1", "tier2")
 
 
@@ -160,15 +163,18 @@ def sync_panels_fresh() -> Capability:
         async_path = DATASETS_ROOT / tier / "async" / "async_daily.csv"
         if not sync_path.exists() or not async_path.exists():
             continue          # nothing to compare; sync_panels_ready() covers absence
-        if sync_path.stat().st_mtime < async_path.stat().st_mtime:
+        if sync_path.stat().st_mtime_ns < async_path.stat().st_mtime_ns:
             stale.append(sync_path.as_posix())
     if not stale:
         return Capability(True, None)
     return Capability(False, (
         "sync panels predate their async counterparts, so they look like leftovers "
         "from an earlier full build rather than this one: " + ", ".join(stale)
-        + ". Rerun `globalmacro build --full` to rebuild both halves together, or "
-          "pass --async-only to validate to skip the checks that need them."))
+        + ". Only `consistency` is compromised by this -- it is the one check that "
+          "grades sync against async; every other full-mode check grades sync against "
+          "third-party reference data, and the async-side checks don't read the sync "
+          "panels at all. Rerun `globalmacro build --full` to rebuild both halves "
+          "together, or pass --async-only to validate to run the rest."))
 
 
 def resolve_mode(flag: str | None, cap: Capability, stage: str) -> str:
