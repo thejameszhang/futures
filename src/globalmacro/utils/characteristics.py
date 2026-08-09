@@ -25,12 +25,46 @@ def calc_returns_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     Returns:
         pl.Expr - the returns of the i-th month contract until expiry date of each contract
     """
+    # True when the front dropped out and everything shifted up a slot, so today's slot i is
+    # yesterday's slot i+1 -- the SAME contract, and the ratio below is correct.
+    roll = (pl.col('daystomaturity_1').shift(1) == 0) | (pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1))
+    # Which contract the denominator price actually belongs to, given that choice.
+    denominator = pl.when(roll).then(pl.col(f'lasttrddate_{i + 1}').shift(1)).otherwise(pl.col(f'lasttrddate_{i}').shift(1))
+    # futures.py ranks contracts over the rows that EXIST for a date, and a contract with no
+    # price has no row -- so on an exchange holiday a far-dated contract can occupy slot 1
+    # (NG 2012-09-03 +62%, C 2016-12-28 +5038%). `roll` already rescues the common one-slot
+    # shift; this guard covers the residual. A ratio between two different contracts is not a
+    # return, so emit null rather than a number. 1,074 cells across 105 classes.
+    same_contract = pl.col(f'lasttrddate_{i}') == denominator
     return ([
-        pl.when((pl.col('daystomaturity_1').shift(1) == 0) | (pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1)))
-        .then((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i + 1}').shift(1)) - 1)
-        .otherwise((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1)
+        pl.when(same_contract)
+        .then(
+            pl.when(roll)
+            .then((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i + 1}').shift(1)) - 1)
+            .otherwise((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1)
+        )
+        .otherwise(None)
         .over('clscode').alias(f'ret_temp_{i}'),
     ])
+
+def contract_identity_exprs(i: int) -> tuple[pl.Expr, pl.Expr]:
+    """(numerator contract, denominator contract) for the finalised ret_i.
+
+    Single source of truth: futures.py's post-coalesce guard and cross_contract_cells both
+    use this, so the fix and its verification cannot measure different things.
+
+    ret_i is ret_temp_{i+1} when exp_1 == 1, else ret_temp_i
+    (calc_returns_with_price_adj_and_roll), so the numerator slot shifts with exp_1.
+    """
+    roll = (pl.col('daystomaturity_1').shift(1).over('clscode') == 0) | (
+        pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1).over('clscode'))
+    num = pl.when(pl.col('exp_1') == 1).then(pl.col(f'lasttrddate_{i + 1}')).otherwise(pl.col(f'lasttrddate_{i}'))
+    den = (pl.when(pl.col('exp_1') == 1)
+           .then(pl.when(roll).then(pl.col(f'lasttrddate_{i + 2}').shift(1).over('clscode'))
+                 .otherwise(pl.col(f'lasttrddate_{i + 1}').shift(1).over('clscode')))
+           .otherwise(pl.when(roll).then(pl.col(f'lasttrddate_{i + 1}').shift(1).over('clscode'))
+                      .otherwise(pl.col(f'lasttrddate_{i}').shift(1).over('clscode'))))
+    return num, den
 
 def calc_returns_with_price_adj_and_roll(i: int) -> list[pl.Expr]:
     """
