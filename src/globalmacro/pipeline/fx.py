@@ -336,8 +336,9 @@ if __name__ == "__main__":
     #   async  -> Datastream direct (end-of-day / settlement-timed)
     #   sync   -> Compustat cross   (WM/R 4pm London ~ 11am ET)
     # Async first, and completely. Compustat is a separate WRDS entitlement and its panel
-    # feeds only the SYNC _usd output; a failure there must not also cost us the async
-    # panel we have already computed.
+    # feeds SYNC outputs generally -- not just the _usd sidecar, but sync dataset content
+    # too (the synthetic-sync splice backfills NOK/SEK/6N/6A pre-listing); a failure there
+    # must not also cost us the async panels we have already computed.
     fx_async = build_datastream_direct_panel()
     fx_async.write_csv(FX_PATH / "fx_async.csv")
     build_synthetic(fx_async).write_csv(FX_PATH / "synthetic_fx_returns_async.csv")
