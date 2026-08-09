@@ -117,8 +117,15 @@ def test_autodetects_async_only_with_no_shards(tmp_path):
 
 
 def _make_sync_panels(root: Path) -> None:
-    """Just sync_panels_ready()'s three files -- enough on its own to trip the F1
-    guard (either predicate reporting ready is enough)."""
+    """sync_panels_ready()'s three files. Since F3a, sync_panels_ready() itself
+    consults sync_stage_outputs_ready() first, so a realistic "healthy prior full
+    build" fixture needs the ten stage outputs too, or sync_panels_ready() reports
+    NOT ready for the wrong reason (missing stage outputs, not missing panels) and
+    F1's guard (which checks .ready on both predicates) never fires. Call
+    _make_sync_stage_outputs FIRST for exactly this reason -- tier2/currency's path
+    is shared between the two fixtures (see test_capabilities.py's identical note),
+    so this call also covers it."""
+    _make_sync_stage_outputs(root)
     for rel in (
         "tier1/sync/sync_daily.csv",
         "tier2/sync/sync_daily.csv",
@@ -241,6 +248,27 @@ def test_broken_venv_capability_check_falls_back_to_full(tmp_path):
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     assert "mode=full" in out
+
+
+def test_capability_check_error_is_surfaced_not_discarded(tmp_path):
+    """F7: the capability probe's stderr must no longer be thrown away (was
+    2>/dev/null). A broken/partial `uv sync`, a .venv built for another
+    interpreter, or a misresolved root previously yielded MODE=full with only
+    "capability check failed; assuming --full" -- the actual import error was
+    discarded, leaving a tick-less researcher with no clue why the DAG stalled
+    behind 12 tickhistory jobs it fails-toward-full submitted. The fail-toward-full
+    direction is unchanged (still mode=full); this only adds visibility into why."""
+    repo = _fake_repo(tmp_path, python_stub=(
+        "#!/bin/bash\n"
+        "echo 'ModuleNotFoundError: no module named globalmacro' >&2\n"
+        "echo 'Traceback (most recent call last):' >&2\n"
+        "exit 1\n"
+    ))
+    r = _dry_run_in(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert "mode=full" in out
+    assert "ModuleNotFoundError: no module named globalmacro" in out
 
 
 def test_full_mode_dag_matches_committed_baseline(tmp_path):

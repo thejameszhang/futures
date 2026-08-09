@@ -34,15 +34,25 @@ done
 # run_all.sh must stay usable for --dry-run on a machine with no built venv.
 if [ -z "$MODE" ]; then
   if [ -x .venv/bin/python ]; then
+    # F7: capture the probe's stderr instead of discarding it (was 2>/dev/null) --
+    # a broken/partial `uv sync`, a .venv built for another interpreter, or a
+    # misresolved root previously yielded MODE=full with only "capability check
+    # failed; assuming --full" and the actual import error thrown away. The
+    # fail-toward-full direction stays: this only adds visibility into WHY.
+    _CAPERR=$(mktemp)
     _CAP=$(.venv/bin/python -c "
 from globalmacro.utils.capabilities import shards_ready
 c = shards_ready()
 print('full' if c.ready else 'async-only')
 print(c.message or '')
-" 2>/dev/null) || _CAP=""
+" 2>"$_CAPERR") || _CAP=""
     if [ -z "$_CAP" ]; then
       MODE=full
       echo "[run_all] capability check failed; assuming --full" >&2
+      if [ -s "$_CAPERR" ]; then
+        echo "[run_all] capability check error (first 5 lines):" >&2
+        head -5 "$_CAPERR" >&2
+      fi
     else
       MODE=$(printf '%s\n' "$_CAP" | head -1)
       # Allowlist: `head -1` takes whatever line lands first, so a stray banner
@@ -58,6 +68,7 @@ print(c.message or '')
       _MSG=$(printf '%s\n' "$_CAP" | sed -n 2p)
       [ -n "$_MSG" ] && echo "[run_all] $_MSG" >&2
     fi
+    rm -f "$_CAPERR"
   else
     MODE=full
     echo "[run_all] no .venv/bin/python; assuming --full" >&2
