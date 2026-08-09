@@ -14,6 +14,7 @@ import polars as pl
 
 from globalmacro.build import first_valid_date
 from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
+from globalmacro.utils.capabilities import sync_panels_ready
 from globalmacro.utils.paths import FX_PATH
 from globalmacro.validation.base import Check, Invariant
 from globalmacro.validation.synthetic import (
@@ -69,11 +70,11 @@ def _pairs() -> pl.DataFrame:
     )
 
 
-def source_diagonal() -> pl.DataFrame:
+def source_diagonal(datasets: tuple[str, ...] = ("sync", "async")) -> pl.DataFrame:
     """Per currency: each synthetic's daily correlation against each futures panel."""
     datastream, compustat = _synthetics()
     rows = []
-    for dataset in ("sync", "async"):
+    for dataset in datasets:
         pre, ship = pre_splice_panel(dataset), shipped_panel(dataset, tier=1)
         for symbol in sorted(c for c in datastream.columns if c != "date"):
             if symbol not in ship.columns or symbol not in pre.columns:
@@ -106,10 +107,15 @@ def source_diagonal() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+_SOURCES = {"sync": "Compustat", "async": "Datastream"}
+
+
 def _invariants() -> list[Invariant]:
-    d = source_diagonal()
+    datasets = ("sync", "async") if sync_panels_ready().ready else ("async",)
+    d = source_diagonal(datasets)
     out = []
-    for dataset, source in (("sync", "Compustat"), ("async", "Datastream")):
+    for dataset in datasets:
+        source = _SOURCES[dataset]
         sub = d.filter(pl.col("dataset") == dataset)
         wins = sub.filter(pl.col("winner") == pl.col("expected")).height
         total = sub.height
@@ -125,9 +131,11 @@ def _invariants() -> list[Invariant]:
 
 
 def _figures(out_dir: Path) -> None:
+    if not sync_panels_ready().ready:
+        return          # a paired sync-vs-async comparison has no meaning with one side missing
     from globalmacro.validation.plots import plot_paired_bars
 
-    d = source_diagonal()
+    d = source_diagonal()          # unchanged: both datasets in full mode
     plot_paired_bars(
         d,
         group_col="dataset",

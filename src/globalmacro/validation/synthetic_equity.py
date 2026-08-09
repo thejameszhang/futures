@@ -27,6 +27,7 @@ from globalmacro.build import (
     load_symbols,
     load_synthetic_returns,
 )
+from globalmacro.utils.capabilities import sync_panels_ready
 from globalmacro.validation.base import Check, Invariant
 from globalmacro.validation.synthetic import (
     daily_corr,
@@ -231,6 +232,8 @@ def alignment() -> pl.DataFrame:
 
 
 def _invariants() -> list[Invariant]:
+    if not sync_panels_ready().ready:
+        return []          # both invariants derive from alignment(), which is sync-only
     a = alignment()
 
     # Grade only the symbols the data can actually speak about. An indeterminate symbol is
@@ -279,6 +282,8 @@ def _invariants() -> list[Invariant]:
 
 
 def _figures(out_dir: Path) -> None:
+    if not sync_panels_ready().ready:
+        return          # equity_alignment.pdf is a sync-only comparison; nothing to draw
     from globalmacro.validation.plots import plot_paired_bars
 
     a = alignment().with_columns(
