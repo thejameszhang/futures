@@ -20,7 +20,12 @@ S=slurm
 # re-registered) by each: a second `trap ... EXIT` would silently REPLACE this one
 # rather than add to it, un-covering whatever it already tracked.
 _TMPFILES=()
-trap 'rm -f "${_TMPFILES[@]}"' EXIT
+# R2-2 (portability): "${_TMPFILES[@]-}" not "${_TMPFILES[@]}" -- with an EMPTY
+# array (the state at every exit before the first mktemp call below), bash <= 4.3
+# treats "${arr[@]}" as an unset-variable reference under `set -u` and aborts. This
+# cluster runs bash 5.1.8 (unaffected), but the `-` default keeps the trap itself
+# safe on any bash version without changing behavior on this one.
+trap 'rm -f "${_TMPFILES[@]-}"' EXIT
 
 DRY=0; WITH_DL=0; MODE=""; MODE_EXPLICIT=0
 for a in "$@"; do
