@@ -60,7 +60,7 @@ MIN_ALIGNMENT_SIGNAL = 0.30
 # fields below, so the names/filename async-only prints under "## Skipped" cannot
 # drift from what full mode would actually emit for the same invariant/figure (see
 # synthetic_fx._invariant_name's docstring for the same rationale; see the
-# `Check.dropped_invariants` field's own docstring in base.py -- this is a shared
+# `Check.dropped_invariants` field's own comment in base.py -- this is a shared
 # constant, not a call into the check, so it does not run the sync-only code
 # async-only mode exists to avoid).
 _ALIGNMENT_INVARIANT = "shipped alignment is the one the data prefers, per symbol"
