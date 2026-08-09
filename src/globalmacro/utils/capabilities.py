@@ -7,6 +7,7 @@ Shard presence is not build-readiness.
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -192,4 +193,17 @@ def resolve_mode(flag: str | None, cap: Capability, stage: str) -> str:
         raise ValueError(
             f"globalmacro {stage}: unrecognized mode {flag!r}; "
             'expected "full", "async-only", or unset for auto-detection')
-    return "full" if cap.ready else "async-only"
+    if cap.ready:
+        return "full"
+    if cap.message:
+        # stderr, never stdout: run_all.sh's capability probe parses this function's
+        # stdout (via a caller a layer up) to decide the mode for the whole DAG, so
+        # noise here would corrupt that parse. A clean-absent capability (message is
+        # None -- the researcher's normal state) stays silent: that is not a warning,
+        # and noise there would train people to ignore it. Without this, a partial
+        # state (some tickhistory stage outputs missing, e.g. a died job) resolves
+        # async-only, prints nothing, and silently overwrites the async panels while
+        # leaving the sync panels stale.
+        print(f"globalmacro {stage}: sync inputs not ready -> async-only mode. "
+              f"{cap.message}", file=sys.stderr)
+    return "async-only"

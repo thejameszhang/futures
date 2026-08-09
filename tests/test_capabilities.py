@@ -105,6 +105,47 @@ def test_resolve_mode():
         cap.resolve_mode("full", absent, "build")
 
 
+def test_resolve_mode_auto_prints_diagnostic_on_partial_state(capsys):
+    """F2: the auto path must not throw away cap.message -- a partial state (e.g. 6
+    of 10 tickhistory stage outputs present) must surface it, on stderr only."""
+    partial = cap.Capability(False, "missing tickhistory stage outputs: foo.csv")
+    mode = cap.resolve_mode(None, partial, "build")
+    assert mode == "async-only"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "globalmacro build: sync inputs not ready -> async-only mode." in captured.err
+    assert "missing tickhistory stage outputs: foo.csv" in captured.err
+
+
+def test_resolve_mode_auto_silent_on_clean_absent_state(capsys):
+    """A cleanly-absent capability (message is None -- the researcher's normal state)
+    must stay silent: that is not a warning."""
+    absent = cap.Capability(False, None)
+    mode = cap.resolve_mode(None, absent, "build")
+    assert mode == "async-only"
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
+
+
+def test_resolve_mode_auto_silent_on_ready_path(capsys):
+    ready = cap.Capability(True, None)
+    mode = cap.resolve_mode(None, ready, "build")
+    assert mode == "full"
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
+
+
+def test_resolve_mode_explicit_flags_stay_silent_regardless_of_message(capsys):
+    """Unchanged behaviour for both explicit flags: the diagnostic print is on the
+    auto path (flag is None) only."""
+    ready = cap.Capability(True, None)
+    partial = cap.Capability(False, "missing tickhistory stage outputs: foo.csv")
+    assert cap.resolve_mode("full", ready, "build") == "full"
+    assert cap.resolve_mode("async-only", partial, "build") == "async-only"
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
+
+
 def test_resolve_mode_rejects_unrecognized_flags():
     """A flag that isn't exactly "full" or "async-only" must not silently fall through
     to auto-detection -- that's the exact silent degradation --full exists to prevent."""
