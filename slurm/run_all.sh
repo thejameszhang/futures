@@ -12,6 +12,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."          # repo root
 S=slurm
+
+# A's TRIVIAL 1: every temp file this script creates (the capability-probe stderr
+# capture below, and the dry-run job-id counter further down) is cleaned up on ANY
+# exit, including a `set -e` abort in between two mktemp calls -- not just the
+# happy path. Installed here, before the FIRST mktemp, and appended to (never
+# re-registered) by each: a second `trap ... EXIT` would silently REPLACE this one
+# rather than add to it, un-covering whatever it already tracked.
+_TMPFILES=()
+trap 'rm -f "${_TMPFILES[@]}"' EXIT
+
 DRY=0; WITH_DL=0; MODE=""; MODE_EXPLICIT=0
 for a in "$@"; do
   case "$a" in
@@ -39,7 +49,7 @@ if [ -z "$MODE" ]; then
     # misresolved root previously yielded MODE=full with only "capability check
     # failed; assuming --full" and the actual import error thrown away. The
     # fail-toward-full direction stays: this only adds visibility into WHY.
-    _CAPERR=$(mktemp)
+    _CAPERR=$(mktemp); _TMPFILES+=("$_CAPERR")
     _CAP=$(.venv/bin/python -c "
 from globalmacro.utils.capabilities import shards_ready
 c = shards_ready()
@@ -130,7 +140,9 @@ fi
 
 # dry-run job-id counter lives in a temp file: submit() runs inside $(...), so a
 # plain variable would only increment in the subshell (every id would be DRY1).
-_SEQ=$(mktemp); echo 0 > "$_SEQ"; trap 'rm -f "$_SEQ"' EXIT
+# Appended to the shared _TMPFILES cleanup trap installed at the top of this
+# script, not a second independent trap (which would replace, not add to, it).
+_SEQ=$(mktemp); echo 0 > "$_SEQ"; _TMPFILES+=("$_SEQ")
 # submit <deps-colon-list-or-empty> <sbatch-args...> ; echoes a job id (real or fake)
 submit() {
   local deps="$1"; shift
