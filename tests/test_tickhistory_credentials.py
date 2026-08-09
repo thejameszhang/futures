@@ -115,9 +115,9 @@ def test_network_guard_stub_records_keyword_argument_calls(pytester):
             # Safety net, not the thing under test: runpytest_subprocess() inherits the
             # full parent environment (_pytest.pytester.Pytester.popen: env =
             # os.environ.copy()), so if the outer process loaded real DSS_USERNAME/
-            # DSS_PASSWORD from a repo .env, AND the copied conftest.py's guard is the
-            # regressed one -- exactly the scenario this test exists to catch -- the call
-            # below reaches the REAL validate_credentials and sends real credentials to
+            # DSS_PASSWORD from a repo .env, AND the copied conftest.py's guard is a
+            # regressed or absent guard -- the call below reaches the REAL
+            # validate_credentials and sends real credentials to
             # selectapi.datascope.refinitiv.com. This happened once during this branch's
             # development (see cc4a8f8). Deleting DSS_USERNAME makes
             # credentials_present() short-circuit before any request is built, regardless

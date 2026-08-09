@@ -150,7 +150,11 @@ def main(argv=None):
         # scratch mount) would otherwise be caught by the WRDS handler above and
         # misreported as "WRDS connection failed", and would exit 1. LSEG/tick-shard
         # status must never affect connect's exit code: WRDS-only researchers are
-        # exactly who this pre-flight (USAGE.md:53,55) must keep working for.
+        # exactly who the WRDS-credentials setup note and the HPC batch-execution
+        # warning in USAGE.md's WRDS-downloadable-inputs section must keep working
+        # for -- a line-number citation here broke within one commit of being
+        # written (that doc section shifted ~40 lines in the same commit that added
+        # it), so this points at the prose instead of line numbers.
         try:
             from globalmacro.tickhistory_credentials import (
                 credentials_present,
