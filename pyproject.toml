@@ -40,6 +40,11 @@ testpaths = ["tests"]
 # root to sys.path so tests can `from scripts.foo import bar` (native pytest
 # option since 7.0, no plugin required).
 pythonpath = ["."]
+# A misspelled marker (e.g. `needs_sync` typo'd) would otherwise only warn
+# (PytestUnknownMarkWarning) and the test would run unguarded on whatever
+# machine collects it -- for needs_sync that means "runs and errors on a
+# tick-less machine", precisely the state Task 10 exists to eliminate.
+addopts = "--strict-markers"
 
 [tool.ruff]
 # Rule families mirror jkp-data for cross-repo lint consistency. line-length is

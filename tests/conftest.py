@@ -5,9 +5,10 @@ tests/, not just the file that motivated them:
 
 1. `needs_sync` marker: skips tests that need the sync datasets on disk, so
    the suite is runnable on a tick-less (async-only) machine. See
-   `_no_sync_datasets`/`pytest_collection_modifyitems` below.
-2. `_no_live_lseg_network`: a safety net against a live network call. See its
-   own docstring.
+   `pytest_collection_modifyitems` below.
+2. `_no_live_lseg_network`: a safety net against a live network call. It has
+   no docstring of its own -- the module-level comment directly above its
+   definition carries the prose instead.
 
 A conftest.py fixture is global by construction -- a mistake here has the
 largest possible blast radius. Both fixtures below default to the SAFE
@@ -20,6 +21,18 @@ import pytest
 
 import globalmacro.tickhistory_credentials as tc
 from globalmacro.utils.capabilities import sync_panels_ready
+
+# The `pytester` fixture is bundled with pytest but not enabled by default; it must be
+# requested via `pytest_plugins` in an *initial* conftest.py -- one collected before any
+# test file, which this one is (pyproject.toml's testpaths = ["tests"] makes this the
+# root of collection). Declaring it in a conftest.py reached only during collection
+# (e.g. one nested under a subpackage) is deprecated/rejected instead.
+# tests/test_tickhistory_credentials.py uses it for a regression test proving the
+# `_no_live_lseg_network` stub below matches validate_credentials' real signature (F1):
+# that test must trigger this fixture's own teardown assertion for real to prove a
+# keyword-argument call is recorded, which would fail the CURRENT test run if done
+# in-process -- `pytester` runs it as an isolated subprocess instead.
+pytest_plugins = ["pytester"]
 
 # ---------------------------------------------------------------------------
 # needs_sync: skip sync-coupled tests on a machine with no LSEG tick data.
@@ -42,7 +55,7 @@ def pytest_collection_modifyitems(config, items):
         return
     skip = pytest.mark.skip(reason="sync datasets absent (async-only machine)")
     for item in items:
-        if "needs_sync" in item.keywords:
+        if item.get_closest_marker("needs_sync"):
             item.add_marker(skip)
 
 
@@ -99,7 +112,7 @@ def _no_live_lseg_network(request, monkeypatch):
         yield
         return
     calls: list[int] = []
-    monkeypatch.setattr(tc, "validate_credentials", lambda: calls.append(1) or False)
+    monkeypatch.setattr(tc, "validate_credentials", lambda *a, **k: calls.append(1) or False)
     yield
     assert calls == [], (
         f"{request.node.name} reached tc.validate_credentials without installing "
