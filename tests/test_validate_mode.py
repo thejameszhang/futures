@@ -523,6 +523,79 @@ def test_remove_stale_figures_missing_ok_on_clean_tree(monkeypatch, tmp_path):
     assert vrun._remove_stale_figures("async-only") == []
 
 
+def test_remove_stale_figures_guard_rejects_path_traversal(monkeypatch, tmp_path):
+    """N5 (Reviewer B). _remove_stale_figures's path-traversal guard (p.parent.parent
+    != VALIDATION_OUTPUT, and no separator/".."/"" in p.name) had NO test -- a future
+    simplification could delete it with the suite green, on deletion code. Craft the
+    two shapes the guard exists for and prove both are refused:
+
+    1. A crafted SLUG ("../..") on a whole-dropped check: out_dir = VALIDATION_OUTPUT
+       / "../..", so its comparison.pdf lands two directories above VALIDATION_OUTPUT
+       on the real filesystem (the OS resolves ".." at each path component even
+       though pathlib's own .parent does not -- which is exactly why the guard
+       compares the raw, unresolved p.parent.parent rather than a resolved path).
+       VALIDATION_OUTPUT is nested two levels deep here so that escape target still
+       lands inside tmp_path, not a real shared directory.
+    2. A crafted dropped_figures ENTRY ("<tmp_path>/escape/x.pdf", an absolute path)
+       on a still-running check: pathlib's / operator discards everything to the left
+       of an absolute right operand, so out_dir / abs_path == abs_path verbatim,
+       escaping VALIDATION_OUTPUT entirely if unguarded.
+
+    Both planted files must survive, and _remove_stale_figures must remove nothing.
+    """
+    validation_output = tmp_path / "a" / "b" / "validation"
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", validation_output)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+
+    absolute_figure_target = tmp_path / "escape" / "x.pdf"
+    traversal_check = Check(
+        name="Traversal stub", slug="../..", run=_f9_stub_run,
+        pairs=_f9_stub_pairs, requires_sync=True,
+    )
+    leaky_check = Check(
+        name="Leaky stub", slug="leaky_stub", run=_f9_stub_run,
+        dropped_figures=(str(absolute_figure_target),),
+    )
+
+    def _checks(mode):
+        if mode == "async-only":
+            return [leaky_check]
+        return [traversal_check, leaky_check]
+
+    monkeypatch.setattr(vrun, "_available_checks", _checks)
+
+    # Sanity-check the fixture is shaped as intended before trusting the guard result:
+    # _stale_figure_paths must actually PRODUCE the malicious candidates, or this test
+    # would pass for the wrong reason (nothing to guard against). The traversal slug
+    # produces TWO candidates (comparison.pdf AND correlations.csv, F16), both sharing
+    # the same malicious out_dir.
+    candidates = vrun._stale_figure_paths("async-only")
+    assert len(candidates) == 3
+    slug_candidate = next(p for p in candidates if p.name == "comparison.pdf")
+    assert slug_candidate.parent.parent != validation_output
+    assert absolute_figure_target in candidates
+
+    # The real filesystem location the slug candidate resolves to once the OS
+    # processes "..": two directories above VALIDATION_OUTPUT == tmp_path/"a". The
+    # OS only resolves ".." while descending through REAL directories -- unlike
+    # unguarded removal, it will not walk through a "validation" that doesn't exist
+    # on disk -- so VALIDATION_OUTPUT itself must actually exist here, or this half
+    # of the test would "pass" even with the guard fully deleted (ENOENT on the
+    # nonexistent intermediate, not the guard, would be doing the protecting).
+    validation_output.mkdir(parents=True, exist_ok=True)
+    escape_via_slug = tmp_path / "a" / "comparison.pdf"
+    escape_via_slug.parent.mkdir(parents=True, exist_ok=True)
+    escape_via_slug.write_bytes(b"dummy")
+    absolute_figure_target.parent.mkdir(parents=True, exist_ok=True)
+    absolute_figure_target.write_bytes(b"dummy")
+
+    removed = vrun._remove_stale_figures("async-only")
+
+    assert removed == []
+    assert escape_via_slug.exists()
+    assert absolute_figure_target.exists()
+
+
 def test_main_wires_stale_figure_removal_for_async_only(monkeypatch, tmp_path):
     """Proves the cleanup is actually reachable from main(), not just a standalone
     function -- end to end via the repo's established hermetic stubbing pattern.
