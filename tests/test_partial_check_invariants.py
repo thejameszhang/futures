@@ -1,3 +1,4 @@
+import polars as pl
 import pytest
 
 from globalmacro.utils.capabilities import Capability
@@ -140,3 +141,93 @@ def test_synthetic_equity_figures_writes_the_pdf_in_full_mode(tmp_path):
     with validation_mode("full"):
         synthetic_equity._figures(tmp_path)
     assert (tmp_path / "equity_alignment.pdf").exists()
+
+
+# --- F2: dropped_invariants/dropped_figures must not drift from what _invariants()/
+# _figures() actually produce in full mode. Entirely data-free (source_diagonal/
+# alignment/plot_paired_bars stubbed), so -- unlike the real-data tests above -- these
+# run on a clean clone / empty data roots too, where a stale static literal would
+# otherwise go uncaught (the reviewer's D3 mutation: "6 passed, 4 skipped").
+
+def test_synthetic_fx_full_mode_invariants_order_and_count(monkeypatch):
+    """Pins the full-mode invariant NAMES/order/count synthetic_fx._invariants() emits
+    when both datasets are graded -- nothing did before (the older open finding F2
+    also closes). The names are literals, not re-derived from _SOURCES, so a rename of
+    _SOURCES (the reviewer's D1 mutation) is caught here directly, independent of the
+    vrun-level dropped_invariants pin."""
+    monkeypatch.setattr(synthetic_fx, "_grade_sync", lambda: True)
+    stub = pl.DataFrame({
+        "dataset": ["sync", "async"],
+        "instrument": ["X", "X"],
+        "datastream": [0.1, 0.9],
+        "compustat": [0.9, 0.1],
+        "expected": ["compustat", "datastream"],
+        "winner": ["compustat", "datastream"],
+    })
+    monkeypatch.setattr(synthetic_fx, "source_diagonal", lambda *a, **k: stub)
+    invs = synthetic_fx._invariants()
+    assert [i.name for i in invs] == [
+        "Compustat synthetic beats the other on the sync futures",
+        "Datastream synthetic beats the other on the async futures",
+    ]
+    assert [i.passed for i in invs] == [True, True]
+    # And that the sync-side name is the SAME string synthetic_fx_check.dropped_invariants
+    # names -- the two are constructed from one shared expression (_invariant_name), not
+    # two independently-typed literals.
+    assert invs[0].name == synthetic_fx.synthetic_fx_check.dropped_invariants[0]
+
+
+def test_synthetic_equity_full_mode_invariants_names_and_values(monkeypatch):
+    """Equity counterpart: pins the full-mode invariant names/values, data-free
+    (alignment() stubbed), and confirms they are the SAME literals
+    synthetic_equity_check.dropped_invariants names."""
+    monkeypatch.setattr(synthetic_equity, "_grade_sync", lambda: True)
+    stub = pl.DataFrame({
+        "instrument": ["SXF", "YM", "NQ", "RTY", "IPC"],
+        "same_day": [0.1, 0.1, 0.1, 0.1, 0.01],
+        "lag_1": [0.9, 0.9, 0.9, 0.9, 0.02],
+        "shipped": ["lag_1"] * 5,
+        "expected": ["lag_1", "lag_1", "lag_1", "lag_1", "indeterminate"],
+        "americas": [True] * 5,
+        "n_backfilled": [10] * 5,
+    })
+    monkeypatch.setattr(synthetic_equity, "alignment", lambda: stub)
+    invs = synthetic_equity._invariants()
+    assert [i.name for i in invs] == [
+        "shipped alignment is the one the data prefers, per symbol",
+        "every Americas symbol is actually under test",
+    ]
+    assert [i.passed for i in invs] == [True, True]
+    assert [i.name for i in invs] == list(synthetic_equity.synthetic_equity_check.dropped_invariants)
+
+
+def test_synthetic_fx_figure_path_matches_dropped_figures_data_free(monkeypatch, tmp_path):
+    """F2 proof for D3 (a renamed produced-figure filename): ties the ACTUAL path
+    _figures() hands to plot_paired_bars against Check.dropped_figures, entirely
+    data-free -- so a drift is caught even under empty data roots, where
+    test_synthetic_fx_figures_writes_the_pdf_in_full_mode (real-data) skips."""
+    monkeypatch.setattr(synthetic_fx, "_grade_sync", lambda: True)
+    monkeypatch.setattr(synthetic_fx, "source_diagonal", lambda *a, **k: pl.DataFrame())
+    captured: dict = {}
+    monkeypatch.setattr(
+        "globalmacro.validation.plots.plot_paired_bars",
+        lambda *a, **k: captured.update(path=k["path"]),
+    )
+    synthetic_fx._figures(tmp_path)
+    assert captured["path"] == tmp_path / synthetic_fx.synthetic_fx_check.dropped_figures[0]
+
+
+def test_synthetic_equity_figure_path_matches_dropped_figures_data_free(monkeypatch, tmp_path):
+    """Equity counterpart of the D3 proof above, data-free (alignment() stubbed)."""
+    monkeypatch.setattr(synthetic_equity, "_grade_sync", lambda: True)
+    stub = pl.DataFrame(
+        {"instrument": ["X"], "same_day": [0.1], "lag_1": [0.2], "americas": [True]}
+    )
+    monkeypatch.setattr(synthetic_equity, "alignment", lambda: stub)
+    captured: dict = {}
+    monkeypatch.setattr(
+        "globalmacro.validation.plots.plot_paired_bars",
+        lambda *a, **k: captured.update(path=k["path"]),
+    )
+    synthetic_equity._figures(tmp_path)
+    assert captured["path"] == tmp_path / synthetic_equity.synthetic_equity_check.dropped_figures[0]

@@ -8,7 +8,7 @@ import pytest
 from globalmacro.utils import capabilities as cap
 from globalmacro.validation import run as vrun
 from globalmacro.validation.base import Check
-from globalmacro.validation.mode import current_mode
+from globalmacro.validation.mode import current_mode, validation_mode
 
 
 def test_async_only_filters_exactly_the_full_sync_checks():
@@ -214,6 +214,41 @@ def test_dropped_invariants_names_the_three_synthetic_check_invariants():
 def test_dropped_figures_names_both_synthetic_check_figures():
     dropped = vrun._dropped_figures("async-only")
     assert dropped == ["fx_source_diagonal.pdf", "equity_alignment.pdf"]
+
+
+# --- F1: validation_mode() must reject anything but the two canonical literals ------
+
+@pytest.mark.parametrize("bad_mode", ["Full", "FULL", "aysnc-only", "", None])
+def test_validation_mode_rejects_invalid_modes(bad_mode):
+    """The same defect class build._validate_mode was written to close: a typo (or a
+    caller reaching this shim some way other than run.py's --async-only/--full CLI
+    path, which is the only constrained caller today) must raise loudly rather than
+    silently take the async-only branch -- `current_mode() == "full"` is False for
+    anything but the exact string "full", so an unvalidated mode degrades a run to
+    async-only with no error and no warning."""
+    assert current_mode() == "full"          # nothing has run yet
+    with pytest.raises(ValueError, match="unrecognized mode"), validation_mode(bad_mode):
+        pass
+    assert current_mode() == "full"          # the rejected value never took effect
+
+
+def test_validation_mode_accepts_the_two_canonical_literals():
+    with validation_mode("async-only"):
+        assert current_mode() == "async-only"
+    assert current_mode() == "full"
+    with validation_mode("full"):
+        assert current_mode() == "full"
+    assert current_mode() == "full"
+
+
+# --- N4: the docstring promises reset "including on an exception" -- prove it -------
+
+def test_validation_mode_resets_even_when_the_block_raises():
+    assert current_mode() == "full"
+    with pytest.raises(RuntimeError, match="boom"), validation_mode("async-only"):
+        assert current_mode() == "async-only"
+        raise RuntimeError("boom")
+    assert current_mode() == "full"          # reset even though the block raised
 
 
 # --- F1: the mode shim must not leak between two main() calls in one process --------

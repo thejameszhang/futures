@@ -56,6 +56,16 @@ _FX_SYNTHETIC_COLS = ("NOK", "SEK", "6N", "6A")
 # index's exchange, a human judgement -- see build.AMERICAS_CASH_INDICES.
 MIN_ALIGNMENT_SIGNAL = 0.30
 
+# Shared between _invariants()/_figures() and synthetic_equity_check's dropped_*
+# fields below, so the names/filename async-only prints under "## Skipped" cannot
+# drift from what full mode would actually emit for the same invariant/figure (see
+# synthetic_fx._invariant_name's docstring for the same rationale; base.py:36-41 --
+# a shared constant, not a call into the check, so this does not run the sync-only
+# code async-only mode exists to avoid).
+_ALIGNMENT_INVARIANT = "shipped alignment is the one the data prefers, per symbol"
+_COVERAGE_INVARIANT = "every Americas symbol is actually under test"
+_ALIGNMENT_PDF = "equity_alignment.pdf"
+
 
 @lru_cache(maxsize=1)
 def _synth_panels() -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -277,13 +287,13 @@ def _invariants() -> list[Invariant]:
     return [
         Invariant(
             check=NAME,
-            name="shipped alignment is the one the data prefers, per symbol",
+            name=_ALIGNMENT_INVARIANT,
             value=detail,
             passed=total > 0 and correct == total,
         ),
         Invariant(
             check=NAME,
-            name="every Americas symbol is actually under test",
+            name=_COVERAGE_INVARIANT,
             value=f"{len(expected_americas) - len(missing)}/{len(expected_americas)}"
                   + (f" (MISSING: {missing})" if missing else ""),
             passed=not missing,
@@ -310,7 +320,7 @@ def _figures(out_dir: Path) -> None:
         title="Daily correlation of the synthetic equity return with the sync future\n"
               "The 09:31 ET window holds the PREVIOUS session for Americas indices only",
         ylabel="daily correlation",
-        path=out_dir / "equity_alignment.pdf",
+        path=out_dir / _ALIGNMENT_PDF,
     )
 
 
@@ -322,9 +332,6 @@ synthetic_equity_check = Check(
     series_labels=("spot synthetic", "real future"),
     invariants=_invariants,
     figures=_figures,
-    dropped_invariants=(
-        "shipped alignment is the one the data prefers, per symbol",
-        "every Americas symbol is actually under test",
-    ),
-    dropped_figures=("equity_alignment.pdf",),
+    dropped_invariants=(_ALIGNMENT_INVARIANT, _COVERAGE_INVARIANT),
+    dropped_figures=(_ALIGNMENT_PDF,),
 )

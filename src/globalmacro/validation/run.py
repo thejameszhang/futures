@@ -181,9 +181,9 @@ def main(argv=None):
     dropped_invariants = _dropped_invariants(mode)
     dropped_figures = _dropped_figures(mode)
     for name in dropped_invariants:
-        print(f"[SKIP] invariant: {name:24s} SKIPPED (async-only run)")
+        print(f"[SKIP] invariant: {name} SKIPPED (async-only run)")
     for name in dropped_figures:
-        print(f"[SKIP] figure: {name:27s} SKIPPED (async-only run)")
+        print(f"[SKIP] figure: {name} SKIPPED (async-only run)")
 
     write_summary(
         results, invariants, VALIDATION_OUTPUT / "VALIDATION_SUMMARY.md",
