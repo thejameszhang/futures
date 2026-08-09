@@ -112,3 +112,46 @@ def test_write_summary_renders_skipped_section(tmp_path):
     assert "Async vs sync consistency" in text
     assert "External ground-truth cross-check" in text
     assert text.count("SKIPPED (async-only run)") == 2
+
+
+def test_write_summary_renders_dropped_invariants_and_figures(tmp_path):
+    """F2: a check that keeps running in async-only mode but drops SOME of its
+    invariants/figures must have those named too, not just wholly-skipped checks."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency"],
+        ["Compustat synthetic beats the other on the sync futures"],
+        ["fx_source_diagonal.pdf", "equity_alignment.pdf"],
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "Async vs sync consistency" in text
+    assert "Invariant: Compustat synthetic beats the other on the sync futures" in text
+    assert "Figure: fx_source_diagonal.pdf" in text
+    assert "Figure: equity_alignment.pdf" in text
+    assert text.count("SKIPPED (async-only run)") == 4
+
+
+def test_write_summary_renders_dropped_invariants_with_no_skipped_checks(tmp_path):
+    """Async-only can drop a partial-check invariant/figure with NO check fully
+    skipped (hypothetically) -- the section must still render from dropped_invariants/
+    dropped_figures alone, not require `skipped` to be truthy too."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        None,
+        ["shipped alignment is the one the data prefers, per symbol"],
+        None,
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "Invariant: shipped alignment is the one the data prefers, per symbol" in text
+
+
+def test_write_summary_full_mode_omits_skipped_section_entirely(tmp_path):
+    """Byte-identical full mode: skipped/dropped_invariants/dropped_figures all empty
+    (run.py's mode == "full" branch) must render NOTHING under '## Skipped'."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary([grade("Demo", "demo", _df([0.99]))], [], path, [], [], [])
+    assert "## Skipped" not in path.read_text()

@@ -17,6 +17,7 @@ from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
 from globalmacro.utils.capabilities import sync_panels_ready
 from globalmacro.utils.paths import FX_PATH
 from globalmacro.validation.base import Check, Invariant
+from globalmacro.validation.mode import current_mode
 from globalmacro.validation.synthetic import (
     daily_corr,
     load_panel,
@@ -110,8 +111,19 @@ def source_diagonal(datasets: tuple[str, ...] = ("sync", "async")) -> pl.DataFra
 _SOURCES = {"sync": "Compustat", "async": "Datastream"}
 
 
+def _grade_sync() -> bool:
+    """The sync half needs BOTH: the sync panels present (sync_panels_ready), AND the
+    resolved mode actually "full" (validation.mode.current_mode) -- an explicit
+    --async-only must suppress it even when the panels are on disk and fresh. Pure and
+    data-free: neither operand reads a file, so this is unit-testable by monkeypatching
+    sync_panels_ready and setting the mode via validation.mode.validation_mode, with no
+    real data involved. Defaults to sync_panels_ready().ready alone whenever nothing has
+    set the mode (current_mode()'s own default is "full") -- the pre-Task-6 behaviour."""
+    return current_mode() == "full" and sync_panels_ready().ready
+
+
 def _invariants() -> list[Invariant]:
-    datasets = ("sync", "async") if sync_panels_ready().ready else ("async",)
+    datasets = ("sync", "async") if _grade_sync() else ("async",)
     d = source_diagonal(datasets)
     out = []
     for dataset in datasets:
@@ -131,11 +143,11 @@ def _invariants() -> list[Invariant]:
 
 
 def _figures(out_dir: Path) -> None:
-    if not sync_panels_ready().ready:
+    if not _grade_sync():
         return          # a paired sync-vs-async comparison has no meaning with one side missing
     from globalmacro.validation.plots import plot_paired_bars
 
-    d = source_diagonal()          # unchanged: both datasets in full mode
+    d = source_diagonal()
     plot_paired_bars(
         d,
         group_col="dataset",
@@ -158,4 +170,6 @@ synthetic_fx_check = Check(
     series_labels=("CIP synthetic", "real future"),
     invariants=_invariants,
     figures=_figures,
+    dropped_invariants=("Compustat synthetic beats the other on the sync futures",),
+    dropped_figures=("fx_source_diagonal.pdf",),
 )

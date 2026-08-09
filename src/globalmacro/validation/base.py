@@ -62,6 +62,15 @@ class Check:
     # True when the check cannot run without the sync panels. Filtered out entirely in
     # async-only mode; see run.py:_available_checks.
     requires_sync: bool = False
+    # Names of invariants/figure filenames this check's own invariants()/figures() omit
+    # in async-only mode, WHILE THE CHECK ITSELF STILL RUNS (requires_sync=False). Static,
+    # not derived by calling the check with mode="full": deriving it would mean running
+    # the sync-only code async-only mode exists to avoid. Only synthetic_fx and
+    # synthetic_equity set these; every other check either always emits the same
+    # invariants/figures or is dropped whole (requires_sync=True, already named under
+    # run.py's "## Skipped" checks list). See run.py:_dropped_invariants/_dropped_figures.
+    dropped_invariants: tuple[str, ...] = ()
+    dropped_figures: tuple[str, ...] = ()
 
 
 def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
@@ -85,6 +94,8 @@ def write_summary(
     invariants: list[Invariant],
     path: Path,
     skipped: list[str] | None = None,
+    dropped_invariants: list[str] | None = None,
+    dropped_figures: list[str] | None = None,
 ) -> None:
     lines = [
         "# Validation Summary",
@@ -113,17 +124,22 @@ def write_summary(
         for i in invariants:
             status = "✅ PASS" if i.passed else "❌ FAIL"
             lines.append(f"| {i.check} | {i.name} | {i.value} | {status} |")
-    if skipped:
+    if skipped or dropped_invariants or dropped_figures:
         lines += [
             "",
             "## Skipped",
             "",
-            "Checks that need the sync panels and were not run in this mode.",
+            "Checks, invariants and figures that need the sync panels and were not run "
+            "in this mode -- named explicitly rather than silently absent (spec §4.6).",
             "",
-            "| Exercise | Result |",
+            "| Item | Result |",
             "|---|:--:|",
         ]
-        for name in skipped:
+        for name in skipped or []:
             lines.append(f"| {name} | SKIPPED (async-only run) |")
+        for name in dropped_invariants or []:
+            lines.append(f"| Invariant: {name} | SKIPPED (async-only run) |")
+        for name in dropped_figures or []:
+            lines.append(f"| Figure: {name} | SKIPPED (async-only run) |")
     lines.append("")
     path.write_text("\n".join(lines))

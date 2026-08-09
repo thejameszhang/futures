@@ -2,10 +2,13 @@ import os
 import sys
 from pathlib import Path
 
+import polars as pl
 import pytest
 
 from globalmacro.utils import capabilities as cap
 from globalmacro.validation import run as vrun
+from globalmacro.validation.base import Check
+from globalmacro.validation.mode import current_mode
 
 
 def test_async_only_filters_exactly_the_full_sync_checks():
@@ -184,3 +187,77 @@ def test_full_mode_refuses_when_sync_panels_are_stale(monkeypatch, tmp_path):
     monkeypatch.setattr(vrun, "_available_checks", lambda mode: [])
     with pytest.raises(SystemExit, match="sync panels predate their async counterparts"):
         vrun.main(["--full"])
+
+
+# --- F2: dropped invariants/figures within a still-running check are named, not silent
+
+def test_dropped_invariants_empty_in_full_mode():
+    assert vrun._dropped_invariants("full") == []
+
+
+def test_dropped_figures_empty_in_full_mode():
+    assert vrun._dropped_figures("full") == []
+
+
+def test_dropped_invariants_names_the_three_synthetic_check_invariants():
+    """synthetic_fx drops one (the Compustat/sync-side invariant); synthetic_equity
+    drops both of its own (both derive from alignment(), which is sync-only) -- three
+    total, matching what the reviewer counted."""
+    dropped = vrun._dropped_invariants("async-only")
+    assert dropped == [
+        "Compustat synthetic beats the other on the sync futures",
+        "shipped alignment is the one the data prefers, per symbol",
+        "every Americas symbol is actually under test",
+    ]
+
+
+def test_dropped_figures_names_both_synthetic_check_figures():
+    dropped = vrun._dropped_figures("async-only")
+    assert dropped == ["fx_source_diagonal.pdf", "equity_alignment.pdf"]
+
+
+# --- F1: the mode shim must not leak between two main() calls in one process --------
+
+def _stub_correlations():
+    return pl.DataFrame(
+        {"instrument": [], "correlation": [], "n_obs": []},
+        schema={"instrument": pl.Utf8, "correlation": pl.Float64, "n_obs": pl.Int64},
+    )
+
+
+def test_validation_mode_does_not_leak_between_two_runs_in_one_process(monkeypatch, tmp_path):
+    """F1's mode shim (validation.mode) is scoped to a single main() call via a context
+    manager. Prove it: run async-only then full in the same process, with a stub check
+    whose invariants() callable records validation.mode.current_mode() -- and confirm
+    neither run sees the other's mode, and module state is back to the default ("full")
+    both between and after the two calls.
+
+    Entirely data-free: VALIDATION_OUTPUT is redirected to tmp_path, the real checks and
+    symbol-count sources are replaced with a stub/empty list, and the sync-panel
+    capability checks are stubbed -- no real DATASETS_ROOT or VALIDATION_OUTPUT is ever
+    touched, and main() is never called with real paths (binding constraint)."""
+    seen: list[str] = []
+
+    def _record_invariants():
+        seen.append(current_mode())
+        return []
+
+    stub_check = Check(
+        name="stub", slug="stub", run=_stub_correlations, invariants=_record_invariants,
+    )
+
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", lambda mode: [stub_check])
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
+    monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
+
+    assert current_mode() == "full"          # nothing has run yet
+
+    vrun.main(["--async-only"])
+    assert seen == ["async-only"]
+    assert current_mode() == "full"          # reset after the async-only run
+
+    vrun.main(["--full"])
+    assert seen == ["async-only", "full"]
+    assert current_mode() == "full"          # reset after the full run too

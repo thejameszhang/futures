@@ -29,6 +29,7 @@ from globalmacro.build import (
 )
 from globalmacro.utils.capabilities import sync_panels_ready
 from globalmacro.validation.base import Check, Invariant
+from globalmacro.validation.mode import current_mode
 from globalmacro.validation.synthetic import (
     daily_corr,
     pre_splice_panel,
@@ -231,8 +232,17 @@ def alignment() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def _grade_sync() -> bool:
+    """Mirrors synthetic_fx._grade_sync: the sync half needs BOTH the sync panels present
+    (sync_panels_ready) AND the resolved mode actually "full" (validation.mode.
+    current_mode) -- an explicit --async-only must suppress it even when the panels are
+    on disk and fresh. Data-free, so unit-testable by monkeypatching sync_panels_ready
+    and setting the mode via validation.mode.validation_mode."""
+    return current_mode() == "full" and sync_panels_ready().ready
+
+
 def _invariants() -> list[Invariant]:
-    if not sync_panels_ready().ready:
+    if not _grade_sync():
         return []          # both invariants derive from alignment(), which is sync-only
     a = alignment()
 
@@ -282,7 +292,7 @@ def _invariants() -> list[Invariant]:
 
 
 def _figures(out_dir: Path) -> None:
-    if not sync_panels_ready().ready:
+    if not _grade_sync():
         return          # equity_alignment.pdf is a sync-only comparison; nothing to draw
     from globalmacro.validation.plots import plot_paired_bars
 
@@ -312,4 +322,9 @@ synthetic_equity_check = Check(
     series_labels=("spot synthetic", "real future"),
     invariants=_invariants,
     figures=_figures,
+    dropped_invariants=(
+        "shipped alignment is the one the data prefers, per symbol",
+        "every Americas symbol is actually under test",
+    ),
+    dropped_figures=("equity_alignment.pdf",),
 )
