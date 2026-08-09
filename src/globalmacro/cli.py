@@ -101,7 +101,16 @@ def _capability_report(
     if missing_manual_prereqs:
         # Named and pointed at USAGE.md rather than left to a later
         # FileNotFoundError or a DAG stalled behind a failed `comp` download.
-        lines.append("-> This machine needs one more file before it can build the ASYNC datasets:")
+        #
+        # R2-3: the missing JKP file blocks BOTH modes, not just async -- verified
+        # against build.py's own main(), which calls build_async() (the function
+        # that reads this file, via load_sectors_async()) UNCONDITIONALLY, before
+        # the `if mode == "full"` branch that gates build_sync(). A full-mode run
+        # never even reaches build_sync() while this file is missing.
+        lines.append(
+            "-> This machine needs one more file before it can build ANY dataset "
+            "(build always runs the async half first):"
+        )
         for p in missing_manual_prereqs:
             lines.append(f"   {p}")
         lines.append("   See USAGE.md's Detailed Data Prerequisites section.")

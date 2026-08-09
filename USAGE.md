@@ -64,7 +64,7 @@ tick-data download stage exists yet. `DSS_USERNAME`/`DSS_PASSWORD` are consumed 
   When the JKP file is missing — regardless of shard state, since it gates
   `load_sectors_async()`, which `build` calls unconditionally in every mode — it ends with
   a fourth shape instead, naming the missing file:
-  - `-> This machine needs one more file before it can build the ASYNC datasets:`
+  - `-> This machine needs one more file before it can build ANY dataset (build always runs the async half first):`
   - `   <path to the missing file>`
   - `   See USAGE.md's Detailed Data Prerequisites section.`
   - `Next:  globalmacro run --with-download`

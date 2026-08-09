@@ -115,6 +115,17 @@ def test_report_names_missing_jkp_sectors_file(tmp_path, monkeypatch):
     assert "can build the ASYNC datasets." not in out
 
 
+def test_report_names_missing_jkp_sectors_file_says_it_blocks_any_dataset(tmp_path, monkeypatch):
+    """R2-3: build.main() calls build_async() (the function that reads the JKP
+    sector file, via load_sectors_async()) UNCONDITIONALLY, before the `if mode ==
+    "full"` branch that gates build_sync() -- so the missing file blocks SYNC just
+    as much as ASYNC, not only ASYNC as the old wording implied."""
+    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
+    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
+    assert "before it can build ANY dataset" in out
+    assert "before it can build the ASYNC datasets" not in out
+
+
 def test_missing_synthetic_fx_sync_file_no_longer_blocks_the_report(tmp_path, monkeypatch):
     """F14 regression proof: FX_PATH/synthetic_fx_returns_sync.csv is a pipeline
     OUTPUT, not a prerequisite -- a missing copy (the state of every clean clone)
