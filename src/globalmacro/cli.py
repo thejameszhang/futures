@@ -144,17 +144,17 @@ def main(argv=None):
             # both so validation fails with a message instead of a raw traceback.
             print(f"WRDS connection failed: {exc}", file=sys.stderr)
             return 1
-        # Below here the WRDS try/except has already succeeded and returned control
-        # normally -- this is deliberately OUTSIDE that try/except (cli.py:101-118).
-        # An exception from shards_ready() (a stale TICKHISTORY_PATH, an unreadable
-        # scratch mount) would otherwise be caught by the WRDS handler above and
-        # misreported as "WRDS connection failed", and would exit 1. LSEG/tick-shard
-        # status must never affect connect's exit code: WRDS-only researchers are
-        # exactly who the WRDS-credentials setup note and the HPC batch-execution
-        # warning in USAGE.md's WRDS-downloadable-inputs section must keep working
-        # for -- a line-number citation here broke within one commit of being
-        # written (that doc section shifted ~40 lines in the same commit that added
-        # it), so this points at the prose instead of line numbers.
+        # Below here the WRDS try/except above has already succeeded and returned
+        # control normally -- this block is deliberately OUTSIDE it. An exception
+        # from shards_ready() (a stale TICKHISTORY_PATH, an unreadable scratch
+        # mount) would otherwise be caught by the WRDS handler and misreported as
+        # "WRDS connection failed", exiting 1. LSEG/tick-shard status must never
+        # affect connect's exit code: WRDS-only researchers are exactly who the
+        # WRDS-credentials setup note and the HPC batch-execution warning in
+        # USAGE.md's WRDS-downloadable-inputs section must keep working for.
+        # Both references here are prose, not line numbers: the citation this
+        # replaced was accurate when written but rotted silently eight commits
+        # later when that doc section grew, and shifted again while being fixed.
         try:
             from globalmacro.tickhistory_credentials import (
                 credentials_present,

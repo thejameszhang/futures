@@ -24,7 +24,7 @@ SHARD_STEMS: tuple[str, ...] = (
 
 # The 10 tickhistory-stage outputs build_synced_dataset reads (build.py:528-559). NOT
 # the full list of files that function reads: it also reads a MANUAL prerequisite,
-# DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv (build.py:550, see USAGE.md), which
+# DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv (see USAGE.md), which
 # is deliberately excluded here -- see sync_stage_outputs_ready()'s docstring.
 # Deliberately NOT the same shape as SHARD_STEMS: us_equity and nonus_equity are
 # separate outputs produced by two jobs sharing the one tier1_equity shard set.
@@ -100,7 +100,7 @@ def _missing_files(paths: list[Path]) -> list[str]:
 def sync_stage_outputs_ready() -> Capability:
     """True does not guarantee build_synced_dataset can run. That function also reads
     one file outside this predicate: DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv
-    (build.py:550), a MANUAL prerequisite (see USAGE.md) that must be hand-placed and
+    a MANUAL prerequisite (see USAGE.md) that must be hand-placed and
     is not produced by any tickhistory stage. It is deliberately excluded here -- a
     missing manual prerequisite should crash loudly in full mode, not silently
     downgrade the machine to async-only."""
