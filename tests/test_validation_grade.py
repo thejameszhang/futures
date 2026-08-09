@@ -155,3 +155,32 @@ def test_write_summary_full_mode_omits_skipped_section_entirely(tmp_path):
     path = Path(tmp_path) / "SUMMARY.md"
     write_summary([grade("Demo", "demo", _df([0.99]))], [], path, [], [], [])
     assert "## Skipped" not in path.read_text()
+
+
+def test_write_summary_discloses_stale_figures_when_flagged(tmp_path):
+    """F13: an auto-detected async-only downgrade deletes nothing, so the summary
+    must say so -- one extra sentence in the '## Skipped' preamble, opted into via
+    stale_figures_may_remain (default False, see the sibling test below)."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency"], None, None,
+        stale_figures_may_remain=True,
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "may still be sitting on disk" in text
+    assert "--async-only explicitly" in text
+
+
+def test_write_summary_omits_stale_figures_disclosure_by_default(tmp_path):
+    """The default (explicit --async-only, or full mode) must NOT print the
+    disclosure -- deletion already happened, or nothing was ever skipped."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency"],
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "may still be sitting on disk" not in text

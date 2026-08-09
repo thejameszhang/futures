@@ -182,6 +182,10 @@ def _parse_args(argv=None):
 def main(argv=None):
     args = _parse_args(argv)
     mode = resolve_mode(args.mode, sync_panels_ready(), "validate")
+    # F13: whether async-only was ASKED for, distinct from `mode`, which is also
+    # true after an auto-detected downgrade. Only the explicit case may delete
+    # anything -- see the _remove_stale_figures call site below.
+    explicit_async_only = args.mode == "async-only"
     # F5a: record which mode produced this run's output, as the first line of
     # stdout. Stdout-only -- does not alter any graded number or write to a file.
     print(f"mode: {mode}")
@@ -289,15 +293,29 @@ def main(argv=None):
     for name in dropped_figures:
         print(f"[SKIP] figure: {name} SKIPPED (async-only run)")
 
-    # F9: an async-only run must not leave stale PDFs from an earlier full run on
+    # F9/F13: an async-only run must not leave stale PDFs from an earlier full run on
     # disk while its own summary calls them SKIPPED -- that is the output actively
     # lying, not merely omitting. No-op in full mode (see _remove_stale_figures).
-    for p in _remove_stale_figures(mode):
-        print(f"        removed stale {p} (async-only run; from an earlier full run)")
+    #
+    # F13 (Reviewer A, PROVED): F9 originally keyed on the RESOLVED mode alone, so it
+    # fired on an auto-detected downgrade the researcher never asked for -- inverting
+    # F1's own principle that auto-detect may only downgrade a machine that has never
+    # built the sync half. Deletion of shipped artifacts must be at least as
+    # conservative as refusing to submit a DAG: only an EXPLICIT --async-only may
+    # delete anything. On an auto-detected downgrade, delete nothing and disclose the
+    # risk in the summary instead (write_summary's stale_figures_may_remain) -- both
+    # existing independent guards inside _remove_stale_figures/_stale_figure_paths
+    # (the mode check, and the path-shape guard) are unchanged and still apply
+    # whenever this IS reached.
+    if explicit_async_only:
+        for p in _remove_stale_figures(mode):
+            print(f"        removed stale {p} (async-only run; from an earlier full run)")
+    stale_figures_may_remain = mode == "async-only" and not explicit_async_only
 
     write_summary(
         results, invariants, VALIDATION_OUTPUT / "VALIDATION_SUMMARY.md",
         skipped, dropped_invariants, dropped_figures,
+        stale_figures_may_remain=stale_figures_may_remain,
     )
     print(f"\nSummary written to {VALIDATION_OUTPUT / 'VALIDATION_SUMMARY.md'}")
     ok = all(r.passed for r in results) and all(i.passed for i in invariants)

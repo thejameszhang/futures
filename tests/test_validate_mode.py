@@ -490,7 +490,8 @@ def test_remove_stale_figures_missing_ok_on_clean_tree(monkeypatch, tmp_path):
 
 def test_main_wires_stale_figure_removal_for_async_only(monkeypatch, tmp_path):
     """Proves the cleanup is actually reachable from main(), not just a standalone
-    function -- end to end via the repo's established hermetic stubbing pattern."""
+    function -- end to end via the repo's established hermetic stubbing pattern.
+    EXPLICIT --async-only (see the auto-detected counterpart below, F13)."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
     monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
@@ -502,6 +503,29 @@ def test_main_wires_stale_figure_removal_for_async_only(monkeypatch, tmp_path):
 
     vrun.main(["--async-only"])
     assert not stale.exists()
+
+
+def test_main_does_not_remove_stale_figures_when_async_only_is_auto_detected(monkeypatch, tmp_path):
+    """F13 (Reviewer A, PROVED). F9 originally keyed on the RESOLVED mode alone, so it
+    fired on an auto-detected downgrade the researcher never asked for -- deleting five
+    figures that exist in the owner's pristine baseline. Take the exact state A proved:
+    no explicit flag, sync inputs not ready (auto-resolves async-only) -- deletion must
+    require EXPLICIT --async-only; an auto-detected downgrade must delete NOTHING and
+    disclose the risk in the summary instead."""
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
+
+    stale = tmp_path / "skipped_stub" / "comparison.pdf"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"dummy")
+
+    vrun.main([])   # no flag -> auto-detected async-only, NOT explicit
+    assert stale.exists(), "auto-detected async-only must not delete anything"
+    summary = (tmp_path / "VALIDATION_SUMMARY.md").read_text()
+    assert "may still be sitting on disk" in summary
+    assert "--async-only explicitly" in summary
 
 
 def test_main_does_not_remove_anything_in_full_mode(monkeypatch, tmp_path):

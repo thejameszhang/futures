@@ -96,6 +96,7 @@ def write_summary(
     skipped: list[str] | None = None,
     dropped_invariants: list[str] | None = None,
     dropped_figures: list[str] | None = None,
+    stale_figures_may_remain: bool = False,
 ) -> None:
     lines = [
         "# Validation Summary",
@@ -131,6 +132,19 @@ def write_summary(
             "",
             "Checks, invariants and figures that need the sync panels and were not run "
             "in this mode -- named explicitly rather than silently absent (spec §4.6).",
+        ]
+        if stale_figures_may_remain:
+            # F13: this mode was AUTO-detected, not explicitly requested -- deleting
+            # figures from an earlier full run on a machine the researcher never
+            # asked to downgrade is at least as risky as silently overwriting them,
+            # so nothing was removed. Disclose the possibility instead of letting the
+            # table above (which calls them SKIPPED) imply they are gone.
+            lines.append(
+                "Mode was auto-detected rather than explicitly requested, so figures "
+                "from an earlier full run may still be sitting on disk -- pass "
+                "--async-only explicitly to remove them."
+            )
+        lines += [
             "",
             "| Item | Result |",
             "|---|:--:|",
