@@ -23,8 +23,8 @@ SHARD_STEMS: tuple[str, ...] = (
     "tier2_currency", "tier2_equity",
 )
 
-# The 10 tickhistory-stage outputs build_synced_dataset reads (build.py:528-559). NOT
-# the full list of files that function reads: it also reads a MANUAL prerequisite,
+# The 10 tickhistory-stage outputs build_synced_dataset() reads. NOT the full list of
+# files that function reads: it also reads a MANUAL prerequisite,
 # DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv (see USAGE.md), which
 # is deliberately excluded here -- see sync_stage_outputs_ready()'s docstring.
 # Deliberately NOT the same shape as SHARD_STEMS: us_equity and nonus_equity are
@@ -152,8 +152,10 @@ def sync_panels_ready() -> Capability:
 # The pair compared per tier by sync_panels_fresh(). Deliberately just the two final
 # aggregates, NOT sync_panels_ready()'s third path (tier2/.../currency_daily_returns.csv):
 # that file is a tickhistory-stage OUTPUT (tickhistory.py:672, also tracked in
-# SYNC_STAGE_OUTPUTS above), one that build.py only ever READS (build.py:547, :573) and
-# never writes. As a stage *input*, it has no bearing on whether the sync and async
+# SYNC_STAGE_OUTPUTS above), one that build_synced_dataset() only ever READS (its
+# tier-2 currency/equity loop -- NOT the separate tier-1 currency read a few lines
+# above it in the same function, which is a different file) and never writes. As a
+# stage *input*, it has no bearing on whether the sync and async
 # *panels* came from the same build() call -- comparing it against a different stage's
 # aggregate output is a category error, not a timing inconvenience. On a cluster run
 # the tickhistory stage can finish hours or days before build runs, so its mtime lag

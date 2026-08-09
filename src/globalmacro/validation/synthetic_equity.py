@@ -59,9 +59,10 @@ MIN_ALIGNMENT_SIGNAL = 0.30
 # Shared between _invariants()/_figures() and synthetic_equity_check's dropped_*
 # fields below, so the names/filename async-only prints under "## Skipped" cannot
 # drift from what full mode would actually emit for the same invariant/figure (see
-# synthetic_fx._invariant_name's docstring for the same rationale; base.py:36-41 --
-# a shared constant, not a call into the check, so this does not run the sync-only
-# code async-only mode exists to avoid).
+# synthetic_fx._invariant_name's docstring for the same rationale; see the
+# `Check.dropped_invariants` field's own docstring in base.py -- this is a shared
+# constant, not a call into the check, so it does not run the sync-only code
+# async-only mode exists to avoid).
 _ALIGNMENT_INVARIANT = "shipped alignment is the one the data prefers, per symbol"
 _COVERAGE_INVARIANT = "every Americas symbol is actually under test"
 _ALIGNMENT_PDF = "equity_alignment.pdf"
@@ -84,9 +85,10 @@ def _equity_only(df: pl.DataFrame) -> pl.DataFrame:
 def _synthetic_base() -> pl.DataFrame:
     """The UNLAGGED synthetic equity panel, exactly as build derives it.
 
-    This is the async panel, NOT spot_equity_returns.csv. load_synthetic_returns does real
-    work on the raw CSV -- it coalesces each multi-dsindexcode index with its historical
-    predecessor and subtracts rf (build.py:340-342) -- so the raw file differs from what
+    This is the async panel, NOT spot_equity_returns.csv. build.load_synthetic_returns does
+    real work on the raw CSV -- it coalesces each multi-dsindexcode index with its
+    historical predecessor and subtracts rf (its equity-splicing loop, over
+    `equity.dsindexcode`/`equity.dsindexmnem`) -- so the raw file differs from what
     actually ships for AP, FIE, FXS30 and Z. Comparing against the raw CSV makes those four
     match NEITHER alignment candidate, and the invariant then reports them as misaligned
     when they are fine.

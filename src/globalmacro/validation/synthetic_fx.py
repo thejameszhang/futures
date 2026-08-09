@@ -116,9 +116,10 @@ def _invariant_name(dataset: str) -> str:
     synthetic_fx_check.dropped_invariants below, so the sync-side name run.py prints
     under "## Skipped" in async-only mode is the SAME string _invariants() would emit
     for it in full mode -- not a second, independently-typed literal that happens to
-    match today and silently stops matching if _SOURCES is ever edited (base.py:36-41:
-    this is a shared constant, not a call into the check itself, so it does not run the
-    sync-only code async-only mode exists to avoid)."""
+    match today and silently stops matching if _SOURCES is ever edited (see the
+    `Check.dropped_invariants` field's own docstring in base.py: this is a shared
+    constant, not a call into the check itself, so it does not run the sync-only code
+    async-only mode exists to avoid)."""
     return f"{_SOURCES[dataset]} synthetic beats the other on the {dataset} futures"
 
 
