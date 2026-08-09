@@ -91,3 +91,24 @@ def test_write_summary_omits_invariants_table_when_none(tmp_path):
     path = Path(tmp_path) / "SUMMARY.md"
     write_summary([grade("Demo", "demo", _df([0.99]))], [], path)
     assert "## Invariants" not in path.read_text()
+
+
+def test_write_summary_default_skipped_matches_three_positional_call(tmp_path):
+    """Task 5 appends `skipped` with a default -- the pre-existing three-positional
+    call above must keep working unchanged."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary([grade("Demo", "demo", _df([0.99]))], [], path)
+    assert "## Skipped" not in path.read_text()
+
+
+def test_write_summary_renders_skipped_section(tmp_path):
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency", "External ground-truth cross-check"],
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "Async vs sync consistency" in text
+    assert "External ground-truth cross-check" in text
+    assert text.count("SKIPPED (async-only run)") == 2

@@ -59,6 +59,9 @@ class Check:
     invariants: Callable[[], list[Invariant]] | None = None
     # Optional one-off justification figures; called with the check's out_dir.
     figures: Callable[[Path], None] | None = None
+    # True when the check cannot run without the sync panels. Filtered out entirely in
+    # async-only mode; see run.py:_available_checks.
+    requires_sync: bool = False
 
 
 def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
@@ -77,7 +80,12 @@ def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
     )
 
 
-def write_summary(results: list[CheckResult], invariants: list[Invariant], path: Path) -> None:
+def write_summary(
+    results: list[CheckResult],
+    invariants: list[Invariant],
+    path: Path,
+    skipped: list[str] | None = None,
+) -> None:
     lines = [
         "# Validation Summary",
         "",
@@ -105,5 +113,17 @@ def write_summary(results: list[CheckResult], invariants: list[Invariant], path:
         for i in invariants:
             status = "✅ PASS" if i.passed else "❌ FAIL"
             lines.append(f"| {i.check} | {i.name} | {i.value} | {status} |")
+    if skipped:
+        lines += [
+            "",
+            "## Skipped",
+            "",
+            "Checks that need the sync panels and were not run in this mode.",
+            "",
+            "| Exercise | Result |",
+            "|---|:--:|",
+        ]
+        for name in skipped:
+            lines.append(f"| {name} | SKIPPED (async-only run) |")
     lines.append("")
     path.write_text("\n".join(lines))

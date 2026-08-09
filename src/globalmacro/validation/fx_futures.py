@@ -435,6 +435,7 @@ fx_futures_vs_spot_check = Check(
     run=_correlations,
     invariants=_blend_invariant,
     figures=plot_fx_vs_spot_comparison,
+    requires_sync=True,
 )
 
 

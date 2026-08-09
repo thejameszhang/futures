@@ -126,6 +126,51 @@ def sync_panels_ready() -> Capability:
     return Capability(False, "missing sync panels: " + ", ".join(missing))
 
 
+# The pair compared per tier by sync_panels_fresh(). Deliberately just the two final
+# aggregates, NOT sync_panels_ready()'s third path (tier2/.../currency_daily_returns.csv):
+# that file is an intermediate component build.py writes well before a tier's
+# sync_daily.csv/async_daily.csv pair (both written back-to-back at the end of that
+# tier's build), so comparing its mtime against the *other* tier's async aggregate
+# produces false positives on a single, legitimate full build. Confirmed against the
+# real datasets/ directory on this machine: tier2/sync/currency_daily_returns.csv sits
+# ~4 minutes older than tier2/async/async_daily.csv from the same build run, while the
+# two sync_daily.csv/async_daily.csv pairs land in the same second.
+_STALENESS_TIERS: tuple[str, ...] = ("tier1", "tier2")
+
+
+def sync_panels_fresh() -> Capability:
+    """Existence is not the same as "from this build". async-only builds rewrite
+    tier{1,2}/async/async_daily.csv on every run (build.py:659-660, 677-678) but skip
+    tier{1,2}/sync/sync_daily.csv entirely (build.py:661-662, 679-680 are gated on
+    mode == "full"). So a machine that once ran full mode and later runs async-only
+    keeps its old sync panels on disk untouched: sync_panels_ready() still reports
+    ready, but a subsequent full-mode validate would grade the FRESH async panels
+    against those STALE sync panels -- a confident, wrong verdict for the one check
+    that actually compares the two (consistency_check).
+
+    Deterministic proxy for "same build": within a single tier, sync_daily.csv must be
+    at least as new as async_daily.csv, since build.py always writes the async
+    aggregate first and the sync aggregate immediately after (same function call, same
+    mode). Call this only after sync_panels_ready() reports ready -- a missing file on
+    either side means there is nothing meaningful to compare, so it reports fresh.
+    """
+    stale: list[str] = []
+    for tier in _STALENESS_TIERS:
+        sync_path = DATASETS_ROOT / tier / "sync" / "sync_daily.csv"
+        async_path = DATASETS_ROOT / tier / "async" / "async_daily.csv"
+        if not sync_path.exists() or not async_path.exists():
+            continue          # nothing to compare; sync_panels_ready() covers absence
+        if sync_path.stat().st_mtime < async_path.stat().st_mtime:
+            stale.append(sync_path.as_posix())
+    if not stale:
+        return Capability(True, None)
+    return Capability(False, (
+        "sync panels predate their async counterparts, so they look like leftovers "
+        "from an earlier full build rather than this one: " + ", ".join(stale)
+        + ". Rerun `globalmacro build --full` to rebuild both halves together, or "
+          "pass --async-only to validate to skip the checks that need them."))
+
+
 def resolve_mode(flag: str | None, cap: Capability, stage: str) -> str:
     """Explicit flag wins. `--full` is a demand, not a preference: it fails rather
     than silently falling back, which is the whole point of passing it."""

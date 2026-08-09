@@ -125,4 +125,5 @@ consistency_check = Check(
     run=_consistency_correlations,          # unchanged: grades Tier-2
     pairs=_consistency_pairs,               # comparison.pdf: Tier-1
     series_labels=("sync", "async"),
+    requires_sync=True,
 )
