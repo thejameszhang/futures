@@ -33,18 +33,21 @@ def validate_credentials(timeout: float = 10.0) -> bool:
     import json
     import urllib.request
 
-    body = json.dumps(
-        {
-            "Credentials": {
-                "Username": os.environ[ENV_USERNAME],
-                "Password": os.environ[ENV_PASSWORD],
-            }
-        }
-    ).encode()
-    req = urllib.request.Request(
-        TOKEN_URL, data=body, headers={"Content-Type": "application/json"}
-    )
+    # W1 (Task 7 review): the try starts here, before body/req construction, so the
+    # function's "returns bool, never raises" contract is total -- not just true for
+    # the network call. Behaviour on both the success and failure path is unchanged.
     try:
+        body = json.dumps(
+            {
+                "Credentials": {
+                    "Username": os.environ[ENV_USERNAME],
+                    "Password": os.environ[ENV_PASSWORD],
+                }
+            }
+        ).encode()
+        req = urllib.request.Request(
+            TOKEN_URL, data=body, headers={"Content-Type": "application/json"}
+        )
         with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 -- fixed https URL
             return r.status == 200
     except Exception:
