@@ -114,6 +114,11 @@ def _capability_report(
         for p in missing_manual_prereqs:
             lines.append(f"   {p}")
         lines.append("   See USAGE.md's Detailed Data Prerequisites section.")
+        # R2-4: both "can build" branches below carry this reminder; a researcher
+        # missing the JKP file needs it just as much (Compustat gates the OTHER
+        # manual prerequisite this same report can't verify from a file on disk --
+        # see the F14 note above), and previously never saw it.
+        lines.append("   Also requires a Compustat entitlement (comp.exrt_dly) -- see USAGE.md.")
     elif shard_cap.ready:
         lines.append("-> This machine can build the SYNC and ASYNC datasets.")
         lines.append("   Also requires a Compustat entitlement (comp.exrt_dly) -- see USAGE.md.")

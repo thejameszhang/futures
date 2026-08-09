@@ -126,6 +126,15 @@ def test_report_names_missing_jkp_sectors_file_says_it_blocks_any_dataset(tmp_pa
     assert "before it can build the ASYNC datasets" not in out
 
 
+def test_report_names_missing_jkp_sectors_file_still_mentions_compustat(tmp_path, monkeypatch):
+    """R2-4: both "can build" verdict branches carry the Compustat-entitlement
+    reminder; the missing-JKP branch omitted it, so a researcher missing JKP never
+    saw it even though Compustat is required in every mode too."""
+    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
+    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
+    assert "Compustat entitlement" in out
+
+
 def test_missing_synthetic_fx_sync_file_no_longer_blocks_the_report(tmp_path, monkeypatch):
     """F14 regression proof: FX_PATH/synthetic_fx_returns_sync.csv is a pipeline
     OUTPUT, not a prerequisite -- a missing copy (the state of every clean clone)
