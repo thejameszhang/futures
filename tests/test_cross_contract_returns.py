@@ -55,8 +55,17 @@ def test_a_cross_contract_return_is_nulled():
 
 
 def test_the_expiry_day_roll_is_preserved():
-    """daystomaturity_1.shift(1) == 0: yesterday was the front's last trading day, so
-    today's slot 1 is yesterday's slot 2. Same contract, must survive."""
+    """daystomaturity_1.shift(1) == 0 fires here, but so does the second disjunct --
+    lasttrddate_1 (2020-5-15) == lasttrddate_2.shift(1) (2020-5-15). Today's slot 1 is
+    yesterday's slot 2, the same contract, and the return must survive.
+
+    Because both disjuncts hold together, this fixture does NOT discriminate the
+    days-to-maturity disjunct alone: deleting `(pl.col('daystomaturity_1').shift(1) == 0) | `
+    from `roll` leaves lasttrddate_1 == lasttrddate_2.shift(1) still true, so this test keeps
+    passing regardless. See test_the_days_to_maturity_disjunct_can_only_be_proven_by_nulling
+    for a fixture that isolates the first disjunct -- which, by construction, can only be
+    asserted via a null, not a survival.
+    """
     df = pl.DataFrame({
         "clscode": [1, 1],
         "date": [date(2020, 3, 20), date(2020, 3, 23)],
@@ -68,6 +77,36 @@ def test_the_expiry_day_roll_is_preserved():
     })
     got = _apply(df).get_column("ret_temp_1").to_list()
     assert got[1] is not None and abs(got[1] - 0.1) < 1e-12
+
+
+def test_the_days_to_maturity_disjunct_can_only_be_proven_by_nulling():
+    """Isolates the first disjunct: daystomaturity_1.shift(1) == 0 fires (yesterday's slot 1
+    reached zero days to maturity), while the second disjunct does not -- lasttrddate_1 today
+    (2020-3-20) != lasttrddate_2.shift(1) (2020-5-15).
+
+    This branch cannot be pinned down with a survival assertion. Whenever the days-to-maturity
+    disjunct fires, `roll` is True, which forces the denominator to lasttrddate_2.shift(1). For
+    the second disjunct to be false (so the fixture isolates the first), lasttrddate_1 must
+    differ from that same lasttrddate_2.shift(1) -- but that is exactly `same_contract`'s
+    condition. So `roll` fired via this disjunct plus the second disjunct being false together
+    force same_contract == False, and the guard nulls the cell. There is no fixture where this
+    disjunct fires alone and the result survives -- the only honest assertion is the null.
+
+    lasttrddate_1 is held equal to yesterday's lasttrddate_1 (2020-3-20 both days) so that
+    deleting the disjunct under test flips `roll` to False and same_contract to True via the
+    *other* branch of the `denominator` when/otherwise, which produces a non-null return --
+    proving this fixture actually discriminates the mutant.
+    """
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 20), date(2020, 3, 23)],
+        "daystomaturity_1": [0, 17],
+        "lasttrddate_1": [date(2020, 3, 20), date(2020, 3, 20)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 6, 19)],
+        "settlement_1": [100.0, 105.0],
+        "settlement_2": [200.0, 210.0],
+    })
+    assert _apply(df).get_column("ret_temp_1").to_list()[1] is None
 
 
 def test_the_guard_is_scoped_per_class():
