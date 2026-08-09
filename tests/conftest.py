@@ -1,7 +1,7 @@
 """Repo-wide test fixtures.
 
-Two unrelated safety nets live here because both need to see EVERY test in
-tests/, not just the file that motivated them:
+Two unrelated safety nets live here because both need to see every test
+under tests/, not just the file that motivated them:
 
 1. `needs_sync` marker: skips tests that need the sync datasets on disk, so
    the suite is runnable on a tick-less (async-only) machine. See
@@ -61,7 +61,7 @@ def pytest_collection_modifyitems(config, items):
 
 # ---------------------------------------------------------------------------
 # A safety net against a live network call, applied automatically to every test
-# in the whole suite. `tc.validate_credentials()` makes a real HTTPS request to
+# under tests/. `tc.validate_credentials()` makes a real HTTPS request to
 # selectapi.datascope.refinitiv.com, with real DSS credentials in the request body.
 #
 # Originally this lived only in tests/test_connect_report.py (Task 8), guarding the
@@ -73,7 +73,7 @@ def pytest_collection_modifyitems(config, items):
 # here (autouse at the tests/ package level, not just one module) closes that gap for
 # every file, present and future.
 #
-# Exactly one test in the whole suite needs the REAL implementation to run --
+# Exactly one test under tests/ needs the REAL implementation to run --
 # test_tickhistory_credentials.py's `test_validate_credentials_never_leaks_...`, which
 # proves validate_credentials()'s own try/except starts before request-body
 # construction. It is marked `calls_real_validate_credentials` and opts out of the

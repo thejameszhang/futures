@@ -111,7 +111,8 @@ def test_network_guard_stub_records_keyword_argument_calls(pytester):
     pytester.makepyfile(test_kwarg_call="""
         import globalmacro.tickhistory_credentials as tc
 
-        def test_calls_validate_credentials_with_a_keyword_argument():
+        def test_calls_validate_credentials_with_a_keyword_argument(monkeypatch):
+            monkeypatch.delenv("DSS_USERNAME", raising=False)
             tc.validate_credentials(timeout=5.0)
     """)
     result = pytester.runpytest_subprocess()

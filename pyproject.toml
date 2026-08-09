@@ -44,7 +44,7 @@ pythonpath = ["."]
 # (PytestUnknownMarkWarning) and the test would run unguarded on whatever
 # machine collects it -- for needs_sync that means "runs and errors on a
 # tick-less machine", precisely the state Task 10 exists to eliminate.
-addopts = "--strict-markers"
+addopts = "--strict-markers -p pytester"
 
 [tool.ruff]
 # Rule families mirror jkp-data for cross-repo lint consistency. line-length is
