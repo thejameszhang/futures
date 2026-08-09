@@ -288,6 +288,11 @@ def test_f3b_residual_filenotfounderror_from_invariants_is_actionable(monkeypatc
     assert "updated_daily_ind_gics_synced.csv" in msg
     assert "--full" in msg
     assert "--async-only" in msg
+    # N4 (Reviewer B): the reachable cause here is a hand-placed MANUAL prerequisite
+    # that `build --full` would also fail on -- rebuilding doesn't place the file, so
+    # placing it must be named as the FIRST remedy, not `build --full`.
+    assert "USAGE.md's Manual Prerequisite Data Files" in msg
+    assert msg.index("place the missing file") < msg.index("build --full")
 
 
 def test_f3b_genuine_invariant_failure_still_fails_the_run(monkeypatch, tmp_path):

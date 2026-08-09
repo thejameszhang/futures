@@ -280,10 +280,16 @@ def main(argv=None):
                 try:
                     computed_invariants = check.invariants()
                 except FileNotFoundError as e:
+                    # N4 (Reviewer B): the original wording offered `build --full` as
+                    # the FIRST remedy, but the reachable cause here is a hand-placed
+                    # MANUAL prerequisite (see sync_stage_outputs_ready()'s docstring
+                    # above) that `build --full` would also fail on -- rebuilding
+                    # doesn't place the file. Name that remedy first.
                     raise SystemExit(
                         f"globalmacro validate: {check.name} needs a file that is "
-                        f"missing ({e}). Either rerun `globalmacro build --full` to "
-                        "rebuild the sync half, or run `globalmacro validate "
+                        f"missing ({e}). Either place the missing file (see "
+                        "USAGE.md's Manual Prerequisite Data Files) and rerun "
+                        "`globalmacro build --full`, or run `globalmacro validate "
                         "--async-only` to skip the checks that need it."
                     ) from e
                 for inv in computed_invariants:
