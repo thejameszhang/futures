@@ -383,6 +383,142 @@ def test_dropped_figures_names_both_synthetic_check_figures():
     assert dropped == ["fx_source_diagonal.pdf", "equity_alignment.pdf"]
 
 
+# --- F9: async-only must not leave stale PDFs the summary calls SKIPPED -----------
+
+
+def _f9_stub_run():
+    return pl.DataFrame(
+        {"instrument": [], "correlation": [], "n_obs": []},
+        schema={"instrument": pl.Utf8, "correlation": pl.Float64, "n_obs": pl.Int64},
+    )
+
+
+def _f9_stub_pairs():
+    return pl.DataFrame(
+        {"instrument": [], "name": [], "month": [], "ours": [], "theirs": []},
+        schema={"instrument": pl.Utf8, "name": pl.Utf8, "month": pl.Utf8,
+                "ours": pl.Float64, "theirs": pl.Float64},
+    )
+
+
+# A check dropped WHOLE in async-only (requires_sync=True) with a pairs-rendered
+# comparison.pdf -- e.g. consistency_check.
+_F9_SKIPPED_CHECK = Check(
+    name="Skipped stub", slug="skipped_stub", run=_f9_stub_run,
+    pairs=_f9_stub_pairs, requires_sync=True,
+)
+# A check that still RUNS in async-only but drops one of its own figures --
+# e.g. synthetic_fx_check.
+_F9_RUNNING_CHECK = Check(
+    name="Running stub", slug="running_stub", run=_f9_stub_run,
+    dropped_figures=("dropped_stub.pdf",),
+)
+# A check untouched by any of this -- no pairs, no figures, always kept.
+_F9_KEPT_CHECK = Check(name="Kept stub", slug="kept_stub", run=_f9_stub_run)
+
+
+def _f9_full_checks():
+    return [_F9_SKIPPED_CHECK, _F9_RUNNING_CHECK, _F9_KEPT_CHECK]
+
+
+def _f9_available_checks(mode):
+    if mode == "async-only":
+        return [c for c in _f9_full_checks() if not c.requires_sync]
+    return _f9_full_checks()
+
+
+def test_stale_figure_paths_names_skipped_comparison_pdf_and_dropped_figures(monkeypatch):
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    paths = vrun._stale_figure_paths("async-only")
+    assert vrun.VALIDATION_OUTPUT / "skipped_stub" / "comparison.pdf" in paths
+    assert vrun.VALIDATION_OUTPUT / "running_stub" / "dropped_stub.pdf" in paths
+    assert len(paths) == 2
+
+
+def test_stale_figure_paths_empty_in_full_mode(monkeypatch):
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    assert vrun._stale_figure_paths("full") == []
+
+
+def test_remove_stale_figures_deletes_exactly_the_dropped_ones(monkeypatch, tmp_path):
+    """Plant dummy PDFs, run async-only cleanup, assert exactly the dropped ones are
+    gone and every other file (including siblings in the SAME check directories)
+    survives."""
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+
+    stale1 = tmp_path / "skipped_stub" / "comparison.pdf"
+    stale2 = tmp_path / "running_stub" / "dropped_stub.pdf"
+    # Survivors: a plain file in a fully-kept check's dir, the RUNNING check's own
+    # (non-dropped) comparison.pdf, and a non-PDF sibling in the skipped check's dir.
+    survivor_kept = tmp_path / "kept_stub" / "comparison.pdf"
+    survivor_running_comparison = tmp_path / "running_stub" / "comparison.pdf"
+    survivor_csv = tmp_path / "skipped_stub" / "correlations.csv"
+    for p in (stale1, stale2, survivor_kept, survivor_running_comparison, survivor_csv):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"dummy")
+
+    removed = vrun._remove_stale_figures("async-only")
+
+    assert set(removed) == {stale1, stale2}
+    assert not stale1.exists()
+    assert not stale2.exists()
+    assert survivor_kept.exists()
+    assert survivor_running_comparison.exists()
+    assert survivor_csv.exists()
+
+
+def test_remove_stale_figures_deletes_nothing_in_full_mode(monkeypatch, tmp_path):
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    stale = tmp_path / "skipped_stub" / "comparison.pdf"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"dummy")
+
+    removed = vrun._remove_stale_figures("full")
+    assert removed == []
+    assert stale.exists()
+
+
+def test_remove_stale_figures_missing_ok_on_clean_tree(monkeypatch, tmp_path):
+    """A genuinely clean async-only run (no prior full run, nothing on disk) must
+    not raise -- unlink(missing_ok=True)."""
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    assert vrun._remove_stale_figures("async-only") == []
+
+
+def test_main_wires_stale_figure_removal_for_async_only(monkeypatch, tmp_path):
+    """Proves the cleanup is actually reachable from main(), not just a standalone
+    function -- end to end via the repo's established hermetic stubbing pattern."""
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
+
+    stale = tmp_path / "skipped_stub" / "comparison.pdf"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"dummy")
+
+    vrun.main(["--async-only"])
+    assert not stale.exists()
+
+
+def test_main_does_not_remove_anything_in_full_mode(monkeypatch, tmp_path):
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
+    monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
+
+    stale = tmp_path / "skipped_stub" / "comparison.pdf"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"dummy")
+
+    vrun.main(["--full"])
+    assert stale.exists()
+
+
 # --- F1: validation_mode() must reject anything but the two canonical literals ------
 
 @pytest.mark.parametrize("bad_mode", ["Full", "FULL", "aysnc-only", "", None])

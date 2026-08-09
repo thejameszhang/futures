@@ -5,6 +5,7 @@ symbol-count PDFs, and write one VALIDATION_SUMMARY.md."""
 import argparse
 import dataclasses
 import os
+from pathlib import Path
 
 import polars as pl
 
@@ -23,6 +24,13 @@ from globalmacro.validation.plots import plot_comparison, plot_symbol_counts
 from globalmacro.validation.spot_fx import spot_fx_check
 from globalmacro.validation.synthetic_equity import synthetic_equity_check
 from globalmacro.validation.synthetic_fx import synthetic_fx_check
+
+# The literal filename check.pairs's render (via plot_comparison below) writes to,
+# and the convention every check.figures implementation in this codebase also
+# follows for its primary comparison figure (see fx_futures.plot_fx_vs_spot_comparison).
+# Named once here so F9's stale-figure cleanup references the SAME string the write
+# site uses, rather than a second, independently-typed literal that could drift.
+_COMPARISON_PDF = "comparison.pdf"
 
 
 def _available_checks(mode: str = "full"):
@@ -68,6 +76,68 @@ def _dropped_figures(mode: str) -> list[str]:
     if mode != "async-only":
         return []
     return [name for c in _available_checks(mode) for name in c.dropped_figures]
+
+
+def _stale_figure_paths(mode: str) -> list[Path]:
+    """F9: after a full run, an async-only run's own VALIDATION_SUMMARY.md calls a
+    figure SKIPPED while it may still be sitting on disk from that earlier full run
+    -- the summary says one thing, the tree says another. Names the on-disk paths
+    that must not survive an async-only run, from two sources ONLY (both already
+    tracked, static, per-Check data -- nothing here is derived by running anything):
+
+      * a check dropped WHOLE (requires_sync=True, named under _skipped_checks) --
+        its comparison.pdf, written either via check.pairs (this module's own
+        plot_comparison(..., out_dir / _COMPARISON_PDF) call above) or a custom
+        check.figures whose output filename this codebase's convention also names
+        _COMPARISON_PDF (fx_futures.plot_fx_vs_spot_comparison).
+      * a check still RUNNING in this mode but dropping some of its own figures --
+        each name in that check's own declared Check.dropped_figures (see
+        _dropped_figures above).
+
+    Full mode returns []: nothing here may ever touch a file when nothing was
+    actually skipped.
+    """
+    if mode != "async-only":
+        return []
+    kept_slugs = {c.slug for c in _available_checks(mode)}
+    paths: list[Path] = []
+    for check in _available_checks("full"):
+        out_dir = VALIDATION_OUTPUT / check.slug
+        if check.slug not in kept_slugs:
+            if check.pairs is not None or check.figures is not None:
+                paths.append(out_dir / _COMPARISON_PDF)
+        else:
+            for fig_name in check.dropped_figures:
+                paths.append(out_dir / fig_name)
+    return paths
+
+
+def _remove_stale_figures(mode: str) -> list[Path]:
+    """Unlink exactly _stale_figure_paths(mode) (missing_ok=True: a clean researcher
+    tree with no prior full run has nothing to remove). Guarded hard, independent of
+    the mode check already inside _stale_figure_paths: every path removed must
+    resolve to a bare filename directly inside VALIDATION_OUTPUT/<check-slug>/ --
+    never a nested path, a path with a separator in the filename, or anything that
+    could resolve outside VALIDATION_OUTPUT. Returns what it removed, for logging."""
+    if mode != "async-only":
+        return []
+    removed = []
+    for p in _stale_figure_paths(mode):
+        # p must be exactly VALIDATION_OUTPUT/<check-slug>/<bare filename> -- refuse
+        # anything else rather than unlink it. _stale_figure_paths only ever builds
+        # paths this shape from tracked string literals, so this should never fire;
+        # it exists as a second, independent line of defense against a future edit
+        # to that function (or to a Check's slug/dropped_figures) introducing a
+        # separator or a "..".
+        if p.parent.parent != VALIDATION_OUTPUT:
+            continue
+        if not p.name or "/" in p.name or p.name in (".", ".."):
+            continue
+        existed = p.exists()
+        p.unlink(missing_ok=True)   # tolerant of a genuinely clean tree (no prior full run)
+        if existed:
+            removed.append(p)
+    return removed
 
 
 def _load_wide(path):
@@ -187,9 +257,9 @@ def main(argv=None):
                     plot_comparison(
                         check.pairs(), check.series_labels,
                         f"{check.name}: cumulative monthly log returns, per Tier-1 asset",
-                        out_dir / "comparison.pdf",
+                        out_dir / _COMPARISON_PDF,
                     )
-                    print(f"        wrote {out_dir / 'comparison.pdf'}")
+                    print(f"        wrote {out_dir / _COMPARISON_PDF}")
                 except Exception as e:
                     print(f"        WARN: comparison.pdf failed for {check.slug}: {e}")
 
@@ -218,6 +288,12 @@ def main(argv=None):
         print(f"[SKIP] invariant: {name} SKIPPED (async-only run)")
     for name in dropped_figures:
         print(f"[SKIP] figure: {name} SKIPPED (async-only run)")
+
+    # F9: an async-only run must not leave stale PDFs from an earlier full run on
+    # disk while its own summary calls them SKIPPED -- that is the output actively
+    # lying, not merely omitting. No-op in full mode (see _remove_stale_figures).
+    for p in _remove_stale_figures(mode):
+        print(f"        removed stale {p} (async-only run; from an earlier full run)")
 
     write_summary(
         results, invariants, VALIDATION_OUTPUT / "VALIDATION_SUMMARY.md",
