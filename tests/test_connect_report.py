@@ -19,6 +19,7 @@ import types
 
 import globalmacro.tickhistory_credentials as tc
 import globalmacro.utils.capabilities as capmod
+import globalmacro.utils.paths as pathsmod
 import globalmacro.wrds_credentials as wc
 from globalmacro import cli
 from globalmacro.utils.capabilities import Capability
@@ -68,6 +69,81 @@ def test_report_gives_a_remediation_hint_when_no_credentials():
         "                   set DSS_USERNAME and DSS_PASSWORD (e.g. in .env) "
         "to enable LSEG tick-history checks.")
     assert lseg_idx + 1 < tick_idx
+
+
+# ---------------------------------------------------------------------------
+# F6: `connect` must not claim it can build the ASYNC datasets when the two hard
+# prerequisites build_async() needs unconditionally -- the JKP sector file and the
+# Compustat-derived sync synthetic-FX panel -- are missing. Both existing tests
+# above (test_report_says_async_when_no_shards, test_report_says_both_when_
+# shards_ready) already cover the "both present" baseline for free: they call
+# `_capability_report` without monkeypatching DATA_ROOT/FX_PATH, so they exercise
+# this machine's real files, which are both present (a full owner build).
+# ---------------------------------------------------------------------------
+
+
+def test_report_names_missing_jkp_sectors_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
+    # FX_PATH stays real (present) -- isolates the JKP-only-missing state.
+    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
+    assert "CANNOT build the ASYNC datasets yet" in out
+    assert "updated_daily_ind_gics.csv" in out
+    assert "USAGE.md" in out
+    assert "can build the ASYNC datasets." not in out
+
+
+def test_report_names_missing_synthetic_fx_sync_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
+    # DATA_ROOT stays real (present) -- isolates the FX-only-missing state.
+    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
+    assert "CANNOT build the ASYNC datasets yet" in out
+    assert "synthetic_fx_returns_sync.csv" in out
+    assert "USAGE.md" in out
+
+
+def test_report_names_both_missing_prerequisites(tmp_path, monkeypatch):
+    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
+    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
+    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
+    assert "updated_daily_ind_gics.csv" in out
+    assert "synthetic_fx_returns_sync.csv" in out
+
+
+def test_exit_code_zero_when_jkp_missing(monkeypatch, tmp_path):
+    _fake_wrds_success(monkeypatch)
+    monkeypatch.delenv(tc.ENV_USERNAME, raising=False)
+    monkeypatch.delenv(tc.ENV_PASSWORD, raising=False)
+    monkeypatch.setattr(capmod, "shards_ready", lambda: Capability(False, None))
+    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
+    assert cli.main(["connect"]) == 0
+
+
+def test_exit_code_zero_when_synthetic_fx_sync_missing(monkeypatch, tmp_path):
+    _fake_wrds_success(monkeypatch)
+    monkeypatch.delenv(tc.ENV_USERNAME, raising=False)
+    monkeypatch.delenv(tc.ENV_PASSWORD, raising=False)
+    monkeypatch.setattr(capmod, "shards_ready", lambda: Capability(False, None))
+    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
+    assert cli.main(["connect"]) == 0
+
+
+def test_exit_code_zero_when_both_missing(monkeypatch, tmp_path):
+    _fake_wrds_success(monkeypatch)
+    monkeypatch.delenv(tc.ENV_USERNAME, raising=False)
+    monkeypatch.delenv(tc.ENV_PASSWORD, raising=False)
+    monkeypatch.setattr(capmod, "shards_ready", lambda: Capability(False, None))
+    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
+    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
+    assert cli.main(["connect"]) == 0
+
+
+def test_exit_code_zero_when_both_present_no_shards():
+    """The fourth of the "four states" -- both prerequisites present, no shards --
+    exercised end to end via the module functions directly (no I/O redirection
+    needed; this machine's real files are both present)."""
+    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
+    assert "can build the ASYNC datasets." in out
+    assert "CANNOT build" not in out
 
 
 def test_report_states_the_shard_count_when_ready():

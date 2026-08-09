@@ -46,9 +46,24 @@ def _capability_report(
     `creds=False` 3-argument call report "rejected" instead of "no credentials found",
     since `present=True` while `creds=False` is exactly the rejected state).
     """
+    from globalmacro.utils import paths as _paths
     from globalmacro.utils.capabilities import shard_dirs
     if present is None:
         present = creds
+
+    # F6: the two hard prerequisites build_async() needs unconditionally -- neither
+    # is a tick-shard/LSEG concern, so shard_cap.ready says nothing about them.
+    # load_sectors_async() reads the JKP sector file; load_synthetic_returns() reads
+    # BOTH synthetic FX panels before build's own async/full branch runs, so the sync
+    # one (produced only once fx.py has reached save_compustat_fx_rates(), which
+    # needs a Compustat entitlement) gates the ASYNC datasets too, not just sync --
+    # see USAGE.md's "Compustat is a prerequisite for every mode, not just sync" note.
+    # Verified against paths.py rather than assumed: DATA_ROOT and FX_PATH are the
+    # real constants load_sectors_async/load_synthetic_returns resolve their paths
+    # from (build.py).
+    _jkp_sectors = _paths.DATA_ROOT / "jkp" / "updated_daily_ind_gics.csv"
+    _synthetic_fx_sync = _paths.FX_PATH / "synthetic_fx_returns_sync.csv"
+    missing_async_prereqs = [p for p in (_jkp_sectors, _synthetic_fx_sync) if not p.exists()]
     if not present:
         lseg = "no credentials found"
     elif not checked:
@@ -71,6 +86,15 @@ def _capability_report(
         lines.append(f"                   {shard_cap.message}")
     if shard_cap.ready:
         lines.append("-> This machine can build the SYNC and ASYNC datasets.")
+    elif missing_async_prereqs:
+        # Replace the confident claim: async-only still needs these two, whatever
+        # the tick-shard state says. Named and pointed at USAGE.md rather than left
+        # to a later FileNotFoundError or a DAG stalled behind a failed `comp`
+        # download.
+        lines.append("-> This machine CANNOT build the ASYNC datasets yet -- missing:")
+        for p in missing_async_prereqs:
+            lines.append(f"   {p}")
+        lines.append("   See USAGE.md's Detailed Data Prerequisites section.")
     else:
         lines.append("-> This machine can build the ASYNC datasets.")
         lines.append("   Sync datasets need LSEG tick data on disk.")
