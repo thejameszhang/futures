@@ -86,6 +86,21 @@ print(c.message or '')
 fi
 echo "mode=$MODE" >&2
 
+# R2-1 (Opus review, both reviewers independently): mark whether $MODE was TYPED by
+# the researcher or AUTO-detected from disk. Every `submit ... "--$MODE"` call below
+# forwards the RESOLVED mode as an explicit flag either way (by design, Task 9) --
+# so a bare argv (e.g. validate.sh's "$@") cannot tell an auto-detected async-only
+# downgrade nobody asked for apart from a deliberate --async-only. Exporting here,
+# before the first submit()/sbatch call, is enough for every job this script
+# submits to see it: sbatch's default is --export=ALL ("All of the user's
+# environment will be loaded" -- `man sbatch` on this cluster), i.e. it loads the
+# SUBMITTING shell's environment (this script's), not the login shell's -- confirmed
+# by reading the man page, not assumed. Consuming side: validation/run.py's
+# explicit_async_only.
+if [ "$MODE_EXPLICIT" = 0 ]; then
+  export GM_MODE_AUTODETECTED=1
+fi
+
 # Refuse to silently downgrade a machine that has already built the sync half. Only
 # reachable when the mode was AUTO-detected to async-only (MODE_EXPLICIT=0): an
 # explicit --async-only means the researcher asked for this deliberately, and must

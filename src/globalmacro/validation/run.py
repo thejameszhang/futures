@@ -222,7 +222,19 @@ def main(argv=None):
     # F13: whether async-only was ASKED for, distinct from `mode`, which is also
     # true after an auto-detected downgrade. Only the explicit case may delete
     # anything -- see the _remove_stale_figures call site below.
-    explicit_async_only = args.mode == "async-only"
+    #
+    # R2-1 (Opus review, both reviewers independently, PROVED): F13 alone still
+    # collapses when reached via `globalmacro run` -- slurm/run_all.sh forwards the
+    # RESOLVED mode as an explicit `--async-only` on the sbatch command line whether
+    # a researcher typed it or it was auto-detected from a machine that lost its tick
+    # shards but kept stale sync artifacts (Task 9's design). `args.mode` cannot
+    # distinguish those two on its own; GM_MODE_AUTODETECTED is the side channel
+    # run_all.sh sets (only when MODE_EXPLICIT=0) precisely so this can. Its absence
+    # (a direct `globalmacro validate --async-only` invocation, or any other caller)
+    # leaves this identical to the F13 check alone.
+    explicit_async_only = (
+        args.mode == "async-only" and os.environ.get("GM_MODE_AUTODETECTED") != "1"
+    )
     # F5a: record which mode produced this run's output, as the first line of
     # stdout. Stdout-only -- does not alter any graded number or write to a file.
     print(f"mode: {mode}")

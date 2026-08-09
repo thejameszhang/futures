@@ -641,6 +641,63 @@ def test_main_does_not_remove_stale_figures_when_async_only_is_auto_detected(mon
     assert "--async-only explicitly" in summary
 
 
+def test_main_does_not_remove_stale_figures_when_forwarded_async_only_was_auto_detected(
+    monkeypatch, tmp_path
+):
+    """R2-1 (Opus review, both reviewers independently, PROVED). run_all.sh forwards
+    the RESOLVED mode as an explicit --async-only on the sbatch command line whether a
+    researcher typed it or it was auto-detected (Task 9's design) -- so args.mode
+    alone (the F13 guard, test above) cannot tell these apart once reached via
+    `globalmacro run`: a machine that lost its tick shards but kept stale sync
+    artifacts on disk (a researcher reclaiming scratch space) auto-detects
+    async-only, submits `validate.sh --async-only`, and F13 alone still deletes nine
+    shipped validation artifacts on a downgrade nobody asked for.
+
+    Reproduces exactly the DAG-forwarded shape: an explicit --async-only argv (which
+    F13 alone cannot distinguish from a typed one) PLUS GM_MODE_AUTODETECTED=1 in the
+    environment -- what run_all.sh now exports whenever MODE_EXPLICIT=0, before any
+    submit()/sbatch call (see test_run_all_async_only.py's companion proof that this
+    export actually reaches the validate.sh job, via sbatch's default --export=ALL).
+    Must behave exactly like the auto-detected-with-no-flag case above: delete
+    nothing, disclose the risk in the summary instead."""
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
+    monkeypatch.setenv("GM_MODE_AUTODETECTED", "1")
+
+    stale = tmp_path / "skipped_stub" / "comparison.pdf"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"dummy")
+
+    vrun.main(["--async-only"])   # forwarded flag, exactly as run_all.sh submits it either way
+    assert stale.exists(), (
+        "an auto-detected downgrade forwarded as --async-only must not delete anything"
+    )
+    summary = (tmp_path / "VALIDATION_SUMMARY.md").read_text()
+    assert "may still be sitting on disk" in summary
+    assert "--async-only explicitly" in summary
+
+
+def test_main_still_removes_stale_figures_for_a_genuinely_typed_async_only(monkeypatch, tmp_path):
+    """Complement of the test above: without GM_MODE_AUTODETECTED set -- a researcher
+    typing `globalmacro validate --async-only` directly, or any caller other than an
+    auto-detected `globalmacro run` -- deletion must still fire. This fix narrows
+    F13's guard with an extra condition; it must not disable it."""
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
+    monkeypatch.delenv("GM_MODE_AUTODETECTED", raising=False)
+
+    stale = tmp_path / "skipped_stub" / "comparison.pdf"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"dummy")
+
+    vrun.main(["--async-only"])
+    assert not stale.exists(), "an explicitly typed --async-only must still delete stale figures"
+
+
 def test_main_does_not_remove_anything_in_full_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
     monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)

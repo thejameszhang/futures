@@ -116,6 +116,78 @@ def test_autodetects_async_only_with_no_shards(tmp_path):
     assert "mode=async-only" in _dry_run(env=env)
 
 
+def _stub_sbatch(bin_dir: Path, capture: Path) -> None:
+    """A fake `sbatch` on PATH -- never touches the real scheduler (constraint: no
+    SLURM submission). Whenever asked to submit a job whose argv mentions
+    validate.sh, it dumps its OWN environment (the one it was forked+exec'd with) to
+    `capture` before returning a fake job id -- exactly what a real sbatch would hand
+    to the validate.sh job's environment under its default --export=ALL. This is the
+    only way to observe env-var propagation through `submit()`'s real
+    `sbatch --parsable ...` call (line 156): --dry-run's submit() branch never
+    invokes sbatch at all, so it cannot exercise this."""
+    stub = bin_dir / "sbatch"
+    stub.write_text(
+        "#!/bin/bash\n"
+        "for a in \"$@\"; do\n"
+        f'  case "$a" in *validate.sh*) env > "{capture}" ;; esac\n'
+        "done\n"
+        'echo "fake-job-$$"\n'
+    )
+    os.chmod(stub, 0o755)
+
+
+def test_autodetected_async_only_exports_marker_for_the_validate_job(tmp_path):
+    """R2-1 (Opus review, both reviewers independently, PROVED). Task 9 forwards the
+    RESOLVED mode as an explicit --async-only whether it was typed or auto-detected --
+    `globalmacro validate`'s argv alone can never tell the two apart, which let an
+    auto-detected downgrade (e.g. a researcher who reclaimed disk and deleted the tick
+    shards but kept the 3 aggregate sync panels) delete 9 shipped validation
+    artifacts nobody asked to lose. The fix: `export GM_MODE_AUTODETECTED=1` whenever
+    MODE_EXPLICIT=0, before the first submit()/sbatch call -- see
+    validation/run.py's explicit_async_only for the consuming side.
+
+    This proves the PROPAGATION half, not just that the export line runs: sbatch's
+    documented default (`man sbatch` on this cluster) is `--export=ALL` -- "the
+    user's environment will be loaded ... from the caller's environment" -- i.e. the
+    SUBMITTING shell's own environment, which is exactly run_all.sh's process. The
+    stub sbatch (_stub_sbatch) captures what it actually received."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "validate_sbatch_env.txt"
+    _stub_sbatch(bin_dir, capture)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "TICKHISTORY_PATH": str(tmp_path / "tick"),
+        "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets"),
+    }
+    r = subprocess.run(["bash", "slurm/run_all.sh"], cwd=REPO,
+                       capture_output=True, text=True, env=env)
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert "mode=async-only" in out
+    assert capture.exists(), f"stub sbatch was never asked to submit validate.sh:\n{out}"
+    assert "GM_MODE_AUTODETECTED=1" in capture.read_text().splitlines()
+
+
+def test_explicit_async_only_does_not_export_the_autodetect_marker(tmp_path):
+    """Complement of the test above: a researcher who TYPES --async-only
+    (MODE_EXPLICIT=1) must not have GM_MODE_AUTODETECTED set for the validate job --
+    only an auto-detected mode exports it. Without this, the fix would over-correct
+    into never deleting stale figures at all, even on a genuine explicit request."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "validate_sbatch_env.txt"
+    _stub_sbatch(bin_dir, capture)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    r = subprocess.run(["bash", "slurm/run_all.sh", "--async-only"], cwd=REPO,
+                       capture_output=True, text=True, env=env)
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert capture.exists(), f"stub sbatch was never asked to submit validate.sh:\n{out}"
+    assert "GM_MODE_AUTODETECTED=1" not in capture.read_text().splitlines()
+
+
 def _make_sync_panels(root: Path) -> None:
     """sync_panels_ready()'s three files. Since F3a, sync_panels_ready() itself
     consults sync_stage_outputs_ready() first, so a realistic "healthy prior full
