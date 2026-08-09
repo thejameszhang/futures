@@ -6,7 +6,7 @@ from pathlib import Path
 from globalmacro.utils.capabilities import SHARD_STEMS
 
 REPO = Path(__file__).resolve().parents[1]
-DAG_BASELINE = Path(__file__).resolve().parent / "data" / "dag-pre-task9.txt"
+DAG_BASELINE = Path(__file__).resolve().parent / "data" / "dag-full-mode-baseline.txt"
 
 
 def _dry_run(*args, env=None) -> str:
@@ -273,16 +273,19 @@ def test_capability_check_error_is_surfaced_not_discarded(tmp_path):
 
 def test_full_mode_dag_matches_committed_baseline(tmp_path):
     """Regression guard for the full-mode DAG's dependency edges. Step 8b's
-    comparison against the pre-task9 DAG was a one-time manual check whose baseline
-    lives at .superpowers/sdd/dag-pre-task9.txt -- gitignored, so this commits an
-    equivalent copy under tests/data/. tests/test_capabilities.py's shard-stem
-    guard only greps the two `for c in ...; do` class lists, so it can't catch
-    dependency-edge regressions such as a dropped ${jLON2}, a tier-2 loop's ids
-    never entering $TICK, or the london->ET serialization edge going missing.
+    comparison against a hand-captured DAG was a one-time manual check whose
+    original capture lives at .superpowers/sdd/dag-pre-task9.txt -- gitignored, so
+    this commits an equivalent copy under tests/data/dag-full-mode-baseline.txt.
+    tests/test_capabilities.py's shard-stem guard only greps the two `for c in
+    ...; do` class lists, so it can't catch dependency-edge regressions such as a
+    dropped ${jLON2}, a tier-2 loop's ids never entering $TICK, or the london->ET
+    serialization edge going missing.
 
-    The committed baseline includes --full on the build.sh/validate.sh lines,
-    since passing an explicit mode through is current, correct, Task-9 behaviour
-    (the pre-task9 capture predates that and has no flag there).
+    This is the POST-Task-9 full-mode DAG (F11): it includes --full on the
+    build.sh/validate.sh lines, since passing an explicit mode through is current,
+    correct Task-9 behaviour. The original .superpowers/sdd/dag-pre-task9.txt
+    capture predates that and has no flag there -- this committed copy is not a
+    byte-for-byte copy of it, just an equivalent baseline captured after Task 9.
     """
     _make_shards(tmp_path)
     env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path)}
@@ -291,6 +294,6 @@ def test_full_mode_dag_matches_committed_baseline(tmp_path):
     expected = DAG_BASELINE.read_text().splitlines()
     if actual != expected:
         diff = "\n".join(difflib.unified_diff(
-            expected, actual, fromfile="tests/data/dag-pre-task9.txt", tofile="actual",
-            lineterm=""))
+            expected, actual, fromfile="tests/data/dag-full-mode-baseline.txt",
+            tofile="actual", lineterm=""))
         raise AssertionError(f"full-mode DAG drifted from the committed baseline:\n{diff}")
