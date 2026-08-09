@@ -3,6 +3,7 @@
 datasets, grade each identically, render its comparison.pdf, write per-dataset
 symbol-count PDFs, and write one VALIDATION_SUMMARY.md."""
 import argparse
+import dataclasses
 import os
 
 import polars as pl
@@ -29,7 +30,16 @@ def _available_checks(mode: str = "full"):
               synthetic_equity_check, spot_fx_check, fx_futures_vs_spot_check]
     try:
         from globalmacro.validation.external_comparison import external_check
-        checks.append(external_check)          # optional, gitignored, local-only
+        # F4: external_comparison.py is gitignored and untracked (confidential-
+        # adjacent, .gitignore:34) -- it CANNOT carry requires_sync=True itself and
+        # have that travel with the merge; a local edit to a gitignored file is
+        # invisible to `git status` and to review, and any clone/worktree with a
+        # different (or default requires_sync=False) copy would run this check in
+        # async-only mode and try to read tier1/sync/sync_daily.csv, which doesn't
+        # exist there. State the requirement here instead, in tracked code -- the
+        # only place it can actually travel with the branch. Check is a plain,
+        # non-frozen dataclass, so dataclasses.replace() works.
+        checks.append(dataclasses.replace(external_check, requires_sync=True))
     except ImportError:
         pass
     if mode == "async-only":

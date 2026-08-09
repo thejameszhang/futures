@@ -1,5 +1,6 @@
 import os
 import sys
+import types
 from pathlib import Path
 
 import polars as pl
@@ -121,6 +122,44 @@ def test_available_checks_degrades_gracefully_without_external_module(monkeypatc
     assert full_by_slug["fx_futures_vs_spot"] in skipped
     expected = [c for c in vrun._available_checks("full") if c.requires_sync]
     assert len(skipped) == len(expected)
+
+
+# --- F4: requires_sync=True for the external check must live in TRACKED code -------
+
+
+def test_external_check_requires_sync_is_forced_in_tracked_code(monkeypatch):
+    """F4 (Reviewer A, proved). external_comparison.py is gitignored and untracked
+    (.gitignore:34) -- a local requires_sync=True there is invisible to `git status`
+    and does not travel with the merge; anywhere with a different copy would run
+    this check in async-only mode and try to read tier1/sync/sync_daily.csv, which
+    doesn't exist there. _available_checks must force requires_sync=True in tracked
+    code instead, via dataclasses.replace.
+
+    Injects a stub module (same sys.modules-substitution mechanism as
+    test_connect_report.py's _fake_wrds_success) whose external_check leaves
+    requires_sync at its dataclass default (False) -- exactly the state a
+    differently-configured clone/worktree would have -- so this proves the forcing
+    rather than depending on this machine's own (possibly already-correct) untracked
+    copy. Does not require the real gitignored module to exist, so it also passes on
+    a clean clone where the file is absent."""
+    name = "globalmacro.validation.external_comparison"
+    stub_check = Check(
+        name="External ground-truth cross-check", slug="external", run=_stub_correlations,
+    )
+    assert stub_check.requires_sync is False          # the dataclass default
+    stub_module = types.ModuleType(name)
+    stub_module.external_check = stub_check
+    monkeypatch.setitem(sys.modules, name, stub_module)
+
+    full = vrun._available_checks("full")
+    async_only = vrun._available_checks("async-only")
+
+    injected_full = next(c for c in full if c.slug == "external")
+    assert injected_full.requires_sync is True
+    assert "external" not in {c.slug for c in async_only}
+    # dataclasses.replace() returns a new instance -- the injected stub itself, and
+    # therefore any other reference to it, must be untouched.
+    assert stub_check.requires_sync is False
 
 
 def _touch(path, mtime):
