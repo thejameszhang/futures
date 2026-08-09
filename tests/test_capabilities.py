@@ -43,6 +43,7 @@ def test_partial_names_the_missing_directories(tmp_path, monkeypatch):
     # Pin the `missing` branch's own phrasing, not just the directory names it shares
     # with the `unverified` branch (a nonexistent directory also lacks _GATE1_OK, so
     # asserting only the names passes even if the `missing` branch is deleted).
+    assert c.message is not None
     assert "missing tick shard directories" in c.message
     assert "tier2_equity_trades" in c.message
     assert "tier2_equity_quotes" in c.message
@@ -54,6 +55,7 @@ def test_unverified_names_a_command_that_exists(tmp_path, monkeypatch):
     _make_shards(tmp_path, cap.SHARD_STEMS, marker=False)
     c = cap.shards_ready()
     assert c.ready is False
+    assert c.message is not None
     assert "_GATE1_OK" in c.message
     assert "split_tickhistory.sh" in c.message
 
@@ -65,6 +67,7 @@ def test_unsplit_monoliths_name_the_split_script(tmp_path, monkeypatch):
         (tmp_path / kind / f"tier1_commodity_{kind}.csv").write_text("#RIC\n")
     c = cap.shards_ready()
     assert c.ready is False
+    assert c.message is not None
     assert "split_tickhistory.sh" in c.message
 
 
@@ -83,6 +86,7 @@ def test_partial_with_leftover_monoliths_names_the_split_hint(tmp_path, monkeypa
 
     c = cap.shards_ready()
     assert c.ready is False
+    assert c.message is not None
     assert "missing tick shard directories" in c.message
     assert "split_tickhistory.sh" in c.message
 
@@ -184,6 +188,7 @@ def test_sync_stage_outputs_partial_names_the_missing_files(tmp_path, monkeypatc
     _make_sync_stage_outputs(tmp_path, cap.SYNC_STAGE_OUTPUTS[:-1])
     c = cap.sync_stage_outputs_ready()
     assert c.ready is False
+    assert c.message is not None
     assert "tier2/sync/equity_daily_returns.csv" in c.message
 
 
@@ -228,6 +233,7 @@ def test_sync_panels_partial_names_the_missing_files(tmp_path, monkeypatch):
     _make_sync_panels(tmp_path, ["tier1_daily", "tier2_currency"])
     c = cap.sync_panels_ready()
     assert c.ready is False
+    assert c.message is not None
     assert "tier2/sync/sync_daily.csv" in c.message
 
 
@@ -255,6 +261,7 @@ def test_sync_panels_ready_propagates_partial_stage_outputs_message(tmp_path, mo
     _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
     c = cap.sync_panels_ready()
     assert c.ready is False
+    assert c.message is not None
     assert "tier2/sync/equity_daily_returns.csv" in c.message
 
 

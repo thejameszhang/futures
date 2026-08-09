@@ -246,7 +246,7 @@ class _FakeConnection:
 def _fake_wrds_success(monkeypatch):
     monkeypatch.setattr(wc, "get_wrds_credentials", lambda: _FakeCreds())
     fake_wrds = types.ModuleType("wrds")
-    fake_wrds.Connection = _FakeConnection
+    monkeypatch.setattr(fake_wrds, "Connection", _FakeConnection, raising=False)
     monkeypatch.setitem(sys.modules, "wrds", fake_wrds)
 
 

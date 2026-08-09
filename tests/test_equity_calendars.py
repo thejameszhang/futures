@@ -97,6 +97,10 @@ def test_index_uses_its_constituents_exchange(symbol, calendar):
 @pytest.mark.parametrize("symbol,calendar", _equity_indices())
 def test_index_is_not_filtered_by_a_futures_venue(symbol, calendar):
     cal = pmc.get_calendar(calendar)
+    # get_time() (behind these properties) only returns None for break_start/break_end
+    # market_times; market_open/market_close either return a real time or raise
+    # NotImplementedError, so these are never actually None here.
+    assert cal.open_time is not None and cal.close_time is not None
     open_h = cal.open_time.hour + cal.open_time.minute / 60
     close_h = cal.close_time.hour + cal.close_time.minute / 60
     session_hours = (close_h - open_h) % 24

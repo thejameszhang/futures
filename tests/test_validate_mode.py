@@ -148,7 +148,7 @@ def test_external_check_requires_sync_is_forced_in_tracked_code(monkeypatch):
     )
     assert stub_check.requires_sync is False          # the dataclass default
     stub_module = types.ModuleType(name)
-    stub_module.external_check = stub_check
+    monkeypatch.setattr(stub_module, "external_check", stub_check, raising=False)
     monkeypatch.setitem(sys.modules, name, stub_module)
 
     full = vrun._available_checks("full")
@@ -192,6 +192,7 @@ def test_sync_panels_stale_after_async_only_rebuild(tmp_path, monkeypatch):
 
     c = cap.sync_panels_fresh()
     assert c.ready is False
+    assert c.message is not None
     assert "tier1" in c.message and "sync_daily.csv" in c.message
     assert "tier2" in c.message
 

@@ -86,7 +86,7 @@ def test_all_null_synthetic_month_inside_window_is_excluded_not_compounded_to_ze
         ship_returns[i] = 0.0
     ship_returns[null_month_idx[0]] = 0.5  # outlier: real future has a large return this month
 
-    synth_returns = list(r)
+    synth_returns: list[float | None] = list(r)
     for i in null_month_idx:
         synth_returns[i] = None  # synthetic has NO observation at all this month
 
