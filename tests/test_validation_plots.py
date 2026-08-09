@@ -58,6 +58,7 @@ def test_datastream_pairs_shape_and_grade_unchanged():
     assert med == pytest.approx(0.9997, abs=5e-4)   # graded median must not move
 
 
+@pytest.mark.needs_sync
 def test_consistency_pairs_tier1_and_grade_unchanged():
     from globalmacro.validation.consistency import (
         _consistency_correlations,
