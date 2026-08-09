@@ -44,13 +44,29 @@ tick-data download stage exists yet. `DSS_USERNAME`/`DSS_PASSWORD` are consumed 
 `instrumentlists` or `tickhistory`, which read only local files.
 
 - **`globalmacro connect`** reports what this machine can build and prints the exact next
-  command. When shards are ready, it ends with two lines:
+  command. It checks exactly one file up front — the JKP sector file
+  (`data/jkp/updated_daily_ind_gics.csv`), a genuine, manual, never-downloadable
+  prerequisite for both modes — never a Compustat entitlement (no file on disk can prove
+  one before the first download; see "Compustat is a prerequisite for every mode" below),
+  so it only ever reminds the researcher of that one, never claims to have verified it.
+
+  When the JKP file is present and shards are ready, it ends with three lines:
   - `-> This machine can build the SYNC and ASYNC datasets.`
+  - `   Also requires a Compustat entitlement (comp.exrt_dly) -- see USAGE.md.`
   - `Next:  globalmacro run --with-download`
 
-  When they are not, it ends with three lines instead:
+  When the JKP file is present but shards are not ready, it ends with four lines instead:
   - `-> This machine can build the ASYNC datasets.`
-  - `Sync datasets need LSEG tick data on disk.`
+  - `   Sync datasets need LSEG tick data on disk.`
+  - `   Also requires a Compustat entitlement (comp.exrt_dly) -- see USAGE.md.`
+  - `Next:  globalmacro run --with-download`
+
+  When the JKP file is missing — regardless of shard state, since it gates
+  `load_sectors_async()`, which `build` calls unconditionally in every mode — it ends with
+  a fourth shape instead, naming the missing file:
+  - `-> This machine needs one more file before it can build the ASYNC datasets:`
+  - `   <path to the missing file>`
+  - `   See USAGE.md's Detailed Data Prerequisites section.`
   - `Next:  globalmacro run --with-download`
 - **Mode detection is not one predicate — each entry point asks a different question**
   (`src/globalmacro/utils/capabilities.py`: "shard presence is not build-readiness").
