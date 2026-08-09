@@ -4,7 +4,9 @@ the ~1.5 TB; prints the tar command. Tier-A only, so interims (B), moved files
 (C) and the quarantined confidential series (outside data/) are excluded by
 construction. tar recurses the listed directories (trades/quotes)."""
 from __future__ import annotations
-import subprocess, sys
+
+import subprocess
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
