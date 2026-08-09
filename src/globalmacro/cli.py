@@ -51,19 +51,25 @@ def _capability_report(
     if present is None:
         present = creds
 
-    # F6: the two hard prerequisites build_async() needs unconditionally -- neither
-    # is a tick-shard/LSEG concern, so shard_cap.ready says nothing about them.
-    # load_sectors_async() reads the JKP sector file; load_synthetic_returns() reads
-    # BOTH synthetic FX panels before build's own async/full branch runs, so the sync
-    # one (produced only once fx.py has reached save_compustat_fx_rates(), which
-    # needs a Compustat entitlement) gates the ASYNC datasets too, not just sync --
-    # see USAGE.md's "Compustat is a prerequisite for every mode, not just sync" note.
-    # Verified against paths.py rather than assumed: DATA_ROOT and FX_PATH are the
-    # real constants load_sectors_async/load_synthetic_returns resolve their paths
-    # from (build.py).
+    # F6/F14: the JKP sector file is a genuine, manual, never-downloadable
+    # prerequisite -- load_sectors_async() reads it unconditionally, in BOTH
+    # modes (build.main() always runs build_async() first, even under --full).
+    # Flagging it pre-run is correct and valuable: a missing copy otherwise
+    # surfaces as a raw FileNotFoundError deep inside build. Verified against
+    # paths.py rather than assumed: DATA_ROOT is the real constant
+    # load_sectors_async() resolves its path from (build.py).
+    #
+    # F14 (Reviewer B, BLOCKER): this used to ALSO probe
+    # FX_PATH/synthetic_fx_returns_sync.csv. That file is a pipeline OUTPUT, not a
+    # prerequisite -- fx.py's __main__ writes it via
+    # build_synthetic(fx_sync).write_csv(...) -- so it is absent on 100% of clean
+    # clones, including a researcher with full Compustat entitlement who has done
+    # everything right. No file-presence check can establish a Compustat
+    # entitlement before the first download (exrt_dly.csv has the identical
+    # problem, so it is not a substitute); the unconditional line appended to both
+    # verdict branches below replaces the check with a plain statement instead.
     _jkp_sectors = _paths.DATA_ROOT / "jkp" / "updated_daily_ind_gics.csv"
-    _synthetic_fx_sync = _paths.FX_PATH / "synthetic_fx_returns_sync.csv"
-    missing_async_prereqs = [p for p in (_jkp_sectors, _synthetic_fx_sync) if not p.exists()]
+    missing_manual_prereqs = [] if _jkp_sectors.exists() else [_jkp_sectors]
     if not present:
         lseg = "no credentials found"
     elif not checked:
@@ -84,20 +90,28 @@ def _capability_report(
     lines.append(f"Tick data:         {tick}")
     if shard_cap.message:
         lines.append(f"                   {shard_cap.message}")
-    if shard_cap.ready:
-        lines.append("-> This machine can build the SYNC and ASYNC datasets.")
-    elif missing_async_prereqs:
-        # Replace the confident claim: async-only still needs these two, whatever
-        # the tick-shard state says. Named and pointed at USAGE.md rather than left
-        # to a later FileNotFoundError or a DAG stalled behind a failed `comp`
-        # download.
-        lines.append("-> This machine CANNOT build the ASYNC datasets yet -- missing:")
-        for p in missing_async_prereqs:
+    # F14: the JKP check now runs BEFORE the shard_cap.ready branch, not only in
+    # its own elif -- the round-1 asymmetry this closes let a shard-ready machine
+    # missing the JKP file be told "can build the SYNC and ASYNC datasets" (JKP
+    # gates build_async(), which build.main() calls unconditionally in every
+    # mode, so shard readiness alone never implied JKP readiness). Applying the
+    # SAME corrected check to both success branches, rather than adding a second,
+    # differently-scoped check to shard_cap.ready, keeps exactly one place that
+    # can go stale.
+    if missing_manual_prereqs:
+        # Named and pointed at USAGE.md rather than left to a later
+        # FileNotFoundError or a DAG stalled behind a failed `comp` download.
+        lines.append("-> This machine needs one more file before it can build the ASYNC datasets:")
+        for p in missing_manual_prereqs:
             lines.append(f"   {p}")
         lines.append("   See USAGE.md's Detailed Data Prerequisites section.")
+    elif shard_cap.ready:
+        lines.append("-> This machine can build the SYNC and ASYNC datasets.")
+        lines.append("   Also requires a Compustat entitlement (comp.exrt_dly) -- see USAGE.md.")
     else:
         lines.append("-> This machine can build the ASYNC datasets.")
         lines.append("   Sync datasets need LSEG tick data on disk.")
+        lines.append("   Also requires a Compustat entitlement (comp.exrt_dly) -- see USAGE.md.")
     lines.append("   Next:  globalmacro run --with-download")
     return "\n".join(lines)
 

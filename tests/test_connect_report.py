@@ -30,15 +30,31 @@ from globalmacro.utils.capabilities import Capability
 # distinguishes not-yet-checked from checked-and-valid.
 # ---------------------------------------------------------------------------
 
-def test_report_says_async_when_no_shards():
+
+def _with_jkp_sectors(monkeypatch, tmp_path) -> None:
+    """Construct a DATA_ROOT with the JKP sector file present, so the "can build"
+    verdict branches are reached without depending on this machine's real data/
+    (F15) -- since F14, `_capability_report` checks this file BEFORE the
+    shard_cap.ready branch too, so any test that wants a "can build" verdict
+    (SYNC-and-ASYNC or ASYNC-only) needs it constructed, not just the
+    JKP-missing tests."""
+    root = tmp_path / "data"
+    monkeypatch.setattr(pathsmod, "DATA_ROOT", root)
+    (root / "jkp").mkdir(parents=True)
+    (root / "jkp" / "updated_daily_ind_gics.csv").write_text("date\n")
+
+
+def test_report_says_async_when_no_shards(tmp_path, monkeypatch):
     """Assert on whole clauses: "SYNC" is a substring of "ASYNC"."""
+    _with_jkp_sectors(monkeypatch, tmp_path)
     out = cli._capability_report(Capability(False, None), creds=False, checked=False)
     assert "can build the ASYNC datasets" in out
     assert "Sync datasets need LSEG tick data" in out
     assert "globalmacro run --with-download" in out
 
 
-def test_report_says_both_when_shards_ready():
+def test_report_says_both_when_shards_ready(tmp_path, monkeypatch):
+    _with_jkp_sectors(monkeypatch, tmp_path)
     out = cli._capability_report(Capability(True, None), creds=True, checked=False)
     assert "can build the SYNC and ASYNC datasets" in out
     assert "Sync datasets need LSEG tick data" not in out
@@ -72,41 +88,46 @@ def test_report_gives_a_remediation_hint_when_no_credentials():
 
 
 # ---------------------------------------------------------------------------
-# F6: `connect` must not claim it can build the ASYNC datasets when the two hard
-# prerequisites build_async() needs unconditionally -- the JKP sector file and the
-# Compustat-derived sync synthetic-FX panel -- are missing. Both existing tests
-# above (test_report_says_async_when_no_shards, test_report_says_both_when_
-# shards_ready) already cover the "both present" baseline for free: they call
-# `_capability_report` without monkeypatching DATA_ROOT/FX_PATH, so they exercise
-# this machine's real files, which are both present (a full owner build).
+# F6/F14: `connect` must not claim it can build the ASYNC datasets when the JKP
+# sector file build_async() needs unconditionally -- in BOTH modes -- is missing.
+# F14 (Reviewer B, BLOCKER): an earlier version of this section also probed
+# FX_PATH/synthetic_fx_returns_sync.csv, but that file is a pipeline OUTPUT
+# (fx.py's __main__ writes it), not a prerequisite -- it is absent on 100% of
+# clean clones, so that probe told every clean-clone researcher, including one
+# with full Compustat entitlement, that they could not build the ASYNC datasets.
+# The check was dropped entirely; only the genuinely-manual JKP file remains
+# checked, and a plain (non-conditional) Compustat-entitlement reminder replaces
+# it in the two "can build" verdicts (see test_missing_synthetic_fx_sync_file_
+# no_longer_blocks_the_report below).
+#
+# F15: every test in this section constructs its own DATA_ROOT under tmp_path --
+# never this machine's real data/ -- so it passes identically on a clean
+# researcher clone with nothing in data/jkp/.
 # ---------------------------------------------------------------------------
 
 
 def test_report_names_missing_jkp_sectors_file(tmp_path, monkeypatch):
     monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
-    # FX_PATH stays real (present) -- isolates the JKP-only-missing state.
     out = cli._capability_report(Capability(False, None), creds=False, checked=False)
-    assert "CANNOT build the ASYNC datasets yet" in out
+    assert "needs one more file" in out
     assert "updated_daily_ind_gics.csv" in out
     assert "USAGE.md" in out
     assert "can build the ASYNC datasets." not in out
 
 
-def test_report_names_missing_synthetic_fx_sync_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
-    # DATA_ROOT stays real (present) -- isolates the FX-only-missing state.
+def test_missing_synthetic_fx_sync_file_no_longer_blocks_the_report(tmp_path, monkeypatch):
+    """F14 regression proof: FX_PATH/synthetic_fx_returns_sync.csv is a pipeline
+    OUTPUT, not a prerequisite -- a missing copy (the state of every clean clone)
+    must no longer trigger the "needs one more file" verdict, only the
+    genuinely-manual JKP file can. JKP is present here (constructed, F15) so this
+    isolates the FX_PATH-is-now-ignored behaviour from the JKP check."""
+    _with_jkp_sectors(monkeypatch, tmp_path)
+    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")   # never created
     out = cli._capability_report(Capability(False, None), creds=False, checked=False)
-    assert "CANNOT build the ASYNC datasets yet" in out
-    assert "synthetic_fx_returns_sync.csv" in out
-    assert "USAGE.md" in out
-
-
-def test_report_names_both_missing_prerequisites(tmp_path, monkeypatch):
-    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
-    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
-    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
-    assert "updated_daily_ind_gics.csv" in out
-    assert "synthetic_fx_returns_sync.csv" in out
+    assert "needs one more file" not in out
+    assert "synthetic_fx_returns_sync.csv" not in out
+    assert "can build the ASYNC datasets." in out
+    assert "Compustat entitlement" in out
 
 
 def test_exit_code_zero_when_jkp_missing(monkeypatch, tmp_path):
@@ -118,32 +139,14 @@ def test_exit_code_zero_when_jkp_missing(monkeypatch, tmp_path):
     assert cli.main(["connect"]) == 0
 
 
-def test_exit_code_zero_when_synthetic_fx_sync_missing(monkeypatch, tmp_path):
-    _fake_wrds_success(monkeypatch)
-    monkeypatch.delenv(tc.ENV_USERNAME, raising=False)
-    monkeypatch.delenv(tc.ENV_PASSWORD, raising=False)
-    monkeypatch.setattr(capmod, "shards_ready", lambda: Capability(False, None))
-    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
-    assert cli.main(["connect"]) == 0
-
-
-def test_exit_code_zero_when_both_missing(monkeypatch, tmp_path):
-    _fake_wrds_success(monkeypatch)
-    monkeypatch.delenv(tc.ENV_USERNAME, raising=False)
-    monkeypatch.delenv(tc.ENV_PASSWORD, raising=False)
-    monkeypatch.setattr(capmod, "shards_ready", lambda: Capability(False, None))
-    monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
-    monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")
-    assert cli.main(["connect"]) == 0
-
-
-def test_exit_code_zero_when_both_present_no_shards():
-    """The fourth of the "four states" -- both prerequisites present, no shards --
-    exercised end to end via the module functions directly (no I/O redirection
-    needed; this machine's real files are both present)."""
+def test_exit_code_zero_when_both_present_no_shards(tmp_path, monkeypatch):
+    """Both prerequisites present, no shards -- hermetic (F15): DATA_ROOT points
+    at a constructed tmp_path with the JKP file actually on disk, never this
+    machine's real files."""
+    _with_jkp_sectors(monkeypatch, tmp_path)
     out = cli._capability_report(Capability(False, None), creds=False, checked=False)
     assert "can build the ASYNC datasets." in out
-    assert "CANNOT build" not in out
+    assert "needs one more file" not in out
 
 
 def test_report_states_the_shard_count_when_ready():
