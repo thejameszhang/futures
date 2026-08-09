@@ -1,5 +1,6 @@
 import difflib
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -136,6 +137,34 @@ def _stub_sbatch(bin_dir: Path, capture: Path) -> None:
     os.chmod(stub, 0o755)
 
 
+def _intercepted_env(bin_dir: Path, capture: Path, **extra) -> dict:
+    """Build the env for a NON-dry `run_all.sh` run, and refuse to hand it back unless
+    the stub sbatch provably wins on PATH.
+
+    The two callers below invoke run_all.sh WITHOUT --dry-run, so `submit()` executes a
+    real `sbatch ...` for every stage -- the only way to observe env propagation, since
+    the --dry-run branch never calls sbatch at all. The real scheduler IS on PATH here
+    (/cm/shared/apps/slurm/current/bin/sbatch). If the prepend below ever stopped
+    winning, these tests would submit the full 12-job DAG, including build.sh and
+    validate.sh, which WRITE production datasets/ and validation/.
+
+    So the interception is asserted here, BEFORE any subprocess starts, and separately
+    from the mechanism it protects: this branch's own hard-won rule is that a test which
+    exercises a dangerous path must carry its own protection, and the mechanism under
+    test must not also be the protection. SLURM_CONF is pointed at a nonexistent file as
+    a second, PATH-independent line of defense -- a real sbatch reached by any route
+    cannot then find a controller to submit to.
+    """
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+           "SLURM_CONF": "/nonexistent/slurm.conf", **extra}
+    resolved = shutil.which("sbatch", path=env["PATH"])
+    assert resolved == str(bin_dir / "sbatch"), (
+        f"stub sbatch did not win on PATH (resolved to {resolved!r}); refusing to run "
+        "run_all.sh non-dry, which would submit the real DAG and overwrite production "
+        "datasets/ and validation/")
+    return env
+
+
 def test_autodetected_async_only_exports_marker_for_the_validate_job(tmp_path):
     """R2-1 (Opus review, both reviewers independently, PROVED). Task 9 forwards the
     RESOLVED mode as an explicit --async-only whether it was typed or auto-detected --
@@ -155,12 +184,9 @@ def test_autodetected_async_only_exports_marker_for_the_validate_job(tmp_path):
     bin_dir.mkdir()
     capture = tmp_path / "validate_sbatch_env.txt"
     _stub_sbatch(bin_dir, capture)
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir}:{os.environ['PATH']}",
-        "TICKHISTORY_PATH": str(tmp_path / "tick"),
-        "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets"),
-    }
+    env = _intercepted_env(bin_dir, capture,
+                           TICKHISTORY_PATH=str(tmp_path / "tick"),
+                           FUTURES_DATASETS_ROOT=str(tmp_path / "datasets"))
     r = subprocess.run(["bash", "slurm/run_all.sh"], cwd=REPO,
                        capture_output=True, text=True, env=env)
     out = r.stdout + r.stderr
@@ -179,13 +205,32 @@ def test_explicit_async_only_does_not_export_the_autodetect_marker(tmp_path):
     bin_dir.mkdir()
     capture = tmp_path / "validate_sbatch_env.txt"
     _stub_sbatch(bin_dir, capture)
-    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    env = _intercepted_env(bin_dir, capture)
     r = subprocess.run(["bash", "slurm/run_all.sh", "--async-only"], cwd=REPO,
                        capture_output=True, text=True, env=env)
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     assert capture.exists(), f"stub sbatch was never asked to submit validate.sh:\n{out}"
     assert "GM_MODE_AUTODETECTED=1" not in capture.read_text().splitlines()
+
+
+def test_typed_async_only_clears_an_inherited_autodetect_marker(tmp_path):
+    """R3-2 (Opus review B). run_all.sh must set the marker on BOTH branches, not just
+    the auto-detect one: a GM_MODE_AUTODETECTED inherited from an outer environment
+    would otherwise survive a TYPED --async-only and suppress the stale-figure cleanup
+    the researcher explicitly requested. The flag has to describe this invocation."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "validate_sbatch_env.txt"
+    _stub_sbatch(bin_dir, capture)
+    env = _intercepted_env(bin_dir, capture, GM_MODE_AUTODETECTED="1")
+    r = subprocess.run(["bash", "slurm/run_all.sh", "--async-only"], cwd=REPO,
+                       capture_output=True, text=True, env=env)
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert capture.exists(), f"stub sbatch was never asked to submit validate.sh:\n{out}"
+    assert "GM_MODE_AUTODETECTED=1" not in capture.read_text().splitlines(), (
+        "an inherited marker survived a typed --async-only")
 
 
 def _make_sync_panels(root: Path) -> None:

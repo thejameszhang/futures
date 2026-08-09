@@ -104,6 +104,13 @@ echo "mode=$MODE" >&2
 # explicit_async_only.
 if [ "$MODE_EXPLICIT" = 0 ]; then
   export GM_MODE_AUTODETECTED=1
+else
+  # Set on BOTH branches, never just one. An inherited GM_MODE_AUTODETECTED from an
+  # outer environment would otherwise survive a typed --async-only and suppress the
+  # stale-figure cleanup the researcher explicitly asked for. Failure direction is
+  # safe (nothing deleted), but the flag must describe THIS invocation, not a previous
+  # one -- a stale marker is the same class of bug as the stale panels it guards.
+  unset GM_MODE_AUTODETECTED
 fi
 
 # Refuse to silently downgrade a machine that has already built the sync half. Only
