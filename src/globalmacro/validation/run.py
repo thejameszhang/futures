@@ -32,6 +32,16 @@ from globalmacro.validation.synthetic_fx import synthetic_fx_check
 # site uses, rather than a second, independently-typed literal that could drift.
 _COMPARISON_PDF = "comparison.pdf"
 
+# F16: the literal filename the main() loop writes EVERY check's graded correlations
+# to, unconditionally (regardless of check.pairs/check.figures) -- named once here for
+# the same reason _COMPARISON_PDF is, so the stale-figure cleanup's second reference to
+# it cannot drift from the write site.
+_CORRELATIONS_CSV = "correlations.csv"
+
+# F16: the symbol_counts/ subdirectory name, used at both the write site (main(),
+# below) and the stale-figure cleanup (_stale_figure_paths) -- same drift concern.
+_SYMBOL_COUNTS_DIR = "symbol_counts"
+
 
 def _available_checks(mode: str = "full"):
     checks = [datastream_check, consistency_check, synthetic_fx_check,
@@ -78,21 +88,44 @@ def _dropped_figures(mode: str) -> list[str]:
     return [name for c in _available_checks(mode) for name in c.dropped_figures]
 
 
+def _dropped_symbol_count_stems(mode: str) -> list[str]:
+    """F16: which _SYMBOL_COUNT_SOURCES entries THIS mode's _symbol_count_sources
+    filters out -- derived from that function's own filter, the same way
+    _dropped_figures derives from Check.dropped_figures, rather than a fresh
+    "tier1_sync_daily" literal that could drift out of sync with it."""
+    if mode != "async-only":
+        return []
+    kept = {stem for stem, _, _ in _symbol_count_sources(mode)}
+    return [stem for stem, _, _ in _SYMBOL_COUNT_SOURCES if stem not in kept]
+
+
 def _stale_figure_paths(mode: str) -> list[Path]:
-    """F9: after a full run, an async-only run's own VALIDATION_SUMMARY.md calls a
-    figure SKIPPED while it may still be sitting on disk from that earlier full run
-    -- the summary says one thing, the tree says another. Names the on-disk paths
-    that must not survive an async-only run, from two sources ONLY (both already
-    tracked, static, per-Check data -- nothing here is derived by running anything):
+    """F9/F16: after a full run, an async-only run's own VALIDATION_SUMMARY.md calls a
+    check/figure SKIPPED while its artifacts may still be sitting on disk from that
+    earlier full run -- the summary says one thing, the tree says another. Names the
+    on-disk paths that must not survive an async-only run, from three sources ONLY
+    (all already tracked, static, per-Check/per-source data -- nothing here is derived
+    by running anything):
 
       * a check dropped WHOLE (requires_sync=True, named under _skipped_checks) --
-        its comparison.pdf, written either via check.pairs (this module's own
-        plot_comparison(..., out_dir / _COMPARISON_PDF) call above) or a custom
-        check.figures whose output filename this codebase's convention also names
-        _COMPARISON_PDF (fx_futures.plot_fx_vs_spot_comparison).
+        its correlations.csv (written unconditionally by main()'s loop, for every
+        check that ran) and, if it has one, its comparison.pdf, written either via
+        check.pairs (this module's own plot_comparison(..., out_dir / _COMPARISON_PDF)
+        call above) or a custom check.figures whose output filename this codebase's
+        convention also names _COMPARISON_PDF (fx_futures.plot_fx_vs_spot_comparison).
+        correlations.csv is the machine-readable half of the same artifact
+        comparison.pdf visualizes -- arguably the more dangerous one to leave stale,
+        since nothing about it looks like a diagnostic plot a reader would think to
+        distrust.
       * a check still RUNNING in this mode but dropping some of its own figures --
         each name in that check's own declared Check.dropped_figures (see
         _dropped_figures above).
+      * a symbol_counts/*.pdf source this mode's _symbol_count_sources drops (see
+        _dropped_symbol_count_stems above) -- e.g. symbol_counts/tier1_sync_daily.pdf.
+        Unlike the two sources above, this one is NOT a Check at all:
+        _symbol_count_sources("async-only") filters its source out entirely, so it is
+        never rewritten by main()'s symbol-counts loop, never appears in
+        _dropped_figures, and nothing in the summary mentions it without this.
 
     Full mode returns []: nothing here may ever touch a file when nothing was
     actually skipped.
@@ -104,11 +137,15 @@ def _stale_figure_paths(mode: str) -> list[Path]:
     for check in _available_checks("full"):
         out_dir = VALIDATION_OUTPUT / check.slug
         if check.slug not in kept_slugs:
+            paths.append(out_dir / _CORRELATIONS_CSV)
             if check.pairs is not None or check.figures is not None:
                 paths.append(out_dir / _COMPARISON_PDF)
         else:
             for fig_name in check.dropped_figures:
                 paths.append(out_dir / fig_name)
+    sc_dir = VALIDATION_OUTPUT / _SYMBOL_COUNTS_DIR
+    for stem in _dropped_symbol_count_stems(mode):
+        paths.append(sc_dir / f"{stem}.pdf")
     return paths
 
 
@@ -213,7 +250,7 @@ def main(argv=None):
             correlations = check.run()
             out_dir = VALIDATION_OUTPUT / check.slug
             os.makedirs(out_dir, exist_ok=True)
-            correlations.write_csv(str(out_dir / "correlations.csv"))   # full universe
+            correlations.write_csv(str(out_dir / _CORRELATIONS_CSV))   # full universe
             # Grade only what ships. Diagnostic rows (used=false) stay in the CSV but must
             # never move the median -- grading a series no reader receives is meaningless.
             graded = (
@@ -273,7 +310,7 @@ def main(argv=None):
                 except Exception as e:
                     print(f"        WARN: figures failed for {check.slug}: {e}")
 
-    sc_dir = VALIDATION_OUTPUT / "symbol_counts"
+    sc_dir = VALIDATION_OUTPUT / _SYMBOL_COUNTS_DIR
     os.makedirs(sc_dir, exist_ok=True)
     for stem, src, title in _symbol_count_sources(mode):
         try:

@@ -427,45 +427,80 @@ def _f9_available_checks(mode):
     return _f9_full_checks()
 
 
+# F16: a private, test-owned _SYMBOL_COUNT_SOURCES shape (NOT the production one),
+# so these tests stay independent of what globalmacro.validation.run's real source
+# list contains -- deterministic, and unaffected if the production list ever grows.
+_F9_SYMBOL_COUNT_SOURCES = [
+    ("tier1_sync_daily", Path("/fake-data/tier1/sync/sync_daily.csv"), "x"),
+    ("tier1_async_daily", Path("/fake-data/tier1/async/async_daily.csv"), "x"),
+]
+
+
+def test_dropped_symbol_count_stems_matches_symbol_count_sources_filter(monkeypatch):
+    """F16: derived from _symbol_count_sources's own filter, not a fresh literal."""
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
+    assert vrun._dropped_symbol_count_stems("async-only") == ["tier1_sync_daily"]
+    assert vrun._dropped_symbol_count_stems("full") == []
+
+
 def test_stale_figure_paths_names_skipped_comparison_pdf_and_dropped_figures(monkeypatch):
     monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
     paths = vrun._stale_figure_paths("async-only")
     assert vrun.VALIDATION_OUTPUT / "skipped_stub" / "comparison.pdf" in paths
+    # F16: correlations.csv is the machine-readable half of the SAME dropped-check
+    # artifact -- written unconditionally by main()'s loop, so it must be cleaned up
+    # alongside comparison.pdf, not just the plot.
+    assert vrun.VALIDATION_OUTPUT / "skipped_stub" / "correlations.csv" in paths
     assert vrun.VALIDATION_OUTPUT / "running_stub" / "dropped_stub.pdf" in paths
-    assert len(paths) == 2
+    # F16: the sync symbol-count PDF -- not a Check at all, so it was invisible to
+    # F9's original two sources entirely.
+    assert vrun.VALIDATION_OUTPUT / "symbol_counts" / "tier1_sync_daily.pdf" in paths
+    assert len(paths) == 4
 
 
 def test_stale_figure_paths_empty_in_full_mode(monkeypatch):
     monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
     assert vrun._stale_figure_paths("full") == []
 
 
 def test_remove_stale_figures_deletes_exactly_the_dropped_ones(monkeypatch, tmp_path):
-    """Plant dummy PDFs, run async-only cleanup, assert exactly the dropped ones are
-    gone and every other file (including siblings in the SAME check directories)
-    survives."""
+    """Plant dummy PDFs/CSVs, run async-only cleanup, assert exactly the dropped ones
+    are gone and every other file (including siblings in the SAME check/symbol_counts
+    directories) survives."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
     monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
 
     stale1 = tmp_path / "skipped_stub" / "comparison.pdf"
     stale2 = tmp_path / "running_stub" / "dropped_stub.pdf"
+    stale3 = tmp_path / "skipped_stub" / "correlations.csv"          # F16
+    stale4 = tmp_path / "symbol_counts" / "tier1_sync_daily.pdf"     # F16
     # Survivors: a plain file in a fully-kept check's dir, the RUNNING check's own
-    # (non-dropped) comparison.pdf, and a non-PDF sibling in the skipped check's dir.
+    # (non-dropped) comparison.pdf, a differently-named sibling in the skipped
+    # check's dir (proves this is not a whole-directory wipe), and the symbol-count
+    # PDF _symbol_count_sources keeps in async-only mode.
     survivor_kept = tmp_path / "kept_stub" / "comparison.pdf"
     survivor_running_comparison = tmp_path / "running_stub" / "comparison.pdf"
-    survivor_csv = tmp_path / "skipped_stub" / "correlations.csv"
-    for p in (stale1, stale2, survivor_kept, survivor_running_comparison, survivor_csv):
+    survivor_notes = tmp_path / "skipped_stub" / "notes.txt"
+    survivor_symbol_count = tmp_path / "symbol_counts" / "tier1_async_daily.pdf"
+    for p in (stale1, stale2, stale3, stale4, survivor_kept,
+              survivor_running_comparison, survivor_notes, survivor_symbol_count):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b"dummy")
 
     removed = vrun._remove_stale_figures("async-only")
 
-    assert set(removed) == {stale1, stale2}
+    assert set(removed) == {stale1, stale2, stale3, stale4}
     assert not stale1.exists()
     assert not stale2.exists()
+    assert not stale3.exists()
+    assert not stale4.exists()
     assert survivor_kept.exists()
     assert survivor_running_comparison.exists()
-    assert survivor_csv.exists()
+    assert survivor_notes.exists()
+    assert survivor_symbol_count.exists()
 
 
 def test_remove_stale_figures_deletes_nothing_in_full_mode(monkeypatch, tmp_path):
