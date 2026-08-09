@@ -149,8 +149,19 @@ def _make_sync_stage_outputs(root: Path) -> None:
 
 def test_shards_absent_sync_panels_present_no_flag_aborts(tmp_path):
     """F1 (Reviewer A): auto-detect must not silently downgrade a machine that has
-    already built the sync half. Sync panels on disk + no tick shards + no explicit
-    flag -> exit 1, message names the cause and both remedies."""
+    already built the sync half. No tick shards + no explicit flag -> exit 1,
+    message names the cause and both remedies.
+
+    N7 (Reviewer B): since F3a, sync_panels_ready() consults sync_stage_outputs_
+    ready() first and returns ITS result whenever it isn't ready -- so
+    sync_panels_ready().ready now implies sync_stage_outputs_ready().ready, and
+    _make_sync_panels (which calls _make_sync_stage_outputs before writing the 3
+    aggregates, for exactly this reason) can no longer construct "panels ready,
+    stage outputs not" in isolation. This test therefore exercises BOTH predicates
+    ready together, not "sync panels" alone -- F1's "either" can no longer trigger
+    on panels alone, only on stage outputs (which the companion test below,
+    test_shards_absent_stage_outputs_present_no_flag_aborts, covers as the
+    genuinely isolable case: stage outputs present, aggregate panels absent)."""
     env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
            "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets")}
     _make_sync_panels(tmp_path / "datasets")
