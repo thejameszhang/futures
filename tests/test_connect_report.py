@@ -5,67 +5,23 @@ fakes out `wrds_credentials.get_wrds_credentials` and the `wrds` module itself, 
 none of them touch a real WRDS connection, a real ~/.pgpass, or the system keyring.
 None of them read/write DATASETS_ROOT, VALIDATION_OUTPUT, or TICKHISTORY_PATH --
 `capabilities.shards_ready` is always monkeypatched to a fixed `Capability`, never
-called for real. `tc.validate_credentials` is replaced by the autouse
-`_no_live_lseg_network` fixture below for every test in this file, so no test can
-reach the real function -- and therefore selectapi.datascope.refinitiv.com -- even
-if the `checked and present` gate in `cli.py` regresses; the two tests that
-legitimately want to drive it install their own stub, which simply overrides this
-fixture's for the duration of that test. DSS_USERNAME/DSS_PASSWORD are always set
-via monkeypatch.setenv/delenv, never inherited from a real .env.
+called for real. `tc.validate_credentials` is replaced by the repo-wide autouse
+`_no_live_lseg_network` fixture (tests/conftest.py) for every test in this file, so
+no test can reach the real function -- and therefore
+selectapi.datascope.refinitiv.com -- even if the `checked and present` gate in
+`cli.py` regresses; the two tests that legitimately want to drive it install their
+own stub, which simply overrides that fixture's for the duration of that test.
+DSS_USERNAME/DSS_PASSWORD are always set via monkeypatch.setenv/delenv, never
+inherited from a real .env.
 """
 import sys
 import types
-
-import pytest
 
 import globalmacro.tickhistory_credentials as tc
 import globalmacro.utils.capabilities as capmod
 import globalmacro.wrds_credentials as wc
 from globalmacro import cli
 from globalmacro.utils.capabilities import Capability
-
-# ---------------------------------------------------------------------------
-# A safety net against a live network call, applied automatically to every test
-# in this module. `validate_credentials` makes a real HTTPS request; production only
-# reaches it behind `checked and present` in `cli.py`, but three tests below
-# (`test_exit_code_is_zero_on_wrds_success_regardless_of_lseg`,
-# `test_exit_code_is_zero_even_if_capability_report_raises`,
-# `test_exit_code_is_one_on_wrds_failure_regardless_of_lseg`) reach
-# `cli.main(["connect"])` without mocking `validate_credentials` themselves, relying
-# entirely on that one gate holding. This fixture removes that reliance instead of
-# hoping the gate never regresses: it replaces `tc.validate_credentials` with a
-# recording stub for every test, then -- after the test body has run -- asserts the
-# stub was never invoked, unless the test opted out by name to install its own stub
-# (the two tests that deliberately drive `--check-lseg` end to end).
-#
-# A raise-based tripwire cannot do this job: `cli.py`'s capability-report block
-# wraps everything in `except Exception`, so a stub that raises from inside
-# `cli.main()` is silently swallowed and proves nothing. Recording calls and
-# asserting on the list after the test returns -- outside any `try/except` the
-# production code owns -- is what actually distinguishes "called" from "not called".
-#
-# Function-scoped, not pytest's `scope="module"` (the built-in `monkeypatch` fixture
-# it depends on is function-scoped, so a literal module-scoped fixture would need a
-# raw `pytest.MonkeyPatch()` instead) -- but `autouse=True` at module level gives
-# every test in this file the same guarantee, which is the property that matters.
-# ---------------------------------------------------------------------------
-
-_DRIVES_VALIDATE_CREDENTIALS_ITSELF = {
-    "test_check_lseg_present_calls_validate_credentials",
-    "test_check_lseg_present_and_rejected_reports_rejection_not_absence",
-}
-
-
-@pytest.fixture(autouse=True)
-def _no_live_lseg_network(request, monkeypatch):
-    calls: list[int] = []
-    monkeypatch.setattr(tc, "validate_credentials", lambda: calls.append(1) or False)
-    yield
-    if request.node.name not in _DRIVES_VALIDATE_CREDENTIALS_ITSELF:
-        assert calls == [], (
-            f"{request.node.name} reached tc.validate_credentials without installing "
-            "its own mock first -- in production this is a live HTTPS request to "
-            "selectapi.datascope.refinitiv.com")
 
 # ---------------------------------------------------------------------------
 # `_capability_report`'s core state space: shard readiness drives the ASYNC-only vs

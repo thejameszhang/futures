@@ -1,5 +1,7 @@
 import urllib.request
 
+import pytest
+
 from globalmacro import tickhistory_credentials as tc
 
 
@@ -23,6 +25,7 @@ def test_absent_when_only_username_set(monkeypatch):
     assert tc.credentials_present() is False
 
 
+@pytest.mark.calls_real_validate_credentials
 def test_validate_credentials_never_leaks_on_request_construction_failure(monkeypatch, capsys):
     """W1 regression: validate_credentials()'s try must start before body/Request
     construction, not just around urlopen(). If it didn't, an exception raised while
@@ -30,6 +33,13 @@ def test_validate_credentials_never_leaks_on_request_construction_failure(monkey
     password -- would propagate out of validate_credentials() uncaught, and a caller
     that prints str(exc) (cli.py's `except Exception as exc: print(f"...: {exc}")`)
     would leak it. Uses a synthetic sentinel, never a real credential value.
+
+    Marked `calls_real_validate_credentials`: this is the one test in the suite that
+    must call the REAL `tc.validate_credentials`, not the stub the repo-wide
+    `_no_live_lseg_network` fixture (tests/conftest.py) installs everywhere else --
+    the whole point is to exercise its actual try/except. It is still safe: patching
+    `urllib.request.Request` to raise means `urlopen` is never reached, independent
+    of that fixture.
     """
     monkeypatch.setenv("DSS_USERNAME", "u")
     monkeypatch.setenv("DSS_PASSWORD", "p")
