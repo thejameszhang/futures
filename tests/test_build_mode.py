@@ -214,6 +214,51 @@ def _find_folders_to_create_for_loop_lineno(if_block: ast.If) -> int:
     return min(linenos)
 
 
+def _find_main_function(tree: ast.Module) -> ast.FunctionDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "main":
+            return node
+    raise AssertionError(f"{BUILD_PY}: no `def main(...):` function found")
+
+
+def test_f5b_build_mode_is_logged_as_the_first_statement_in_main():
+    """F5b (DELIBERATE, OWNER-APPROVED, the one exception to 'no economic logic
+    changes' in this fix round): 'build mode: <mode>' must be main()'s first
+    statement, so validation_report.txt -- written by the FileHandler attached in
+    the __main__ block before main() is called -- records its own provenance as its
+    first line. Adds exactly one line; changes no number and no dataset.
+
+    Static AST check, no filesystem access and no call of build.main() itself --
+    this repo's tests must never invoke main() (it would build the real datasets
+    against the real DATASETS_ROOT; see
+    test_validate_mode_rejects_anything_but_the_two_valid_strings above, which
+    documents the same constraint for _validate_mode)."""
+    source = BUILD_PY.read_text()
+    tree = ast.parse(source, filename=str(BUILD_PY))
+    main_fn = _find_main_function(tree)
+    assert main_fn.body, "main() has an empty body"
+    first = main_fn.body[0]
+    assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Call), (
+        f"expected main()'s first statement to be a call expression, got: "
+        f"{ast.dump(first)}"
+    )
+    call = first.value
+    assert isinstance(call.func, ast.Attribute) and call.func.attr == "info", (
+        f"expected main()'s first statement to be logger.info(...), got: "
+        f"{ast.unparse(call)}"
+    )
+    unparsed = ast.unparse(call)
+    assert "build mode:" in unparsed, (
+        f"expected main()'s first statement to log 'build mode: <mode>', got: {unparsed}"
+    )
+    # The mode PARAMETER, not a hardcoded literal -- main(mode=...) 's own argument.
+    mode_param = main_fn.args.args[0].arg if main_fn.args.args else None
+    assert mode_param == "mode", f"main()'s first parameter must be named 'mode', got {mode_param!r}"
+    assert mode_param in unparsed, (
+        f"expected the logged line to reference main()'s `mode` parameter, got: {unparsed}"
+    )
+
+
 def test_folders_to_create_is_mode_dependent():
     """Static AST assertion, no filesystem access and no import of build.
 

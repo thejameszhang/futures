@@ -112,6 +112,9 @@ def _parse_args(argv=None):
 def main(argv=None):
     args = _parse_args(argv)
     mode = resolve_mode(args.mode, sync_panels_ready(), "validate")
+    # F5a: record which mode produced this run's output, as the first line of
+    # stdout. Stdout-only -- does not alter any graded number or write to a file.
+    print(f"mode: {mode}")
     if mode == "full":
         # sync_panels_ready() only checked existence. async-only builds rewrite the
         # async panels on every run but leave any previously-built sync panels

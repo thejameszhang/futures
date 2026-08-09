@@ -196,6 +196,32 @@ def test_sync_panels_stale_after_async_only_rebuild(tmp_path, monkeypatch):
     assert "tier2" in c.message
 
 
+# --- F5a: the resolved mode is printed as the first line of validate's stdout -----
+
+
+def test_f5a_mode_is_the_first_line_of_stdout_full(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", lambda mode: [])
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
+    monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
+
+    vrun.main(["--full"])
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == "mode: full"
+
+
+def test_f5a_mode_is_the_first_line_of_stdout_async_only(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", lambda mode: [])
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
+
+    vrun.main(["--async-only"])
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == "mode: async-only"
+
+
 # --- F3: validate can resolve full and then die with a raw traceback --------------
 
 
