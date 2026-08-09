@@ -69,7 +69,14 @@ def contract_identity_exprs(i: int) -> tuple[pl.Expr, pl.Expr]:
 def cross_contract_cells(df: pl.DataFrame, i: int = 1) -> pl.DataFrame:
     """Non-null ret_1 cells whose numerator and denominator are different contracts.
 
-    This is the defect's definition rather than a proxy for it, so it cannot miss a case.
+    This is the defect's definition rather than a proxy for it, so it is exact for the slot
+    the exp_1 mapping assigns -- but that mapping is contract_identity_exprs' whole model of
+    provenance, and the post-coalesce backfill in futures.py (a null ret_1 filled from
+    ret_temp_2, the next contract's return) sits outside it. Measured misses: 6E (clscode
+    3719) 1990-09-03 and HE (clscode 3893) 2001-07-05, both settlement_1 null pre-fix, so
+    ret_1 was backfilled from ret_temp_2 whose contract genuinely differs -- yet this check
+    adjudicates them clean, because it never sees a backfill happen. Known, recorded
+    limitation; the model is not fixed here.
     An expiry-monotonicity invariant was tried and rejected: 42 classes carried
     cross-contract cells while reporting zero expiry decreases, because a substitution that
     skips forward and never returns is monotone non-decreasing.
@@ -87,7 +94,7 @@ def cross_contract_cells(df: pl.DataFrame, i: int = 1) -> pl.DataFrame:
 
 
 def unadjudicable_cells(df: pl.DataFrame, i: int = 1) -> pl.DataFrame:
-    """Non-null ret_i cells whose denominator contract is unknown.
+    """Non-null ret_i cells whose numerator or denominator contract is unknown.
 
     cross_contract_cells' `num != den` is null-propagating, so these are silently skipped.
     A zero from that checker means "no cell I could adjudicate is cross-contract", NOT "no

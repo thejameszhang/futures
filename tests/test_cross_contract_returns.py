@@ -159,6 +159,91 @@ def test_unadjudicable_cells_reports_an_unknown_contract():
     assert unadjudicable_cells(df).get_column("date").to_list() == [date(2020, 3, 2)]
 
 
+def test_the_exp_1_roll_branch_reaches_lasttrddate_3():
+    """When exp_1 == 1 the finalised ret_1 is ret_temp_2 (Task 1's shift), so a roll under
+    exp_1 == 1 reaches one slot further than under exp_1 == 0: the denominator is
+    lasttrddate_3.shift(1), not lasttrddate_2.shift(1). Row 0 forces roll for row 1 via the
+    days-to-maturity disjunct (daystomaturity_1.shift(1) == 0). Row 1's lasttrddate_2 -- the
+    exp_1 == 1 numerator -- is set equal to row 0's lasttrddate_3 -- the correct denominator
+    -- so the pair is provably the same contract: neither cross-contract nor unadjudicable.
+
+    This single fixture discriminates three mutants at once. Each makes row 1's denominator
+    resolve to row 0's lasttrddate_2 or lasttrddate_1 instead of lasttrddate_3, so it no
+    longer matches the numerator and the return is wrongly flagged cross-contract:
+    - the roll branch under exp_1 == 1 using lasttrddate_2.shift(1) (i+1) instead of
+      lasttrddate_3.shift(1) (i+2);
+    - the numerator ignoring exp_1 (falling back to lasttrddate_1);
+    - the denominator ignoring exp_1 (falling back to the exp_1 == 0 branch).
+    """
+    from globalmacro.utils.characteristics import (
+        cross_contract_cells,
+        unadjudicable_cells,
+    )
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 1],
+        "daystomaturity_1": [0, 53],
+        "lasttrddate_1": [date(2020, 3, 2), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 8, 20)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2020, 11, 20)],
+        "ret_1": [None, 0.05],
+    })
+    assert cross_contract_cells(df).height == 0
+    assert unadjudicable_cells(df).height == 0
+
+
+def test_roll_can_fire_via_the_lasttrddate_disjunct_alone():
+    """Isolates the second disjunct of `roll`: row 0's daystomaturity_1 is nonzero (19), so
+    the days-to-maturity disjunct is false for row 1. Row 1's lasttrddate_1 is set equal to
+    row 0's lasttrddate_2, so only `lasttrddate_1 == lasttrddate_2.shift(1)` sets roll True.
+    Under roll the denominator is lasttrddate_2.shift(1), which equals row 1's own
+    lasttrddate_1 -- numerator and denominator agree: a preserved same-contract return.
+
+    Dropping this disjunct from `roll` (leaving only the days-to-maturity check) flips roll
+    to False for row 1, so the denominator falls back to lasttrddate_1.shift(1) -- row 0's
+    lasttrddate_1, a different date -- and the return is wrongly flagged cross-contract.
+    """
+    from globalmacro.utils.characteristics import (
+        cross_contract_cells,
+        unadjudicable_cells,
+    )
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 0],
+        "daystomaturity_1": [19, 17],
+        "lasttrddate_1": [date(2020, 3, 21), date(2020, 5, 15)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 6, 19)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2020, 9, 20)],
+        "ret_1": [None, 0.03],
+    })
+    assert cross_contract_cells(df).height == 0
+    assert unadjudicable_cells(df).height == 0
+
+
+def test_unadjudicable_cells_needs_the_or_not_just_a_null_denominator():
+    """Guards against narrowing unadjudicable_cells' `num.is_null() | den.is_null()` down to
+    `den.is_null()` alone -- the narrowing the docstring warns about, which drops the real
+    count 1,082 -> 1,048. Row 1 has exp_1 == 1 with lasttrddate_2 null, so the numerator
+    (lasttrddate_2) is null while the denominator -- lasttrddate_2.shift(1), row 0's
+    lasttrddate_2 -- is known. A null numerator with a known denominator is only caught by
+    the `|` version; `den.is_null()` alone would miss it.
+    """
+    from globalmacro.utils.characteristics import unadjudicable_cells
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 1],
+        "daystomaturity_1": [19, 17],
+        "lasttrddate_1": [date(2020, 3, 21), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), None],
+        "lasttrddate_3": [date(2020, 8, 20), date(2020, 11, 20)],
+        "ret_1": [None, 0.02],
+    })
+    assert unadjudicable_cells(df).get_column("date").to_list() == [date(2020, 3, 3)]
+
+
 def test_cross_contract_cells_ignores_null_returns():
     from globalmacro.utils.characteristics import cross_contract_cells
     df = pl.DataFrame({
