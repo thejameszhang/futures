@@ -25,25 +25,41 @@ _STAGE_MODULES = {
 _FUNCTION_STAGES = ("instrumentlists", "validate", "run", "connect")
 
 
-def _capability_report(shard_cap, creds: bool, checked: bool) -> str:
+def _capability_report(
+    shard_cap, creds: bool, checked: bool, present: bool = True
+) -> str:
     """What can this machine build, and what should the researcher run next?
 
-    `creds`/`checked` are booleans, not credential values -- this function never
-    touches an actual username or password, only presence/validity flags computed
-    by its caller.
+    `creds`/`checked`/`present` are booleans, not credential values -- this function
+    never touches an actual username or password, only presence/validity flags
+    computed by its caller.
+
+    `present` is a 4th, defaulted argument on top of the original 3-argument
+    signature: collapsing "credentials present but rejected by LSEG" into the same
+    `creds=False` state as "no credentials at all" told a researcher whose
+    `--check-lseg` run failed that no credentials were found, when in fact some were
+    found and rejected. `present` distinguishes those two states; it defaults to
+    True so a caller that only ever needs the original 3 states (found / not-yet-
+    checked / valid) keeps exactly its original behaviour.
     """
-    from globalmacro.utils.capabilities import SHARD_STEMS
-    if not creds:
+    from globalmacro.utils.capabilities import shard_dirs
+    if not present:
         lseg = "no credentials found"
     elif not checked:
         lseg = "credentials present (not checked -- run `connect --check-lseg` to verify)"
-    else:
+    elif creds:
         lseg = "credentials valid"
+    else:
+        lseg = "credentials present but rejected -- check DSS_USERNAME/DSS_PASSWORD"
 
-    n = len(SHARD_STEMS) * 2
-    tick = f"ready ({n}/{n} shard sets)" if shard_cap.ready else f"not ready (0/{n} shard sets)"
+    n = len(shard_dirs())
+    tick = f"ready ({n}/{n} shard sets)" if shard_cap.ready else "not ready"
 
     lines = [f"LSEG TickHistory:  {lseg}", f"Tick data:         {tick}"]
+    if not present:
+        lines.append(
+            "                   set DSS_USERNAME and DSS_PASSWORD (e.g. in .env) "
+            "to enable LSEG tick-history checks.")
     if shard_cap.message:
         lines.append(f"                   {shard_cap.message}")
     if shard_cap.ready:
@@ -56,20 +72,23 @@ def _capability_report(shard_cap, creds: bool, checked: bool) -> str:
 
 
 def _lseg_identity_line(present: bool) -> str | None:
-    """Deviation from the Task 8 brief (documented in task-8-report.md): the brief's
-    `_capability_report` never surfaces `credential_username()`, but Task 7's review
-    (watch-item W2) flags that function as something Task 8 should deliberately decide
-    whether to print. Printed WHOLE, not masked -- consistent with the existing `connect`
-    output for WRDS (`Connected as: {creds.username}`, a few lines above this function's
-    call site) and with wrds_credentials.py's on-disk state file, which already persists
-    a WRDS username unmasked. This function never reads DSS_PASSWORD, directly or
-    indirectly: `credential_username()` only resolves DSS_USERNAME.
+    """The LSEG identity line for `connect`'s capability report: the DSS username,
+    printed whole and never masked, when credentials are present. Consistent with
+    `connect`'s existing WRDS output a few lines above (`Connected as: {creds.username}`)
+    and with wrds_credentials.py's on-disk state file, which already persists a WRDS
+    username unmasked -- a login identifier is not a secret the way a password is.
+    This function never reads DSS_PASSWORD, directly or indirectly:
+    `credential_username()` only resolves DSS_USERNAME.
+
+    `present` is expected to come from `credentials_present()`, which requires both
+    DSS_USERNAME and DSS_PASSWORD to be set -- so when `present` is True,
+    `credential_username()` is guaranteed non-empty at the sole call site in `main()`.
     """
     if not present:
         return None
     from globalmacro.tickhistory_credentials import credential_username
     username = credential_username()
-    return f"LSEG username:     {username}" if username else None
+    return f"LSEG username:     {username}"
 
 
 def main(argv=None):
@@ -140,7 +159,8 @@ def main(argv=None):
                 print(identity)
             print(_capability_report(shards_ready(),
                                      creds=(ok if checked else present),
-                                     checked=checked))
+                                     checked=checked,
+                                     present=present))
         except Exception as exc:                       # never fatal to `connect`
             print(f"(capability report unavailable: {exc})", file=sys.stderr)
         return 0

@@ -45,15 +45,37 @@ def test_report_surfaces_the_shard_warning():
 def test_report_distinguishes_presence_from_validation():
     assert "not checked" in cli._capability_report(
         Capability(False, None), creds=True, checked=False)
-    assert "valid" in cli._capability_report(
+    assert "credentials valid" in cli._capability_report(
         Capability(False, None), creds=True, checked=True)
+
+
+# ---------------------------------------------------------------------------
+# F2: a failed --check-lseg must say credentials were found and rejected, not
+# collapse into the same "no credentials found" state as never having any.
+# ---------------------------------------------------------------------------
+
+def test_report_distinguishes_rejected_from_absent():
+    rejected = cli._capability_report(
+        Capability(False, None), creds=False, checked=True, present=True)
+    assert "credentials present but rejected -- check DSS_USERNAME/DSS_PASSWORD" in rejected
+    assert "no credentials found" not in rejected
+
+    absent = cli._capability_report(
+        Capability(False, None), creds=False, checked=True, present=False)
+    assert "no credentials found" in absent
+    assert "rejected" not in absent
 
 
 # ---------------------------------------------------------------------------
 # W2: the LSEG identity line (deviation beyond the brief -- see report).
 # ---------------------------------------------------------------------------
 
-def test_identity_line_absent_without_credentials():
+def test_identity_line_absent_without_credentials(monkeypatch):
+    # Genuinely clear, not just rely on an ambient .env being unset: paths._load_dotenv()
+    # setdefaults DSS_USERNAME/DSS_PASSWORD from the real .env at import time regardless
+    # of the shell environment, so only monkeypatch.delenv (post-import) proves this.
+    monkeypatch.delenv(tc.ENV_USERNAME, raising=False)
+    monkeypatch.delenv(tc.ENV_PASSWORD, raising=False)
     assert cli._lseg_identity_line(False) is None
 
 
@@ -148,16 +170,20 @@ def test_exit_code_is_one_on_wrds_failure_regardless_of_lseg(monkeypatch, capsys
 # ---------------------------------------------------------------------------
 
 def test_check_lseg_absent_never_calls_validate_credentials(monkeypatch):
+    # F1: a raise-based tripwire can never work here -- cli.py's capability-report
+    # block wraps everything in `except Exception`, so an AssertionError raised by a
+    # fake validate_credentials() is caught and silently swallowed, and `main()`
+    # still returns 0 either way. Recording whether the call happened is the only
+    # pattern that actually distinguishes "called" from "not called".
     _fake_wrds_success(monkeypatch)
     monkeypatch.setenv(tc.ENV_USERNAME, "researcher123")
     monkeypatch.setenv(tc.ENV_PASSWORD, "irrelevant")
 
-    def _network_call():
-        raise AssertionError("validate_credentials must not run without --check-lseg")
-
-    monkeypatch.setattr(tc, "validate_credentials", _network_call)
+    calls = []
+    monkeypatch.setattr(tc, "validate_credentials", lambda: calls.append(1) or True)
     monkeypatch.setattr(capmod, "shards_ready", lambda: Capability(False, None))
     assert cli.main(["connect"]) == 0
+    assert calls == []
 
 
 def test_check_lseg_present_calls_validate_credentials(monkeypatch, capsys):
@@ -173,3 +199,26 @@ def test_check_lseg_present_calls_validate_credentials(monkeypatch, capsys):
     assert rc == 0
     assert calls == [1]
     assert "credentials valid" in out.out
+    # F4: the identity-line wiring (cli.py's `identity = _lseg_identity_line(present);
+    # if identity: print(identity)`) is only exercised end to end here -- the identity
+    # tests above call the helper directly and never go through main().
+    assert "LSEG username:     researcher123" in out.out
+
+
+def test_check_lseg_present_and_rejected_reports_rejection_not_absence(monkeypatch, capsys):
+    """F2/F3: a failed --check-lseg must be reported as found-and-rejected, not as
+    'no credentials found' -- and the live check's actual answer (False) must be
+    what drives that, not merely whether it ran."""
+    _fake_wrds_success(monkeypatch)
+    monkeypatch.setenv(tc.ENV_USERNAME, "researcher123")
+    monkeypatch.setenv(tc.ENV_PASSWORD, "irrelevant")
+
+    calls = []
+    monkeypatch.setattr(tc, "validate_credentials", lambda: calls.append(1) or False)
+    monkeypatch.setattr(capmod, "shards_ready", lambda: Capability(False, None))
+    rc = cli.main(["connect", "--check-lseg"])
+    out = capsys.readouterr()
+    assert rc == 0
+    assert calls == [1]
+    assert "credentials present but rejected -- check DSS_USERNAME/DSS_PASSWORD" in out.out
+    assert "no credentials found" not in out.out

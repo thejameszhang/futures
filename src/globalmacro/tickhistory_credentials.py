@@ -33,9 +33,13 @@ def validate_credentials(timeout: float = 10.0) -> bool:
     import json
     import urllib.request
 
-    # W1 (Task 7 review): the try starts here, before body/req construction, so the
-    # function's "returns bool, never raises" contract is total -- not just true for
-    # the network call. Behaviour on both the success and failure path is unchanged.
+    # The try starts here, before body/req construction, not just around urlopen:
+    # a Request-construction failure must not raise past this function, because its
+    # exception text can carry the plaintext request body (which embeds the DSS
+    # password), and a caller may print str(exc) (cli.py's capability-report handler
+    # does exactly that on any exception it catches). "Returns bool, never raises"
+    # is a total contract, not one that only holds for the network call itself.
+    # Behaviour on both the success and failure path is otherwise unchanged.
     try:
         body = json.dumps(
             {
