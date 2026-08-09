@@ -224,9 +224,18 @@ def _find_main_function(tree: ast.Module) -> ast.FunctionDef:
 def test_f5b_build_mode_is_logged_as_the_first_statement_in_main():
     """F5b (DELIBERATE, OWNER-APPROVED, the one exception to 'no economic logic
     changes' in this fix round): 'build mode: <mode>' must be main()'s first
-    statement, so validation_report.txt -- written by the FileHandler attached in
-    the __main__ block before main() is called -- records its own provenance as its
-    first line. Adds exactly one line; changes no number and no dataset.
+    EFFECTIVE (output-producing) statement, so validation_report.txt -- written by
+    the FileHandler attached in the __main__ block before main() is called --
+    records its own provenance as its first line. Adds exactly one line; changes no
+    number and no dataset.
+
+    A's TRIVIAL 2 (this fix round): main()'s literal FIRST statement is now
+    `_validate_mode(mode)`, not the log call -- the old order let `main("Bogus")`
+    write "build mode: Bogus" and only THEN raise. _validate_mode produces no
+    output of its own for a valid mode (proven directly, not assumed, in
+    test_validate_mode_produces_no_output_for_a_valid_mode below), so the log call
+    is still the first statement that actually WRITES anything -- this test checks
+    both halves of that: body[0] is the validation guard, body[1] is the log call.
 
     Static AST check, no filesystem access and no call of build.main() itself --
     this repo's tests must never invoke main() (it would build the real datasets
@@ -236,20 +245,32 @@ def test_f5b_build_mode_is_logged_as_the_first_statement_in_main():
     source = BUILD_PY.read_text()
     tree = ast.parse(source, filename=str(BUILD_PY))
     main_fn = _find_main_function(tree)
-    assert main_fn.body, "main() has an empty body"
-    first = main_fn.body[0]
-    assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Call), (
+    assert len(main_fn.body) >= 2, "main() must have at least a guard and a log statement"
+
+    guard = main_fn.body[0]
+    assert isinstance(guard, ast.Expr) and isinstance(guard.value, ast.Call), (
         f"expected main()'s first statement to be a call expression, got: "
-        f"{ast.dump(first)}"
+        f"{ast.dump(guard)}"
     )
-    call = first.value
+    guard_call = guard.value
+    assert isinstance(guard_call.func, ast.Name) and guard_call.func.id == "_validate_mode", (
+        f"expected main()'s first statement to be _validate_mode(mode) -- the guard "
+        f"must run BEFORE anything is logged -- got: {ast.unparse(guard_call)}"
+    )
+
+    second = main_fn.body[1]
+    assert isinstance(second, ast.Expr) and isinstance(second.value, ast.Call), (
+        f"expected main()'s second statement to be a call expression, got: "
+        f"{ast.dump(second)}"
+    )
+    call = second.value
     assert isinstance(call.func, ast.Attribute) and call.func.attr == "info", (
-        f"expected main()'s first statement to be logger.info(...), got: "
+        f"expected main()'s second statement to be logger.info(...), got: "
         f"{ast.unparse(call)}"
     )
     unparsed = ast.unparse(call)
     assert "build mode:" in unparsed, (
-        f"expected main()'s first statement to log 'build mode: <mode>', got: {unparsed}"
+        f"expected main()'s second statement to log 'build mode: <mode>', got: {unparsed}"
     )
     # The mode PARAMETER, not a hardcoded literal -- main(mode=...) 's own argument.
     mode_param = main_fn.args.args[0].arg if main_fn.args.args else None
@@ -257,6 +278,33 @@ def test_f5b_build_mode_is_logged_as_the_first_statement_in_main():
     assert mode_param in unparsed, (
         f"expected the logged line to reference main()'s `mode` parameter, got: {unparsed}"
     )
+    assert guard_call.args and isinstance(guard_call.args[0], ast.Name), (
+        f"expected _validate_mode to be called with main()'s `mode` argument, got: "
+        f"{ast.unparse(guard_call)}"
+    )
+    assert guard_call.args[0].id == mode_param, (
+        f"expected _validate_mode(mode) to pass main()'s own `mode` parameter through "
+        f"unchanged, got: {ast.unparse(guard_call)}"
+    )
+
+
+def test_validate_mode_produces_no_output_for_a_valid_mode(caplog, capsys):
+    """A's TRIVIAL 2: the reorder above (validate, then log) is only safe -- i.e.
+    only preserves 'build mode: <mode>' as the first line written to
+    validation_report.txt -- if _validate_mode itself writes NOTHING for a valid
+    mode. Proven directly rather than assumed: zero log records at ANY level
+    (caplog.at_level(logging.DEBUG) captures regardless of handler/level config,
+    unlike relying on build.py's own logger configuration) and zero stdout/stderr."""
+    import logging
+
+    from globalmacro.build import _validate_mode
+    with caplog.at_level(logging.DEBUG):
+        _validate_mode("full")
+        _validate_mode("async-only")
+    assert caplog.records == []
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err == ""
 
 
 def test_folders_to_create_is_mode_dependent():

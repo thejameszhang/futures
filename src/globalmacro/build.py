@@ -871,13 +871,24 @@ def _validate_mode(mode: str) -> None:
 
 
 def main(mode: Literal["full", "async-only"] = "full") -> None:
+    # A's TRIVIAL 2: validate BEFORE logging -- the old order let main("Bogus")
+    # write "build mode: Bogus" to validation_report.txt and only THEN raise
+    # (unreachable from the CLI, since resolve_mode() already only ever returns
+    # "full"/"async-only", but main() is directly callable with any string).
+    # _validate_mode raises immediately for anything else, producing no output of
+    # its own (see test_validate_mode_produces_no_output_for_a_valid_mode) -- so
+    # this reorder keeps the F5b guarantee intact: for the two mode values that
+    # ever reach here in practice, the log line below is still the first EFFECTIVE
+    # (output-producing) statement main() executes, even though it is no longer
+    # the literal first statement in the function body (see
+    # test_f5b_build_mode_is_logged_as_the_first_statement_in_main).
+    _validate_mode(mode)
     # F5b (deliberate, owner-approved): the ONE intentional change to a shipped
     # artifact in this fix round. validation_report.txt is written by the
     # FileHandler attached in the __main__ block below, so this is its first line --
     # it now records which mode produced the datasets it describes. Adds exactly one
     # line; changes no number and no dataset.
     logger.info(f"build mode: {mode}")
-    _validate_mode(mode)
     tier1_futures, tier1_symbols = load_symbols(1)
     tier2_futures, tier2_symbols = load_symbols(2)
 
