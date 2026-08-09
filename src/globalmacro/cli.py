@@ -26,7 +26,7 @@ _FUNCTION_STAGES = ("instrumentlists", "validate", "run", "connect")
 
 
 def _capability_report(
-    shard_cap, creds: bool, checked: bool, present: bool = True
+    shard_cap, creds: bool, checked: bool, present: bool | None = None
 ) -> str:
     """What can this machine build, and what should the researcher run next?
 
@@ -34,15 +34,21 @@ def _capability_report(
     never touches an actual username or password, only presence/validity flags
     computed by its caller.
 
-    `present` is a 4th, defaulted argument on top of the original 3-argument
-    signature: collapsing "credentials present but rejected by LSEG" into the same
-    `creds=False` state as "no credentials at all" told a researcher whose
-    `--check-lseg` run failed that no credentials were found, when in fact some were
-    found and rejected. `present` distinguishes those two states; it defaults to
-    True so a caller that only ever needs the original 3 states (found / not-yet-
-    checked / valid) keeps exactly its original behaviour.
+    `present` is a 4th argument on top of the original 3-argument signature:
+    collapsing "credentials present but rejected by LSEG" into the same `creds=False`
+    state as "no credentials at all" told a researcher whose `--check-lseg` run failed
+    that no credentials were found, when in fact some were found and rejected.
+    `present` distinguishes those two states. It defaults to `None`, in which case
+    this function falls back to `present = creds` -- the exact quantity a 3-argument
+    caller always passed as `creds` before this parameter existed. That fallback is
+    what keeps a 3-argument call bit-identical to the original 3-argument signature;
+    a bare `present: bool = True` default would NOT do this (it makes every
+    `creds=False` 3-argument call report "rejected" instead of "no credentials found",
+    since `present=True` while `creds=False` is exactly the rejected state).
     """
     from globalmacro.utils.capabilities import shard_dirs
+    if present is None:
+        present = creds
     if not present:
         lseg = "no credentials found"
     elif not checked:
@@ -55,11 +61,12 @@ def _capability_report(
     n = len(shard_dirs())
     tick = f"ready ({n}/{n} shard sets)" if shard_cap.ready else "not ready"
 
-    lines = [f"LSEG TickHistory:  {lseg}", f"Tick data:         {tick}"]
+    lines = [f"LSEG TickHistory:  {lseg}"]
     if not present:
         lines.append(
             "                   set DSS_USERNAME and DSS_PASSWORD (e.g. in .env) "
             "to enable LSEG tick-history checks.")
+    lines.append(f"Tick data:         {tick}")
     if shard_cap.message:
         lines.append(f"                   {shard_cap.message}")
     if shard_cap.ready:
@@ -98,7 +105,9 @@ def main(argv=None):
     # Dispatch by hand (NOT argparse) so a stage's own `--help` is forwarded to it
     # rather than intercepted by a top-level parser's implicit -h/--help.
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: globalmacro <stage> [args...]\n\nstages:\n  " + "\n  ".join(choices))
+        print("usage: globalmacro <stage> [args...]\n\nstages:\n  " + "\n  ".join(choices) +
+              "\n\nconnect --check-lseg  also validate LSEG credentials "
+              "(makes a network call; WRDS-only check otherwise)")
         return
     stage, rest = argv[0], argv[1:]
     if stage not in choices:
