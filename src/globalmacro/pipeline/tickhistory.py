@@ -41,7 +41,16 @@ def load_trades_data(path: str) -> pl.DataFrame:
             # Trade price adjustment because 0.0 price doesnt make sense
             pl.when(pl.col("Price") == 0.0).then(pl.lit(None)).otherwise(pl.col("Price")).alias("Price")
         ])
-        .unique(keep='first')
+        # maintain_order=True: a plain .unique() returns its surviving rows in a different
+        # physical order on every call (verified: 3 back-to-back runs on one identical shard
+        # gave 3 different row orders, on both the streaming and in-memory engines -- not a
+        # streaming artifact). The dedup itself never changes a value (it spans every column,
+        # so which duplicate survives is irrelevant), but every downstream .sort()/.last()/
+        # tie-break inherits a fresh permutation each run: .sort() is a deterministic function
+        # of its input, but sorting a permuted frame on the non-unique key `local_datetime`
+        # yields a permuted output, not a canonical one. Pinning the order here is what makes
+        # everything downstream reproducible. See .superpowers/sdd/tickhistory-nondeterminism-rootcause.md.
+        .unique(keep='first', maintain_order=True)
         .with_columns([
             (pl.col("datetime") + pl.duration(hours=pl.col("GMT Offset"))).alias("local_datetime"),
             pl.col("datetime").dt.convert_time_zone("America/New_York").alias("datetime_et"),
@@ -71,7 +80,11 @@ def load_quotes_data(path: str) -> pl.DataFrame:
             # Ordering contracts
             pl.col("#RIC").str.extract(r"c(\d)$").cast(pl.UInt8).alias("order"),
         ])
-        .unique(keep='first')
+        # See load_trades_data above: maintain_order=True pins the row order so downstream
+        # sorts and tie-breaks are reproducible. (The quotes' own last() site at :432-433 is
+        # provably a no-op on current data -- 0 of 801,531 groups ambiguous -- but this still
+        # keeps the loader itself deterministic for any future consumer.)
+        .unique(keep='first', maintain_order=True)
         .with_columns([
             (pl.col("datetime") + pl.duration(hours=pl.col("GMT Offset"))).alias("local_datetime"),
             pl.col("datetime").dt.convert_time_zone("America/New_York").alias("datetime_et"),
@@ -127,6 +140,39 @@ def count_expiries_between(row_date: date, row_trad_last: date, expiry_list: lis
         if d >= row_date and d <= row_trad_last:
             cnt += 1
     return cnt
+
+
+def compute_vwap(time_filtered_data: pl.DataFrame, datetime_column: str) -> pl.DataFrame:
+    """Settlement-window VWAP per (#RIC, date_, order), plus its day-over-day pct change.
+    `time_filtered_data` is already restricted to the settlement window (9:30-9:31 AM EST
+    or the London/local equivalent); `datetime_column` is whichever of `datetime_et` /
+    `datetime_london` / `local_datetime` that filtering used.
+
+    The two `.sum()`s are keyed by `.sort_by(datetime_column, Price, Volume)` rather than
+    left plain: float summation is not associative, so a group's addition order (which, for
+    a plain `.sum()`, follows whatever physical row/chunk order the engine happens to hand
+    it) changes the result's last bit or two. This was measured as the largest single
+    contributor to pipeline drift -- 73% of drifting cells, 98% of them landing on a VWAP
+    date -- and it reproduces under BOTH a row shuffle and a change in POLARS_MAX_THREADS
+    even with row order otherwise pinned (see the loaders' `.unique` comment above and
+    .superpowers/sdd/tickhistory-nondeterminism-rootcause.md, sec 6-7). Sorting first fixes
+    the addition order outright: any two rows tying on all three keys carry an identical
+    (Price*Volume, Volume) pair, so their relative order within the tie cannot change the
+    sum. Verified byte-identical across a full row shuffle and across POLARS_MAX_THREADS in
+    {1, 2, 4, 8, 16, 32} (0 of 388 groups differ, real 2014-06 commodity shard); the plain
+    `.sum()` varied on both axes (119-124 of 388 groups under a shuffle; 4 distinct hashes
+    across 5 thread counts).
+    """
+    return time_filtered_data.filter(
+        pl.col("Price").is_not_null() & pl.col("Volume").is_not_null()
+    ).group_by(["#RIC", "date_", "order"]).agg([
+        (pl.col("Price") * pl.col("Volume")).sort_by(pl.col(datetime_column), pl.col("Price"), pl.col("Volume")).sum().alias("price_volume_sum"),
+        pl.col("Volume").sort_by(pl.col(datetime_column), pl.col("Price"), pl.col("Volume")).sum().alias("total_volume"),
+    ]).with_columns([
+        (pl.col("price_volume_sum") / pl.col("total_volume")).alias("vwap")
+    ]).sort(["#RIC", "date_", "order"]).with_columns([
+        (pl.col("vwap").pct_change().over(["#RIC", "order"])).alias("daily_return")
+    ]).select(["#RIC", "date_", "order", "vwap", "daily_return"]).sort(["date_", "order"])
 
 
 def compute_settlement_price(i: int):
@@ -297,17 +343,9 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
         (pl.col(DATETIME_COLUMN).dt.time() <= SETTLEMENT_END)
     )
 
-    # Compute VWAP in the designated settlement interval: 9:30-9:31 AM EST
-    daily_vwaps = time_filtered_data.filter(
-        pl.col("Price").is_not_null() & pl.col("Volume").is_not_null()
-    ).group_by(["#RIC", "date_", "order"]).agg([
-        (pl.col("Price") * pl.col("Volume")).sum().alias("price_volume_sum"),
-        pl.col("Volume").sum().alias("total_volume"),
-    ]).with_columns([
-        (pl.col("price_volume_sum") / pl.col("total_volume")).alias("vwap")
-    ]).sort(["#RIC", "date_", "order"]).with_columns([
-        (pl.col("vwap").pct_change().over(["#RIC", "order"])).alias("daily_return")
-    ]).select(["#RIC", "date_", "order", "vwap", "daily_return"]).sort(["date_", "order"])
+    # Compute VWAP in the designated settlement interval: 9:30-9:31 AM EST. See compute_vwap's
+    # docstring for why the sum is keyed rather than plain.
+    daily_vwaps = compute_vwap(time_filtered_data, DATETIME_COLUMN)
     daily_vwaps_c1 = daily_vwaps.filter(pl.col("order") == 1).select(["date_", "vwap"]).rename({"vwap": "vwap_c1"})
     daily_vwaps_c2 = daily_vwaps.filter(pl.col("order") == 2).select(["date_", "vwap"]).rename({"vwap": "vwap_c2"})
     daily_vwaps_c3 = daily_vwaps.filter(pl.col("order") == 3).select(["date_", "vwap"]).rename({"vwap": "vwap_c3"})
@@ -318,7 +356,23 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
         daily_vwaps_c4, on=["date_"], how="left")
     .sort(["date_"]))
 
-    # Compute TODAYS last traded prices prior to the settlement start time
+    # Compute TODAYS last traded prices prior to the settlement start time.
+    #
+    # NOT given a secondary tie-break key, by measurement rather than by oversight. Both
+    # this site and the one below have a non-unique sort key (many rows can share a
+    # timestamp), which the shard-migration investigation flagged as a live tie-break risk
+    # (up to 14,881 ambiguous groups/site over the full history). Verified directly on the
+    # real 2014-06 commodity shard, once the loader's row order is pinned (the .unique(...,
+    # maintain_order=True) above): the VALUE assigned to a given (#RIC, date_, order) key by
+    # this exact `.sort_by(datetime).last()` is a repeatable, deterministic function of the
+    # input -- identical across 20 repeated calls on the same physical frame, and identical
+    # across POLARS_MAX_THREADS in {1, 2, 4, 8, 16, 32} in fresh processes. This is expected:
+    # `.last()` is a selection over one group's rows, not a cross-thread reduction like the
+    # VWAP sum above, so there is no partial-result merge step for thread count to disturb.
+    # The *choice* the tie-break makes is still arbitrary (no more "correct" than picking the
+    # other tied row), and it does change vs. today's shipped output, because it now always
+    # makes the SAME arbitrary choice instead of a fresh one each run -- but that choice no
+    # longer depends on anything unpinned, so no secondary key is needed for reproducibility.
     trades_data = trades_data.filter((pl.col("Price").is_not_null()) & (pl.col("Volume").is_not_null()))
     today_lasttrdprices = trades_data.filter(
         pl.col(DATETIME_COLUMN).dt.time() <= SETTLEMENT_START
@@ -326,7 +380,9 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
         pl.col("Price").sort_by(pl.col(DATETIME_COLUMN)).last().alias("lasttrdprice_today")
     ]).sort(["date_"])
 
-    # Compute last traded price for ALL days (regardless of time); does not include days where there is no trade data
+    # Compute last traded price for ALL days (regardless of time); does not include days where
+    # there is no trade data. Same tie-break shape and same "pinning alone is sufficient"
+    # finding as today_lasttrdprices above -- see that comment.
     all_lasttrdprices = trades_data.group_by(["#RIC", "date_", "order"]).agg([
         pl.col("Price").sort_by(pl.col(DATETIME_COLUMN)).last().alias("lasttrdprice")
     ]).sort(["#RIC", "date_", "order"])
