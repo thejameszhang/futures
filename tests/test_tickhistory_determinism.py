@@ -261,3 +261,60 @@ def test_lasttrdprice_tiebreak_value_is_stable_once_loader_order_is_pinned(tmp_p
 
     assert len(today_hashes) == 1, f"today_lasttrdprices (:326) value-per-key varies: {today_hashes}"
     assert len(all_hashes) == 1, f"all_lasttrdprices (:331) value-per-key varies: {all_hashes}"
+
+
+# ---------------------------------------------------------------------------
+# Site :432-433 (last_bid_ask_spread): OPTIONAL HARDENING, not required by today's data.
+# Provably a no-op on real data -- 0 of 801,531 groups in the full tier1_commodity_quotes
+# history (1996-2025) even need a tie-break, let alone disagree on value; re-verified
+# directly against the real parquet shards while adding this hardening, and a full
+# re-aggregation of that history with vs. without the secondary key produced byte-identical
+# frames. Added purely so a future tier-2 venue with multiple quote bars per minute gets a
+# deterministic answer instead of one that merely happens to be reproducible today.
+# ---------------------------------------------------------------------------
+
+def _reversed_tie_quotes_csv() -> str:
+    """One (#RIC, date_, order) group, one timestamp, two tied (Close Bid, Close Ask)
+    pairs -- the HIGHER pair written FIRST and the LOWER pair SECOND, deliberately the
+    opposite of insertion order matching value order (unlike a naive fixture, this is
+    built so "last in pinned insertion order" and "highest value" disagree, so a test
+    against it actually discriminates the hardened tie-break from the pre-hardening one,
+    rather than passing either way by fixture coincidence)."""
+    lines = ["#RIC,Domain,Date-Time,GMT Offset,Type,Close Bid,Close Ask\n"]
+    ts_str = "2020-01-06T14:30:00.000000000Z"
+    for bid, ask in ((1560.0, 1560.5), (1550.0, 1550.5)):
+        for _dup in range(3):
+            lines.append(f"GCc1,Market Price,{ts_str},+0,Intraday 1Min,{bid},{ask}\n")
+    return "".join(lines)
+
+
+def test_last_bid_ask_tiebreak_picks_highest_value_and_is_stable(tmp_path, monkeypatch):
+    monkeypatch.setattr(th, "TICKHISTORY_PATH", tmp_path)
+    monkeypatch.setattr(ts, "TICKHISTORY_PATH", tmp_path)
+    monkeypatch.setattr(th, "ALL_RICS", ["GCc1"], raising=False)
+    m = tmp_path / "quotes" / "tier1_commodity_quotes.csv"
+    m.parent.mkdir(parents=True)
+    m.write_text(_reversed_tie_quotes_csv())
+    ts.convert_one(m, full_check=True)
+    m.rename(tmp_path / "quotes" / "_moved.csv")
+
+    datetime_column = "local_datetime"
+
+    hashes = set()
+    picked_highest = True
+    for _ in range(15):
+        quotes_data = th.load_quotes_data("tier1_commodity_quotes.csv").with_columns(
+            pl.col(datetime_column).dt.date().alias("date_")
+        )
+        # mirrors tickhistory.py :432-433 (last_bid_ask_spread), hardened shape
+        spread = quotes_data.group_by(["#RIC", "date_", "order"]).agg([
+            pl.col("Close Bid").sort_by(pl.col(datetime_column), pl.col("Close Bid")).last().alias("last_bid"),
+            pl.col("Close Ask").sort_by(pl.col(datetime_column), pl.col("Close Ask")).last().alias("last_ask"),
+        ])
+        hashes.add(_value_by_key_hash(spread, "last_bid"))
+        row = spread.filter(pl.col("date_") == pl.date(2020, 1, 6))
+        if row["last_bid"].item() != 1560.0 or row["last_ask"].item() != 1560.5:
+            picked_highest = False
+
+    assert len(hashes) == 1, f"last_bid_ask_spread (:432-433) value-per-key varies: {hashes}"
+    assert picked_highest, "tie-break did not pick the highest bid/ask among the tied rows"

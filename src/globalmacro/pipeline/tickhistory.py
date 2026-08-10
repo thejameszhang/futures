@@ -153,15 +153,33 @@ def compute_vwap(time_filtered_data: pl.DataFrame, datetime_column: str) -> pl.D
     a plain `.sum()`, follows whatever physical row/chunk order the engine happens to hand
     it) changes the result's last bit or two. This was measured as the largest single
     contributor to pipeline drift -- 73% of drifting cells, 98% of them landing on a VWAP
-    date -- and it reproduces under BOTH a row shuffle and a change in POLARS_MAX_THREADS
-    even with row order otherwise pinned (see the loaders' `.unique` comment above and
-    .superpowers/sdd/tickhistory-nondeterminism-rootcause.md, sec 6-7). Sorting first fixes
-    the addition order outright: any two rows tying on all three keys carry an identical
-    (Price*Volume, Volume) pair, so their relative order within the tie cannot change the
-    sum. Verified byte-identical across a full row shuffle and across POLARS_MAX_THREADS in
-    {1, 2, 4, 8, 16, 32} (0 of 388 groups differ, real 2014-06 commodity shard); the plain
-    `.sum()` varied on both axes (119-124 of 388 groups under a shuffle; 4 distinct hashes
-    across 5 thread counts).
+    date. Sorting first fixes the addition order outright: any two rows tying on all three
+    keys carry an identical (Price*Volume, Volume) pair, so their relative order within the
+    tie cannot change the sum.
+
+    Invariance, as actually tested: byte-identical under a full row shuffle, and across
+    POLARS_MAX_THREADS in {1, 2, 4, 8, 16, 32}, checked both in-process and via a parquet
+    round-trip, at two data scales and two group densities, and in BOTH a 2-key
+    `group_by(["#RIC","date_"])` shape and the shipped 3-key
+    `group_by(["#RIC","date_","order"])` shape (0 of 388 groups differ, real 2014-06
+    commodity shard -- see `test_vwap_is_identical_under_a_row_shuffle` and
+    `test_vwap_is_identical_across_polars_max_threads` in
+    tests/test_tickhistory_determinism.py). Of those two tests, it is the row-shuffle one
+    that kills a revert of this fix: the plain, unfixed `.sum()` shuffles to a different
+    value on 119-124 of 388 groups. The thread-count test does NOT kill a revert -- on this
+    data, the plain sum in the exact shipped 3-key shape is already thread-stable at 1-32
+    threads; only the 2-key shape shows thread sensitivity. (A prior version of this
+    docstring reported "4 distinct hashes across 5 thread counts" for the plain sum without
+    noting that this was measured on the 2-key shape, not the shipped one -- that was wrong
+    and is corrected here; see .superpowers/sdd/tickhistory-nondeterminism-rootcause.md
+    sec 6, corrected alongside this docstring.)
+
+    The fix is still worth keeping even though the shipped shape isn't currently
+    thread-exposed: the 2-key sensitivity tracks polars' internal chunk count, which it
+    derives from the thread count, and its choice of aggregation strategy flips on
+    cardinality, chunking, and frame provenance -- none of it visible at this call site.
+    The shipped shape is one polars upgrade, one cardinality shift, or one grouping-key
+    edit away from being exposed the same way, and nothing would announce it if it were.
     """
     return time_filtered_data.filter(
         pl.col("Price").is_not_null() & pl.col("Volume").is_not_null()
@@ -373,6 +391,28 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     # other tied row), and it does change vs. today's shipped output, because it now always
     # makes the SAME arbitrary choice instead of a fresh one each run -- but that choice no
     # longer depends on anything unpinned, so no secondary key is needed for reproducibility.
+    #
+    # DECISION: do not add a secondary tie-break key (e.g. pl.col("Price")) at this site or
+    # at :331 below. Adding one would not be a no-op: it would change WHICH tied price wins,
+    # from "last in pinned row order" (today's behavior, once Fix 1 pins that order) to
+    # "highest price at the tied timestamp" -- across up to 14,881 ambiguous commodity groups
+    # and 5,751 ambiguous currency groups (full-history tie census; see the root-cause doc
+    # sec 3). That is a value change with no analytical benefit: "last in pinned order" and
+    # "highest price" are both arbitrary conventions, neither more correct than the other,
+    # and the current one is already deterministic -- the only property reproducibility
+    # requires. Adding a secondary key later would cost a SECOND gated production rerun, on
+    # top of the one Fixes 1/2 already require; this decision not to is made now, deliberately,
+    # while that first rerun is still unpaid, specifically to avoid paying for a second one for
+    # no analytical gain. Re-verified on two shards the implementer never used for the original
+    # measurement (2008-09 and 2021-03 commodity, 6 repeated calls each): 1 distinct
+    # value-per-key hash for both this site and :331, both months.
+    #
+    # This decision depends on Fix 1 (the .unique(..., maintain_order=True) above) continuing
+    # to pin the loader's row order; that dependency is guarded at its origin, not here --
+    # test_load_trades_data_row_order_is_stable_across_repeated_calls and
+    # test_load_quotes_data_row_order_is_stable_across_repeated_calls in
+    # tests/test_tickhistory_determinism.py fail if Fix 1 regresses, which is what should
+    # catch a reopening of this decision, not a change at this site.
     trades_data = trades_data.filter((pl.col("Price").is_not_null()) & (pl.col("Volume").is_not_null()))
     today_lasttrdprices = trades_data.filter(
         pl.col(DATETIME_COLUMN).dt.time() <= SETTLEMENT_START
@@ -481,12 +521,23 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     .sort(["date_"]))
     daily_vwaps = daily_vwaps.join(fallback_prices, on=["date_"], how="left")
 
-    # Check the last trade price against the bid-ask spread; if outside, use the midpoint
+    # Check the last trade price against the bid-ask spread; if outside, use the midpoint.
+    # Secondary tie-break key (Close Bid / Close Ask themselves) added as pure hardening for
+    # a future venue with multiple bars per minute -- provably a no-op on current data: 0 of
+    # 801,531 groups (full tier1_commodity_quotes history, 1996-2025) even need a tie-break,
+    # let alone disagree on value; re-verified directly, not assumed (see the root-cause doc
+    # sec 3 rank 5). A full re-aggregation of that same history with vs. without this key
+    # produced byte-identical frames. Two currency shards spot-checked too (2008-09, 2021-03:
+    # 0/727 and 0/925 groups need a tie-break). Free to add now because it changes nothing
+    # today; if a future tier-2 venue does introduce a tie, both sorts pick the tied row with
+    # the highest value independently (bid highest bid, ask highest ask) -- they are not
+    # guaranteed to come from the same underlying quote row in that case, same as before this
+    # change; see the root-cause doc's Fix 4 for the (unapplied) co-sourcing option.
     last_bid_ask_spread = quotes_data.filter(pl.col(DATETIME_COLUMN).dt.time() <= SETTLEMENT_END).with_columns([
         pl.col(DATETIME_COLUMN).dt.date().alias("date_")
     ]).group_by(["#RIC", "date_", "order"]).agg([
-        pl.col("Close Bid").sort_by(pl.col(DATETIME_COLUMN)).last().alias("last_bid"),
-        pl.col("Close Ask").sort_by(pl.col(DATETIME_COLUMN)).last().alias("last_ask"),
+        pl.col("Close Bid").sort_by(pl.col(DATETIME_COLUMN), pl.col("Close Bid")).last().alias("last_bid"),
+        pl.col("Close Ask").sort_by(pl.col(DATETIME_COLUMN), pl.col("Close Ask")).last().alias("last_ask"),
     ]).sort("date_")
     last_bid_ask_spread_c1 = last_bid_ask_spread.filter(pl.col("order") == 1).select(["date_", pl.col("last_bid").alias("last_bid_c1"), pl.col("last_ask").alias("last_ask_c1")])
     last_bid_ask_spread_c2 = last_bid_ask_spread.filter(pl.col("order") == 2).select(["date_", pl.col("last_bid").alias("last_bid_c2"), pl.col("last_ask").alias("last_ask_c2")])
