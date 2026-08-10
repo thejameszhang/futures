@@ -10,6 +10,7 @@ from globalmacro.utils.characteristics import (
     calc_returns_until_expiry,
     calc_returns_with_price_adj_and_roll,
     calc_total_returns_with_roll,
+    contract_identity_exprs,
 )
 from globalmacro.utils.config import load_config
 from globalmacro.utils.paths import (
@@ -151,6 +152,29 @@ def splice_active_inactive_series(
         active_from_stitch.height,
     )
     return contr_data
+
+
+def apply_finalised_return_guard(wide_contr_data: pl.DataFrame) -> pl.DataFrame:
+    """Null a finalised ret_i cell wherever its numerator and denominator contracts differ.
+
+    Part two of a two-part fix: `calc_returns_until_expiry`'s guard (characteristics.py)
+    catches this on ret_temp_i, but the coalesce that runs before this function backfills a
+    null ret_1 from ret_2 -- the NEXT contract's return -- so guarding ret_temp_i alone
+    leaves 366 of 1,074 defective cells alive wearing a different contract's number. Apply
+    the same test to the FINALISED series.
+
+    `.fill_null(False)` keeps this null-safe in the strict direction: a cell is nulled only
+    where the two contracts are PROVABLY different. Where the denominator contract is
+    unknown the value is left alone and reported by cross_contract_cells instead -- nulling
+    on unprovable provenance would remove 2,156 cells rather than 1,074.
+    """
+    for _i in (1, 2):
+        _num, _den = contract_identity_exprs(_i)
+        wide_contr_data = wide_contr_data.with_columns(
+            pl.when((_num != _den).fill_null(False)).then(None)
+            .otherwise(pl.col(f"ret_{_i}")).alias(f"ret_{_i}")
+        )
+    return wide_contr_data
 
 
 def main():
@@ -339,6 +363,8 @@ def main():
         .with_columns(pl.coalesce(pl.col("ret_2"), pl.col("ret_temp_2"), pl.col("ret_1"), pl.col("ret_temp_1")).alias("ret_2"))
         .with_columns(pl.coalesce(pl.col("ret_1"), pl.col("ret_2")))
     )
+
+    wide_contr_data = apply_finalised_return_guard(wide_contr_data)
 
     os.makedirs(FUTURES_PATH / "debug" / "tables", exist_ok=True)
     os.makedirs(FUTURES_PATH / "debug" / "dates", exist_ok=True)

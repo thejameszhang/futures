@@ -65,6 +65,94 @@ def test_missing_fx_currency_raises():
                   pl.DataFrame({"date": d, "JPY": [100.0, 101.0]}))
 
 
+# ---------------------------------------------------------------------------
+# The `traded` observation mask.
+#
+# Return nullity conflates two states that used to coincide: "did not trade",
+# where the next return spans the gap and the FX leg must widen with it, and
+# "traded, but the return was suppressed", where the next return is still a
+# one-day return and the FX leg must NOT widen. The fixtures below are a matched
+# pair -- identical returns and FX, differing ONLY in the mask -- so they can
+# only both pass if the mask is actually read.
+# ---------------------------------------------------------------------------
+
+_D4 = [date(2020, 1, 1), date(2020, 1, 2), date(2020, 1, 3), date(2020, 1, 4)]
+_LOCAL_GAP = pl.DataFrame({"date": _D4, "FGBL": [None, 0.01, None, 0.02]})
+_FX4 = pl.DataFrame({"date": _D4, "EUR": [1.10, 1.11, 1.12, 1.13]})
+
+
+def _traded(flags):
+    return pl.DataFrame({"date": _D4, "FGBL": flags})
+
+
+def test_suppressed_but_traded_date_keeps_a_one_day_fx_interval():
+    """d3's return was suppressed although the instrument traded and its price exists, so
+    d4's local return still spans d3->d4 and the FX leg must span d3->d4 too.
+
+    Kills: dropping the `| traded` term (falls back to the d2 denominator, the regression);
+    inverting the mask; and `.fill_null(False)` -> `.fill_null(True)` is killed by its twin
+    below rather than here."""
+    v = usd_panel(_LOCAL_GAP, {"FGBL": "EUR"}, _FX4, _traded([True] * 4))["FGBL"].to_list()
+    assert v[2] is None
+    assert v[3] == pytest.approx((1 + 0.02) * (1.13 / 1.12) - 1)
+
+
+def test_genuinely_absent_date_still_widens_the_fx_interval():
+    """Same returns, same FX, only the mask differs: d3 is a real non-trading day, so d4's
+    local return spans d2->d4 and the FX leg must widen to match.
+
+    Kills: `.fill_null(False)` -> `.fill_null(True)`; treating every date as traded; and,
+    paired with the test above, any mask-inversion."""
+    v = usd_panel(_LOCAL_GAP, {"FGBL": "EUR"}, _FX4,
+                  _traded([True, True, False, True]))["FGBL"].to_list()
+    assert v[3] == pytest.approx((1 + 0.02) * (1.13 / 1.11) - 1)
+
+
+def test_a_present_return_is_observed_even_where_the_mask_says_untraded():
+    """The mask is a UNION with return-nullity, never a replacement. These panels also carry
+    JKP sector columns and a pre-listing synthetic backfill whose observations the futures
+    mask reports as False; replacing the inference with the mask would widen those intervals
+    and break cells that are correct today.
+
+    Kills: `observed = traded` (replacement instead of union)."""
+    all_false = _traded([False] * 4)
+    with_mask = usd_panel(_LOCAL_GAP, {"FGBL": "EUR"}, _FX4, all_false)["FGBL"].to_list()
+    without = usd_panel(_LOCAL_GAP, {"FGBL": "EUR"}, _FX4)["FGBL"].to_list()
+    assert with_mask[3] == pytest.approx(without[3])
+    assert with_mask[3] == pytest.approx((1 + 0.02) * (1.13 / 1.11) - 1)
+
+
+def test_a_mask_covering_only_some_symbols_leaves_the_others_alone():
+    """Partial coverage is the normal case (sector columns are never in the mask), so an
+    uncovered symbol must fall back to return-nullity rather than raise or be zeroed."""
+    local = _LOCAL_GAP.with_columns(pl.Series("FGBM", [None, 0.01, None, 0.02]))
+    v = usd_panel(local, {"FGBL": "EUR", "FGBM": "EUR"}, _FX4, _traded([True] * 4))
+    assert v["FGBL"].to_list()[3] == pytest.approx((1 + 0.02) * (1.13 / 1.12) - 1)
+    assert v["FGBM"].to_list()[3] == pytest.approx((1 + 0.02) * (1.13 / 1.11) - 1)
+
+
+def test_traded_panel_with_duplicate_dates_raises():
+    """A duplicated date would fan the left join out and silently multiply panel rows --
+    a corruption no downstream assertion would attribute back to here."""
+    dup = pl.DataFrame({"date": [_D4[0], _D4[0]], "FGBL": [True, True]})
+    with pytest.raises(ValueError, match="duplicate dates"):
+        usd_panel(_LOCAL_GAP, {"FGBL": "EUR"}, _FX4, dup)
+
+
+def test_traded_panel_without_a_date_column_raises():
+    with pytest.raises(ValueError, match="must carry a `date` column"):
+        usd_panel(_LOCAL_GAP, {"FGBL": "EUR"}, _FX4, pl.DataFrame({"FGBL": [True]}))
+
+
+def test_traded_dates_outside_the_panel_grid_are_not_observations():
+    """The mask is joined left onto the panel, so a mask date the panel does not carry must
+    not become an observation -- and a panel date the mask does not carry must fall back to
+    return-nullity rather than to a null that poisons the comparison."""
+    short = pl.DataFrame({"date": [_D4[0], _D4[1]], "FGBL": [True, True]})
+    v = usd_panel(_LOCAL_GAP, {"FGBL": "EUR"}, _FX4, short)["FGBL"].to_list()
+    assert v[3] == pytest.approx((1 + 0.02) * (1.13 / 1.11) - 1)
+
+
 def test_sync_panel_first_observation_recovered_from_earlier_fx():
     """Sync panels begin exactly at the symbol's first observation — the panel's
     first row has no prior grid row, so level.shift(1) would otherwise be null on

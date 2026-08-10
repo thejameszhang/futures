@@ -71,6 +71,19 @@ class Check:
     # run.py's "## Skipped" checks list). See run.py:_dropped_invariants/_dropped_figures.
     dropped_invariants: tuple[str, ...] = ()
     dropped_figures: tuple[str, ...] = ()
+    # Bare filenames (directly under this check's own out_dir) that this check's OWN
+    # figures() may write BEYOND the fixed correlations.csv/comparison.pdf pair
+    # run.py:_stale_figure_paths already knows about for a check dropped WHOLE
+    # (requires_sync=True) -- for a figures() that emits more than one file (e.g. one
+    # per instrument) rather than the single comparison.pdf every other requires_sync
+    # check's figures()/pairs() produces. Static and declared once by the check itself,
+    # so _stale_figure_paths can name every stale path without executing anything, the
+    # same discipline dropped_invariants/dropped_figures above already follow. Empty for
+    # every requires_sync=True check today except the external ground-truth check
+    # (gitignored, external_comparison.py), whose figures() writes one file per
+    # (instrument, panel) -- consistency_check and fx_futures_vs_spot_check both write
+    # exactly comparison.pdf, already covered by the fixed pair.
+    whole_drop_extra_figures: tuple[str, ...] = ()
 
 
 def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:

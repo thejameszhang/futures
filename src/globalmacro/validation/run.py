@@ -116,7 +116,10 @@ def _stale_figure_paths(mode: str) -> list[Path]:
         correlations.csv is the machine-readable half of the same artifact
         comparison.pdf visualizes -- arguably the more dangerous one to leave stale,
         since nothing about it looks like a diagnostic plot a reader would think to
-        distrust.
+        distrust. Plus, for a dropped-whole check whose figures() writes MORE than the
+        one comparison.pdf (e.g. one file per instrument), every name declared in that
+        check's own Check.whole_drop_extra_figures -- the same static-declaration
+        discipline as dropped_figures below, just for the whole-dropped case.
       * a check still RUNNING in this mode but dropping some of its own figures --
         each name in that check's own declared Check.dropped_figures (see
         _dropped_figures above).
@@ -140,6 +143,8 @@ def _stale_figure_paths(mode: str) -> list[Path]:
             paths.append(out_dir / _CORRELATIONS_CSV)
             if check.pairs is not None or check.figures is not None:
                 paths.append(out_dir / _COMPARISON_PDF)
+            for fig_name in check.whole_drop_extra_figures:
+                paths.append(out_dir / fig_name)
         else:
             for fig_name in check.dropped_figures:
                 paths.append(out_dir / fig_name)

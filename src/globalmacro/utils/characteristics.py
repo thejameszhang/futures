@@ -25,12 +25,92 @@ def calc_returns_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     Returns:
         pl.Expr - the returns of the i-th month contract until expiry date of each contract
     """
+    # True when the front dropped out and everything shifted up a slot, so today's slot i is
+    # yesterday's slot i+1 -- the SAME contract, and the ratio below is correct.
+    roll = (pl.col('daystomaturity_1').shift(1) == 0) | (pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1))
+    # Which contract the denominator price actually belongs to, given that choice.
+    denominator = pl.when(roll).then(pl.col(f'lasttrddate_{i + 1}').shift(1)).otherwise(pl.col(f'lasttrddate_{i}').shift(1))
+    # futures.py ranks contracts over the rows that EXIST for a date, and a contract with no
+    # price has no row -- so on an exchange holiday a far-dated contract can occupy slot 1
+    # (NG 2012-09-03 +62%, C 2016-12-28 +5038%). `roll` already rescues the common one-slot
+    # shift; this guard covers the residual. A ratio between two different contracts is not a
+    # return, so emit null rather than a number. 1,074 cells across 105 classes.
+    same_contract = pl.col(f'lasttrddate_{i}') == denominator
     return ([
-        pl.when((pl.col('daystomaturity_1').shift(1) == 0) | (pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1)))
-        .then((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i + 1}').shift(1)) - 1)
-        .otherwise((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1)
+        pl.when(same_contract)
+        .then(
+            pl.when(roll)
+            .then((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i + 1}').shift(1)) - 1)
+            .otherwise((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1)
+        )
+        .otherwise(None)
         .over('clscode').alias(f'ret_temp_{i}'),
     ])
+
+def contract_identity_exprs(i: int) -> tuple[pl.Expr, pl.Expr]:
+    """(numerator contract, denominator contract) for the finalised ret_i.
+
+    Single source of truth: futures.py's post-coalesce guard and cross_contract_cells both
+    use this, so the fix and its verification cannot measure different things.
+
+    ret_i is ret_temp_{i+1} when exp_1 == 1, else ret_temp_i
+    (calc_returns_with_price_adj_and_roll), so the numerator slot shifts with exp_1.
+    """
+    roll = (pl.col('daystomaturity_1').shift(1).over('clscode') == 0) | (
+        pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1).over('clscode'))
+    num = pl.when(pl.col('exp_1') == 1).then(pl.col(f'lasttrddate_{i + 1}')).otherwise(pl.col(f'lasttrddate_{i}'))
+    den = (pl.when(pl.col('exp_1') == 1)
+           .then(pl.when(roll).then(pl.col(f'lasttrddate_{i + 2}').shift(1).over('clscode'))
+                 .otherwise(pl.col(f'lasttrddate_{i + 1}').shift(1).over('clscode')))
+           .otherwise(pl.when(roll).then(pl.col(f'lasttrddate_{i + 1}').shift(1).over('clscode'))
+                      .otherwise(pl.col(f'lasttrddate_{i}').shift(1).over('clscode'))))
+    return num, den
+
+def cross_contract_cells(df: pl.DataFrame, i: int = 1) -> pl.DataFrame:
+    """Non-null ret_1 cells whose numerator and denominator are different contracts.
+
+    This is the defect's definition rather than a proxy for it, so it is exact for the slot
+    the exp_1 mapping assigns -- but that mapping is contract_identity_exprs' whole model of
+    provenance, and the post-coalesce backfill in futures.py (a null ret_1 filled from
+    ret_temp_2, the next contract's return) sits outside it. Measured misses: 6E (clscode
+    3719) 1990-09-03 and HE (clscode 3893) 2001-07-05, both settlement_1 null pre-fix, so
+    ret_1 was backfilled from ret_temp_2 whose contract genuinely differs -- yet this check
+    adjudicates them clean, because it never sees a backfill happen. Known, recorded
+    limitation; the model is not fixed here.
+    An expiry-monotonicity invariant was tried and rejected: 42 classes carried
+    cross-contract cells while reporting zero expiry decreases, because a substitution that
+    skips forward and never returns is monotone non-decreasing.
+
+    ret_1 is ret_temp_2 when exp_1 == 1, else ret_temp_1 (calc_returns_with_price_adj_and_roll),
+    so the numerator slot shifts with exp_1. After the fix this must return zero rows.
+    """
+    num, den = contract_identity_exprs(i)
+    return (
+        df.sort(['clscode', 'date'])
+        .with_columns(num=num, den=den)
+        .filter(pl.col(f'ret_{i}').is_not_null() & (pl.col('num') != pl.col('den')))
+        .select('clscode', 'date', pl.col(f'ret_{i}').alias('ret'), 'num', 'den')
+    )
+
+
+def unadjudicable_cells(df: pl.DataFrame, i: int = 1) -> pl.DataFrame:
+    """Non-null ret_i cells whose numerator or denominator contract is unknown.
+
+    cross_contract_cells' `num != den` is null-propagating, so these are silently skipped.
+    A zero from that checker means "no cell I could adjudicate is cross-contract", NOT "no
+    cell is". Either contract being unknown makes a cell unadjudicable, so both are counted:
+    a null numerator (exp_1 == 1 with lasttrddate_2 absent) is no more verifiable than a null
+    denominator. Measured pre-fix: 1,082 for ret_1, 22,258 for ret_2. Report these alongside
+    the zero rather than letting the difference hide.
+    """
+    num, den = contract_identity_exprs(i)
+    return (
+        df.sort(['clscode', 'date'])
+        .with_columns(num=num, den=den)
+        .filter(pl.col(f'ret_{i}').is_not_null() & (pl.col('num').is_null() | pl.col('den').is_null()))
+        .select('clscode', 'date', pl.col(f'ret_{i}').alias('ret'))
+    )
+
 
 def calc_returns_with_price_adj_and_roll(i: int) -> list[pl.Expr]:
     """

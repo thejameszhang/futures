@@ -472,6 +472,68 @@ def test_stale_figure_paths_empty_in_full_mode(monkeypatch):
     assert vrun._stale_figure_paths("full") == []
 
 
+def test_stale_figure_paths_includes_whole_drop_extra_figures(monkeypatch):
+    """Covers gitignored external_comparison.py's per-instrument daily figures: a
+    check dropped WHOLE whose figures() writes more than the single comparison.pdf
+    (e.g. one file per instrument) must have every one of those extra bare filenames
+    named, not just the fixed comparison.pdf/correlations.csv pair."""
+    skipped_with_extras = Check(
+        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_stub_run,
+        pairs=_stale_stub_pairs, requires_sync=True,
+        whole_drop_extra_figures=("daily_A_async.pdf", "daily_B_sync.pdf"),
+    )
+
+    def _checks(mode):
+        return [] if mode == "async-only" else [skipped_with_extras]
+
+    monkeypatch.setattr(vrun, "_available_checks", _checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+
+    paths = vrun._stale_figure_paths("async-only")
+    out_dir = vrun.VALIDATION_OUTPUT / "skipped_extras_stub"
+    assert out_dir / "daily_A_async.pdf" in paths
+    assert out_dir / "daily_B_sync.pdf" in paths
+    assert out_dir / "comparison.pdf" in paths
+    assert out_dir / "correlations.csv" in paths
+    assert len(paths) == 4
+
+
+def test_remove_stale_figures_deletes_whole_drop_extra_figures(monkeypatch, tmp_path):
+    """Companion to the above: the extras are actually REACHABLE by the removal guard
+    -- a bare filename directly under VALIDATION_OUTPUT/<slug>/, flat, not nested. This
+    is the shape _daily_figures now writes (it used to nest under out_dir/daily/,
+    which the guard structurally refuses -- see
+    test_remove_stale_figures_guard_rejects_path_traversal below)."""
+    skipped_with_extras = Check(
+        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_stub_run,
+        requires_sync=True,
+        whole_drop_extra_figures=("daily_A_async.pdf", "daily_B_sync.pdf"),
+    )
+
+    def _checks(mode):
+        return [] if mode == "async-only" else [skipped_with_extras]
+
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+
+    extra1 = tmp_path / "skipped_extras_stub" / "daily_A_async.pdf"
+    extra2 = tmp_path / "skipped_extras_stub" / "daily_B_sync.pdf"
+    correlations = tmp_path / "skipped_extras_stub" / "correlations.csv"
+    survivor = tmp_path / "skipped_extras_stub" / "notes.txt"
+    for p in (extra1, extra2, correlations, survivor):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"dummy")
+
+    removed = vrun._remove_stale_figures("async-only")
+
+    assert set(removed) == {extra1, extra2, correlations}
+    assert not extra1.exists()
+    assert not extra2.exists()
+    assert not correlations.exists()
+    assert survivor.exists()
+
+
 def test_remove_stale_figures_deletes_exactly_the_dropped_ones(monkeypatch, tmp_path):
     """Plant dummy PDFs/CSVs, run async-only cleanup, assert exactly the dropped ones
     are gone and every other file (including siblings in the SAME check/symbol_counts
