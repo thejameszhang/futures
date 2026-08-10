@@ -19,6 +19,14 @@ def test_async_only_filters_exactly_the_full_sync_checks():
     assert dropped <= {"consistency", "fx_futures_vs_spot", "external"}
     assert {"consistency", "fx_futures_vs_spot"} <= dropped
     assert {"datastream", "synthetic_fx", "synthetic_equity", "spot_fx"} <= async_only
+    # external_async_daily_check's entire reason to exist is requires_sync=False: it
+    # must NOT be dropped by the async-only filter. Present-or-absent as a pair with
+    # "external" (both registered by the same combined import in run.py, see the
+    # all-or-nothing test below) -- when present it must survive into async_only and
+    # never show up in `dropped`.
+    if "external_async_daily" in full:
+        assert "external_async_daily" in async_only
+        assert "external_async_daily" not in dropped
 
 
 def test_symbol_count_sources_drop_sync_but_keep_async():
@@ -57,17 +65,20 @@ def test_available_checks_full_mode_matches_original_shape():
     identical order, that the original zero-argument _available_checks() returned --
     the filter must be inert in full mode.
 
-    "external" is deliberately NOT asserted as present: external_comparison.py is
-    gitignored (confidential, local-only) and does not exist on a clean clone, so
-    _available_checks("full") legitimately omits it there. Assert the six checks every
-    clone has exactly, and let the optional seventh be present-or-absent."""
+    "external"/"external_async_daily" are deliberately NOT asserted as present:
+    external_comparison.py is gitignored (confidential, local-only) and does not exist
+    on a clean clone, so _available_checks("full") legitimately omits both there.
+    Assert the six checks every clone has exactly, and let the optional pair be
+    present-or-absent -- but always TOGETHER (one combined import registers both or
+    neither, see the all-or-nothing test below), never just one of the two."""
     checks = vrun._available_checks("full")
     slugs = [c.slug for c in checks]
     assert slugs[:6] == [
         "datastream", "consistency", "synthetic_fx",
         "synthetic_equity", "spot_fx", "fx_futures_vs_spot",
     ]
-    assert set(slugs[6:]) <= {"external"}
+    assert set(slugs[6:]) <= {"external", "external_async_daily"}
+    assert ("external" in slugs) == ("external_async_daily" in slugs)
     assert vrun._available_checks() == checks       # default argument matches explicit "full"
 
 
@@ -86,6 +97,10 @@ def test_skipped_checks_names_the_dropped_full_mode_checks():
     assert full_by_slug["fx_futures_vs_spot"] in skipped
     if "external" in full_by_slug:
         assert full_by_slug["external"] in skipped
+    # external_async_daily is graded async-only mode's whole point: it must NEVER be
+    # named as skipped, even though it lives right next to "external" in the registry.
+    if "external_async_daily" in full_by_slug:
+        assert full_by_slug["external_async_daily"] not in skipped
     expected = [c for c in vrun._available_checks("full") if c.requires_sync]
     assert len(skipped) == len(expected)
 
@@ -114,10 +129,12 @@ def test_available_checks_degrades_gracefully_without_external_module(monkeypatc
         "synthetic_equity", "spot_fx", "fx_futures_vs_spot",
     ]
     assert "external" not in slugs
+    assert "external_async_daily" not in slugs
 
     skipped = vrun._skipped_checks("async-only")
     full_by_slug = {c.slug: c.name for c in vrun._available_checks("full")}
     assert "external" not in full_by_slug
+    assert "external_async_daily" not in full_by_slug
     assert full_by_slug["consistency"] in skipped
     assert full_by_slug["fx_futures_vs_spot"] in skipped
     expected = [c for c in vrun._available_checks("full") if c.requires_sync]
@@ -133,22 +150,35 @@ def test_external_check_requires_sync_is_forced_in_tracked_code(monkeypatch):
     and does not travel with the merge; anywhere with a different copy would run
     this check in async-only mode and try to read tier1/sync/sync_daily.csv, which
     doesn't exist there. _available_checks must force requires_sync=True in tracked
-    code instead, via dataclasses.replace.
+    code instead, via dataclasses.replace. Extended (same session, external-split) to
+    the async-daily sibling: it must be forced requires_sync=False by that same
+    tracked-code call, since a local edit setting it True there would silently DISABLE
+    the one exercise async-only mode exists to keep running.
 
     Injects a stub module (same sys.modules-substitution mechanism as
-    test_connect_report.py's _fake_wrds_success) whose external_check leaves
-    requires_sync at its dataclass default (False) -- exactly the state a
-    differently-configured clone/worktree would have -- so this proves the forcing
-    rather than depending on this machine's own (possibly already-correct) untracked
-    copy. Does not require the real gitignored module to exist, so it also passes on
-    a clean clone where the file is absent."""
+    test_connect_report.py's _fake_wrds_success) defining BOTH external_check and
+    external_async_daily_check -- run.py's single combined import needs both names
+    present (see the all-or-nothing test below) -- each left at its dataclass default
+    (requires_sync=False) -- exactly the state a differently-configured clone/worktree
+    would have -- so this proves the forcing rather than depending on this machine's
+    own (possibly already-correct) untracked copy. Does not require the real
+    gitignored module to exist, so it also passes on a clean clone where the file is
+    absent."""
     name = "globalmacro.validation.external_comparison"
     stub_check = Check(
         name="External ground-truth cross-check", slug="external", run=_stub_correlations,
     )
+    stub_async_daily_check = Check(
+        name="External ground-truth cross-check (async, daily)",
+        slug="external_async_daily", run=_stub_correlations,
+    )
     assert stub_check.requires_sync is False          # the dataclass default
+    assert stub_async_daily_check.requires_sync is False
     stub_module = types.ModuleType(name)
     monkeypatch.setattr(stub_module, "external_check", stub_check, raising=False)
+    monkeypatch.setattr(
+        stub_module, "external_async_daily_check", stub_async_daily_check, raising=False
+    )
     monkeypatch.setitem(sys.modules, name, stub_module)
 
     full = vrun._available_checks("full")
@@ -157,9 +187,40 @@ def test_external_check_requires_sync_is_forced_in_tracked_code(monkeypatch):
     injected_full = next(c for c in full if c.slug == "external")
     assert injected_full.requires_sync is True
     assert "external" not in {c.slug for c in async_only}
-    # dataclasses.replace() returns a new instance -- the injected stub itself, and
-    # therefore any other reference to it, must be untouched.
+
+    injected_async_daily = next(c for c in full if c.slug == "external_async_daily")
+    assert injected_async_daily.requires_sync is False
+    assert "external_async_daily" in {c.slug for c in async_only}
+
+    # dataclasses.replace() returns a new instance -- the injected stubs themselves,
+    # and therefore any other reference to them, must be untouched.
     assert stub_check.requires_sync is False
+    assert stub_async_daily_check.requires_sync is False
+
+
+def test_external_checks_registered_all_or_nothing_when_module_partially_defined(
+    monkeypatch,
+):
+    """Mutation-style guard on run.py's own wiring: the combined `from ... import
+    external_async_daily_check, external_check` statement means a module that defines
+    only ONE of the two names must register NEITHER check, not silently register the
+    one it found. Splitting that import into two separate try/except blocks (an
+    apparently-harmless simplification) would reintroduce a half-registered state
+    without this failing -- proves the all-or-nothing behaviour directly rather than
+    assuming it from reading the source."""
+    name = "globalmacro.validation.external_comparison"
+    stub_module = types.ModuleType(name)
+    monkeypatch.setattr(
+        stub_module, "external_check",
+        Check(name="x", slug="external", run=_stub_correlations), raising=False,
+    )
+    # external_async_daily_check is deliberately NOT defined on this stub.
+    monkeypatch.setitem(sys.modules, name, stub_module)
+
+    full = vrun._available_checks("full")
+    slugs = {c.slug for c in full}
+    assert "external" not in slugs
+    assert "external_async_daily" not in slugs
 
 
 def _touch(path, mtime):
@@ -778,7 +839,98 @@ def test_main_does_not_remove_anything_in_full_mode(monkeypatch, tmp_path):
     assert stale.exists()
 
 
-# --- validation_mode() must reject anything but the two canonical literals --------
+# --- external-split: full-then-async-only integration, real checks, real data ------
+
+
+def test_external_split_full_then_async_only_real_data(monkeypatch, tmp_path):
+    """Integration proof, not a stub: runs the REAL external_check/
+    external_async_daily_check (gitignored, local-only external_comparison.py)
+    against the real production datasets/ and confidential reference panel --
+    read-only; VALIDATION_OUTPUT is redirected to tmp_path, so nothing under the real
+    validation/ tree is ever touched. Skips cleanly when the module (or its data) is
+    genuinely absent, e.g. a clean clone or CI, where "external"/"external_async_daily"
+    never appear in _available_checks at all.
+
+    The five other full-mode checks are excluded (one of them rebuilds a sync panel
+    from raw -- far more than this task calls for); `original_available_checks` is
+    captured BEFORE monkeypatching `vrun._available_checks` so the filter closes over
+    the true original rather than recursing into itself.
+
+    Full mode: both exercises must appear, GRADED, with a real (non-empty) universe,
+    and each writes its own correlations.csv/figures under its OWN out_dir. Then, same
+    tmp_path, EXPLICIT async-only mode (task brief: "the requirement most likely to be
+    silently broken"): external_async_daily must run again -- fresh, identical
+    correlations, since nothing about its computation is mode-dependent -- while every
+    one of external's full-mode artifacts (correlations.csv, comparison.pdf, all 138
+    per-instrument daily scatter plots across both panels) must be gone."""
+    if not any(c.slug == "external_async_daily" for c in vrun._available_checks("full")):
+        pytest.skip("external_comparison.py (gitignored) or its reference data is absent")
+
+    original_available_checks = vrun._available_checks
+
+    def _real_external_checks_only(mode):
+        return [c for c in original_available_checks(mode)
+                if c.slug in {"external", "external_async_daily"}]
+
+    monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
+    monkeypatch.setattr(vrun, "_available_checks", _real_external_checks_only)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
+    monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
+    monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
+    monkeypatch.delenv("GM_MODE_AUTODETECTED", raising=False)
+
+    # --- full mode ---------------------------------------------------------------
+    assert vrun.main(["--full"]) == 0
+
+    ext_dir = tmp_path / "external"
+    daily_dir = tmp_path / "external_async_daily"
+    assert (ext_dir / "correlations.csv").exists()
+    assert (ext_dir / "comparison.pdf").exists()
+    assert len(list(ext_dir.glob("daily_*.pdf"))) > 0
+    assert (daily_dir / "correlations.csv").exists()
+    assert len(list(daily_dir.glob("daily_*.pdf"))) > 0
+    assert not (daily_dir / "comparison.pdf").exists()   # no pairs() on the daily check
+
+    async_corr_full = pl.read_csv(daily_dir / "correlations.csv")
+    assert async_corr_full.height > 0
+    assert set(async_corr_full.columns) == {"instrument", "correlation", "n_obs"}
+    # Guards against silently dropping the panel=="async" filter in
+    # _external_async_daily_correlations: a run over BOTH panels (no filter) would
+    # duplicate any instrument that clears the daily-obs threshold on both sides,
+    # rather than merely inflating `height` past 69 -- which a looser ">0" check alone
+    # would not catch.
+    assert async_corr_full.get_column("instrument").n_unique() == async_corr_full.height
+    sync_corr_full = pl.read_csv(ext_dir / "correlations.csv")
+    assert sync_corr_full.height > 0
+
+    summary_full = (tmp_path / "VALIDATION_SUMMARY.md").read_text()
+    assert "## Skipped" not in summary_full
+    assert "| External ground-truth cross-check |" in summary_full
+    assert "| External ground-truth cross-check (async, daily) |" in summary_full
+
+    # --- async-only mode, SAME tmp_path, EXPLICIT flag ----------------------------
+    assert vrun.main(["--async-only"]) == 0
+
+    assert not (ext_dir / "correlations.csv").exists()
+    assert not (ext_dir / "comparison.pdf").exists()
+    assert list(ext_dir.glob("daily_*.pdf")) == []            # all 138 stale figures gone
+
+    assert (daily_dir / "correlations.csv").exists()          # regenerated, not stale
+    assert len(list(daily_dir.glob("daily_*.pdf"))) > 0
+    async_corr_async_only = pl.read_csv(daily_dir / "correlations.csv")
+    # Mode-independent computation -- the same tier2/async read either way -- so the
+    # regenerated numbers must match the full-mode run exactly, not just "be present".
+    assert async_corr_async_only.equals(async_corr_full)
+
+    summary_async = (tmp_path / "VALIDATION_SUMMARY.md").read_text()
+    graded_section, _, skipped_section = summary_async.partition("## Skipped")
+    assert "| External ground-truth cross-check (async, daily) |" in graded_section
+    assert "| External ground-truth cross-check |" not in graded_section
+    assert "External ground-truth cross-check" in skipped_section
+    assert "(async, daily)" not in skipped_section
+
+
+# --- validation_mode() must reject anything but the two canonical literals ------
 
 @pytest.mark.parametrize("bad_mode", ["Full", "FULL", "aysnc-only", "", None])
 def test_validation_mode_rejects_invalid_modes(bad_mode):
