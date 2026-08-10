@@ -478,8 +478,8 @@ def test_stale_figure_paths_includes_whole_drop_extra_figures(monkeypatch):
     (e.g. one file per instrument) must have every one of those extra bare filenames
     named, not just the fixed comparison.pdf/correlations.csv pair."""
     skipped_with_extras = Check(
-        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_figs_stub_run,
-        pairs=_stale_figs_stub_pairs, requires_sync=True,
+        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_stub_run,
+        pairs=_stale_stub_pairs, requires_sync=True,
         whole_drop_extra_figures=("daily_A_async.pdf", "daily_B_sync.pdf"),
     )
 
@@ -505,7 +505,7 @@ def test_remove_stale_figures_deletes_whole_drop_extra_figures(monkeypatch, tmp_
     which the guard structurally refuses -- see
     test_remove_stale_figures_guard_rejects_path_traversal below)."""
     skipped_with_extras = Check(
-        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_figs_stub_run,
+        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_stub_run,
         requires_sync=True,
         whole_drop_extra_figures=("daily_A_async.pdf", "daily_B_sync.pdf"),
     )
