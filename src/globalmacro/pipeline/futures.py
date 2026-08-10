@@ -177,6 +177,31 @@ def apply_finalised_return_guard(wide_contr_data: pl.DataFrame) -> pl.DataFrame:
     return wide_contr_data
 
 
+def select_top_contracts_by_volume(contr_data: pl.DataFrame) -> pl.DataFrame:
+    """Pick one row per (clscode, date_, order) slot: the highest-volume contract sharing
+    that expiry rank on that day (`order` = the dense rank of distinct lasttrddate within
+    the class-day, i.e. front month = 1, second month = 2, ...).
+
+    `futcode` (a per-contract identifier, present via the dsfutcontrinfo join) is a secondary
+    sort key so the choice is a function of the data alone. Without it, `.sort_by("volume")
+    .first()` has no tie-break whenever two contracts in the same slot report the same
+    volume -- polars sorts are not stable by default, so which row wins would depend on the
+    DataFrame's incoming row order, which is not itself guaranteed stable across runs (see
+    the standing pipeline-reproducibility finding). Measured on the configured universe:
+    hundreds of (clscode, date_, order) groups have more than one row sharing the max
+    volume, concentrated in a handful of clscodes (6Z, ATX, IR, MD, PSI); futcode is unique
+    within every one of them, so it fully resolves the tie.
+    """
+    return (
+        contr_data.sort(['clscode', 'date_', 'lasttrddate'])
+        .with_columns(
+            pl.col("lasttrddate").rank("dense").over(['clscode', 'date_']).alias("order")
+        )
+        .group_by(["clscode", "date_", "order"])
+        .agg(pl.all().sort_by(["volume", "futcode"], descending=[True, False], nulls_last=True).first())
+    ).filter(pl.col("order") <= 5)
+
+
 def main():
     info_data = (
         dsfutcontr
@@ -292,15 +317,8 @@ def main():
         .filter((pl.col('clscode') != 259) | (pl.col(PRICE_TYPE) > 1))
     )
 
-    #ordering; if duplicate, keep row with the highest volume
-    contr_data = (
-        contr_data.sort(['clscode', 'date_', 'lasttrddate'])
-        .with_columns(
-            pl.col("lasttrddate").rank("dense").over(['clscode', 'date_']).alias("order")
-        )
-        .group_by(["clscode", "date_", "order"])
-        .agg(pl.all().sort_by("volume", descending=True, nulls_last=True).first())
-    ).filter(pl.col("order") <= 5)
+    #ordering; if duplicate, keep row with the highest volume, tie-broken deterministically by futcode
+    contr_data = select_top_contracts_by_volume(contr_data)
 
     contr_data = contr_data.unique(keep='first').sort(['clscode', 'date_'])
 
