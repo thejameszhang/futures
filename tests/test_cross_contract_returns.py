@@ -257,3 +257,120 @@ def test_cross_contract_cells_ignores_null_returns():
         "ret_1": [None, None],
     })
     assert cross_contract_cells(df).height == 0
+
+
+# ---------------------------------------------------------------------------
+# apply_finalised_return_guard (futures.py's post-coalesce guard)
+#
+# calc_returns_until_expiry's guard (tested above) catches a cross-contract
+# ret_temp_i, but the coalesce that runs before apply_finalised_return_guard
+# backfills a null ret_1 from ret_2 -- the NEXT contract's return -- so
+# guarding ret_temp_i alone leaves 366 of 1,074 defective cells alive wearing
+# a different contract's number. apply_finalised_return_guard re-applies
+# contract_identity_exprs to the FINALISED ret_1/ret_2 columns to catch those.
+# Each test below is built to fail under one specific broken implementation.
+# ---------------------------------------------------------------------------
+
+
+def test_guard_preserves_a_provably_same_contract_ret_1():
+    """exp_1 == 0, no roll: num (lasttrddate_1) equals den (lasttrddate_1.shift(1)).
+    A cell like this must survive. Baseline sanity check, and half of the pair that
+    discriminates the `!=` -> `==` inversion mutant (paired with the next test)."""
+    from globalmacro.pipeline.futures import apply_finalised_return_guard
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 0],
+        "daystomaturity_1": [19, 18],
+        "lasttrddate_1": [date(2020, 3, 21), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 5, 15)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2020, 8, 20)],
+        "lasttrddate_4": [date(2020, 11, 20), date(2020, 11, 20)],
+        "ret_1": [None, 0.05],
+        "ret_2": [None, None],
+    })
+    got = apply_finalised_return_guard(df).get_column("ret_1").to_list()
+    assert got[1] is not None and abs(got[1] - 0.05) < 1e-12
+
+
+def test_guard_nulls_a_provably_cross_contract_ret_1():
+    """exp_1 == 0, no roll: num (lasttrddate_1, a far-dated contract) differs from den
+    (lasttrddate_1.shift(1), yesterday's near contract). The guard must null this cell --
+    this is the guard's entire purpose. Kills 'delete the whole guard' outright (an absent
+    guard ships the value live) and, paired with the previous test, kills the `!=` -> `==`
+    inversion (which would null the same-contract cell above and preserve this one)."""
+    from globalmacro.pipeline.futures import apply_finalised_return_guard
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 0],
+        "daystomaturity_1": [19, 1000],
+        "lasttrddate_1": [date(2020, 3, 21), date(2022, 12, 1)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2023, 3, 1)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2023, 6, 1)],
+        "lasttrddate_4": [date(2020, 11, 20), date(2023, 9, 1)],
+        "ret_1": [None, 0.5],
+        "ret_2": [None, None],
+    })
+    got = apply_finalised_return_guard(df).get_column("ret_1").to_list()
+    assert got[1] is None
+
+
+def test_guard_nulls_cross_contract_ret_2_even_when_ret_1_is_clean():
+    """exp_1 == 1 forces a roll (daystomaturity_1.shift(1) == 0), which shifts the ret_2
+    numerator/denominator slots to lasttrddate_3 / lasttrddate_4.shift(1). Built so ret_1's
+    pair (lasttrddate_2 vs lasttrddate_3.shift(1)) is provably the SAME contract while
+    ret_2's pair (lasttrddate_3 vs lasttrddate_4.shift(1)) is provably DIFFERENT.
+
+    This is the only fixture that can catch `for _i in (1,)`: that mutant drops ret_2 from
+    the loop entirely, so ret_2 ships its live (wrong) value while ret_1 -- correctly left
+    alone either way -- gives no signal. Also re-covers 'delete the whole guard' (ret_2
+    would stay live) and the `!=`/`==` inversion (would flip both assertions here)."""
+    from globalmacro.pipeline.futures import apply_finalised_return_guard
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "exp_1": [0, 1],
+        "daystomaturity_1": [0, 53],
+        "lasttrddate_1": [date(2020, 3, 2), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 8, 20)],
+        "lasttrddate_3": [date(2020, 8, 20), date(2021, 1, 1)],
+        "lasttrddate_4": [date(2020, 11, 20), date(2021, 4, 1)],
+        "ret_1": [None, 0.07],
+        "ret_2": [None, 0.09],
+    })
+    got = apply_finalised_return_guard(df)
+    ret1 = got.get_column("ret_1").to_list()
+    ret2 = got.get_column("ret_2").to_list()
+    assert ret1[1] is not None and abs(ret1[1] - 0.07) < 1e-12
+    assert ret2[1] is None
+
+
+def test_guard_leaves_unadjudicable_cells_untouched():
+    """A single row per clscode has no previous row to shift from, so both num and den
+    resolve with a null denominator -- `num != den` is null, not True or False. The
+    guard's `.fill_null(False)` must leave this cell alone (reported by cross_contract_cells
+    instead, per the guard's docstring), not null it.
+
+    This is the only fixture that can catch `.fill_null(False)` -> `.fill_null(True)`:
+    scripts/check_cross_contract_returns.py can't see this mutant either (it reports 0
+    cross-contract cells whether or not it's present), so this assertion is the sole
+    detector for the over-nulling failure mode (2,156 cells instead of 1,074)."""
+    from globalmacro.pipeline.futures import apply_finalised_return_guard
+    df = pl.DataFrame({
+        "clscode": [1],
+        "date": [date(2020, 3, 2)],
+        "exp_1": [0],
+        "daystomaturity_1": [19],
+        "lasttrddate_1": [date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15)],
+        "lasttrddate_3": [date(2020, 8, 20)],
+        "lasttrddate_4": [date(2020, 11, 20)],
+        "ret_1": [0.42],
+        "ret_2": [0.13],
+    })
+    got = apply_finalised_return_guard(df)
+    ret1 = got.get_column("ret_1").to_list()
+    ret2 = got.get_column("ret_2").to_list()
+    assert ret1[0] is not None and abs(ret1[0] - 0.42) < 1e-12
+    assert ret2[0] is not None and abs(ret2[0] - 0.13) < 1e-12
