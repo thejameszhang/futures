@@ -323,6 +323,54 @@ def load_async_dataset(tier: int = 1) -> pl.DataFrame:
     return coerce_numeric_data(combine_first_on_date(daily_ct, daily_cs))
 
 
+def load_traded_panel(symbols: Iterable[str]) -> pl.DataFrame:
+    """date x symbol: did the class publish ANY contract price that day?
+
+    usd_panel needs each symbol's real observation dates, and a RETURN panel cannot supply
+    them. A null return means either "did not trade" -- so the next return, and the FX leg
+    with it, genuinely spans the gap -- or "traded, but the return was suppressed", where the
+    next return is still a one-day return and the FX leg must not widen. Those two states used
+    to coincide and no longer do (futures.py's cross-contract guard, keep_after_date,
+    filter_dataset_by_monthly_returns, and every symbol's own first price all produce the
+    second). Only the futures parquet still distinguishes them: it keeps the prices that
+    `save_returns`' pivot throws away.
+
+    ANY slot, not slot 1. The finalised ret_1 is priced off ret_temp_2 as well as ret_temp_1
+    (calc_returns_with_price_adj_and_roll, plus the coalesce backfill in futures.py), so the
+    price behind a surviving return is not always the front one. Ground truth is exact and
+    checkable: ret_1's denominator is the PREVIOUS ROW of the same clscode, so its date is
+    `date.shift(1).over('clscode')`. Against that, `any settlement slot` reproduces the
+    denominator date on all 1,172,419 non-null ret_1 cells with ZERO mismatches, where
+    `adj_settlement_1` alone misses 916 and `settlement_1` alone misses 877.
+
+    Both cycle variants are unioned because load_async_dataset coalesces CT over CS, so a
+    panel value can have come from either parquet.
+    """
+    wanted = sorted(set(symbols))
+    parts = []
+    for ct in ("CT", "CS"):
+        path = FUTURES_PATH / f"datastream_futures_settlement_{ct}.parquet"
+        if not path.is_file():
+            logger.warning("traded panel: %s is absent; its observations will be inferred", path)
+            continue
+        parts.append(
+            pl.scan_parquet(path)
+            .filter(pl.col("symbol").is_in(wanted))
+            .select(
+                "symbol", "date",
+                pl.any_horizontal(
+                    [pl.col(f"settlement_{slot}").is_not_null() for slot in range(1, 6)]
+                ).alias("traded"),
+            )
+        )
+    if not parts:
+        return pl.DataFrame(schema={"date": pl.Date})
+    long = pl.concat(parts).group_by(["symbol", "date"]).agg(pl.col("traded").any()).collect()
+    panel = long.pivot(on="symbol", index="date", values="traded").sort("date")
+    logger.info("traded panel: %d dates x %d symbols", panel.height, len(panel.columns) - 1)
+    return panel
+
+
 def load_sectors_async() -> pl.DataFrame:
     sectors_async = read_csv(
         DATA_ROOT / "jkp" / "updated_daily_ind_gics.csv",
@@ -687,9 +735,16 @@ def save_usd_datasets(
     tier2_synced: pl.DataFrame | None, tier2_asynced: pl.DataFrame,
     symbol_to_ccy: dict[str, str], fx_async: pl.DataFrame, fx_sync: pl.DataFrame | None,
     out_root: Path = DATASETS_ROOT,
+    traded_async: pl.DataFrame | None = None,
 ) -> None:
     """Write *_usd.csv siblings. async panels use Datastream FX (fx_async); sync panels
-    use Compustat FX (fx_sync). Monthly USD is compounded from daily USD."""
+    use Compustat FX (fx_sync). Monthly USD is compounded from daily USD.
+
+    `traded_async` goes to the ASYNC panels only. It is built from the Datastream futures
+    parquet, which is what the async returns are computed from; the sync panels are built
+    from LSEG tick data on a different sampling calendar (09:31 ET), so the Datastream
+    settlement dates are not their observation dates and handing them this mask would be
+    wrong rather than merely useless."""
     def _warn_first_obs_lost(df: pl.DataFrame, usd: pl.DataFrame, rel: str) -> None:
         # usd_panel correctly nulls any leading span where a currency's FX history
         # starts after the asset's own returns (safe: never a wrong value) — but
@@ -734,8 +789,8 @@ def save_usd_datasets(
                 rel, c, last_valid, panel_last,
             )
 
-    def daily(df, fx, rel):
-        usd = usd_panel(df, symbol_to_ccy, fx)
+    def daily(df, fx, rel, traded=None):
+        usd = usd_panel(df, symbol_to_ccy, fx, traded)
         _warn_first_obs_lost(df, usd, rel)
         _warn_stale_fx(df, fx, rel)
         (out_root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -746,11 +801,11 @@ def save_usd_datasets(
         m = drop_all_null_rows(compute_monthly_returns(usd_daily, min_observations=1).drop("year_month"))
         (out_root / rel).parent.mkdir(parents=True, exist_ok=True)
         m.write_csv(out_root / rel)
-    u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv")
+    u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv", traded_async)
     monthly(u, "tier1/async/async_monthly_usd.csv")
     if tier1_synced is not None and fx_sync is not None:
         daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv")
-    u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv")
+    u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv", traded_async)
     monthly(u, "tier2/async/async_monthly_usd.csv")
     if tier2_synced is not None and fx_sync is not None:
         daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv")
@@ -926,8 +981,9 @@ def main(mode: Literal["full", "async-only"] = "full") -> None:
         # untouched). Uses SYMBOL_TO_CURCDD_MAPPING (6E->EUR), NOT build_currency_map (all-USD).
         fx_sync = build_sync_fx_panel(fx_sync, sync_out["pre_splice_synced"], SYMBOL_TO_CURCDD_MAPPING)
     symbol_to_ccy = build_currency_map(tier1_futures + tier2_futures)
+    traded_async = load_traded_panel(c for c in tier2_asynced.columns if c != "date")
     save_usd_datasets(tier1_synced, tier1_asynced, tier2_synced, tier2_asynced,
-                      symbol_to_ccy, fx_async, fx_sync)
+                      symbol_to_ccy, fx_async, fx_sync, traded_async=traded_async)
 
 
 if __name__ == "__main__":
