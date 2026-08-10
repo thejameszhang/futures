@@ -38,6 +38,7 @@ src/globalmacro/validation/external_comparison.py
 .superpowers/
 assetlist.pdf
 AGENTS.md
+CLAUDE.md
 /slurm/logs/
 reference/
 old-data/

@@ -131,7 +131,7 @@ def write_summary(
             "## Skipped",
             "",
             "Checks, invariants and figures that need the sync panels and were not run "
-            "in this mode -- named explicitly rather than silently absent (spec §4.6).",
+            "in this mode -- named explicitly rather than silently absent.",
         ]
         if stale_figures_may_remain:
             # This mode was AUTO-detected, not explicitly requested -- deleting

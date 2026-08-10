@@ -111,7 +111,7 @@ def main() -> int:
     for unit, rule, err in resolve():
         if err:
             if unit.endswith("_passive_returns.csv") and err == "UNCLASSIFIED":
-                warnings.append(f"quarantine-pending (Task 2 not run yet): {unit}")
+                warnings.append(f"quarantine-pending (classification not yet run): {unit}")
             else:
                 errors.append(f"{err}: {unit}")
             continue
