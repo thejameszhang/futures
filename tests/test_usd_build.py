@@ -123,12 +123,57 @@ def test_load_traded_panel_reads_every_settlement_slot_and_both_cycles(tmp_path,
     assert got[d5] is True, "priced in either cycle is traded -- union by ANY, not ALL"
 
 
-def test_load_traded_panel_survives_a_missing_parquet(tmp_path, monkeypatch):
-    """An async-only or partially built tree must degrade to the old inference, not crash."""
+def test_load_traded_panel_raises_when_both_parquets_are_missing(tmp_path, monkeypatch):
+    """Fix 1 (C1 follow-up): zero coverage used to degrade silently to a date-only frame --
+    `has_traded` False everywhere, the exact pre-fix behaviour, with nothing but a log line
+    to show for it. Construct that condition (an empty FUTURES_PATH, so BOTH cycles are
+    absent) and confirm the guard now fires instead of returning quietly."""
     import globalmacro.build as build_module
 
     monkeypatch.setattr(build_module, "FUTURES_PATH", tmp_path)
-    assert build_module.load_traded_panel(["FGBL"]).columns == ["date"]
+    with pytest.raises(ValueError, match="zero observation coverage"):
+        build_module.load_traded_panel(["FGBL"])
+
+
+def test_load_traded_panel_raises_when_neither_parquet_carries_the_wanted_symbol(tmp_path, monkeypatch):
+    """Same hole, different cause: both parquets exist but cover none of the requested
+    symbols (e.g. a universe change). Zero coverage either way must be loud."""
+    import globalmacro.build as build_module
+
+    monkeypatch.setattr(build_module, "FUTURES_PATH", tmp_path)
+    _write_settlement_parquet(tmp_path, "CT", [("ZZZZ", date(2020, 1, 1), [1.0, None, None, None, None])])
+    _write_settlement_parquet(tmp_path, "CS", [("ZZZZ", date(2020, 1, 1), [1.0, None, None, None, None])])
+    with pytest.raises(ValueError, match="zero observation coverage"):
+        build_module.load_traded_panel(["FGBL"])
+
+
+def test_load_traded_panel_still_degrades_gracefully_with_only_one_parquet_missing(tmp_path, monkeypatch):
+    """The guard must be precise, not a blunt instrument: a SINGLE missing parquet, with the
+    other cycle still supplying real (if partial) coverage, is the legitimate degraded case
+    this module has always tolerated -- it must not raise."""
+    import globalmacro.build as build_module
+
+    monkeypatch.setattr(build_module, "FUTURES_PATH", tmp_path)
+    _write_settlement_parquet(tmp_path, "CT", [("FGBL", date(2020, 1, 1), [1.0, None, None, None, None])])
+    # No CS parquet written at all.
+    panel = build_module.load_traded_panel(["FGBL"])
+    assert panel.get_column("FGBL").to_list() == [True]
+
+
+def test_load_traded_panel_raises_before_logging_a_success_line(tmp_path, monkeypatch, caplog):
+    """The zero-coverage guard must fire BEFORE the "N dates x M symbols" info line -- logging
+    what looks like a normal, successful load right before raising would be confusing."""
+    import logging
+
+    import globalmacro.build as build_module
+
+    monkeypatch.setattr(build_module, "FUTURES_PATH", tmp_path)
+    with (
+        caplog.at_level(logging.INFO, logger=build_module.logger.name),
+        pytest.raises(ValueError, match="zero observation coverage"),
+    ):
+        build_module.load_traded_panel(["FGBL"])
+    assert not any("dates x" in r.message for r in caplog.records)
 
 
 def test_save_usd_datasets_gives_the_traded_mask_to_async_but_not_sync(tmp_path, monkeypatch):

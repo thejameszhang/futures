@@ -345,6 +345,17 @@ def load_traded_panel(symbols: Iterable[str]) -> pl.DataFrame:
 
     Both cycle variants are unioned because load_async_dataset coalesces CT over CS, so a
     panel value can have come from either parquet.
+
+    LOUD ON ZERO COVERAGE. A single missing parquet still degrades gracefully -- the other
+    cycle usually still supplies real, if partial, coverage, and every symbol not among that
+    coverage falls back to return-nullity in usd_panel's union (never to a wrong answer). But
+    if the resulting panel ends up with NO column for ANY requested symbol (both parquets
+    absent, or neither carries any requested symbol), that fallback is total: `has_traded` is
+    False everywhere, the FX leg reverts silently to the exact C1 regression this mask exists
+    to fix, and nothing marks the run as degraded but a log line. Raise instead, matching this
+    module's existing fail-loudly idiom (build_currency_map, rename_gics_to_tickers): a run
+    with no observation signal at all must not produce output that looks the same as one with
+    a working mask.
     """
     wanted = sorted(set(symbols))
     parts = []
@@ -363,10 +374,20 @@ def load_traded_panel(symbols: Iterable[str]) -> pl.DataFrame:
                 ).alias("traded"),
             )
         )
-    if not parts:
-        return pl.DataFrame(schema={"date": pl.Date})
-    long = pl.concat(parts).group_by(["symbol", "date"]).agg(pl.col("traded").any()).collect()
-    panel = long.pivot(on="symbol", index="date", values="traded").sort("date")
+    if parts:
+        long = pl.concat(parts).group_by(["symbol", "date"]).agg(pl.col("traded").any()).collect()
+        panel = long.pivot(on="symbol", index="date", values="traded").sort("date")
+    else:
+        panel = pl.DataFrame(schema={"date": pl.Date})
+    covered = set(panel.columns) & set(wanted)
+    if wanted and not covered:
+        raise ValueError(
+            f"traded panel: zero observation coverage for all {len(wanted)} requested "
+            f"symbols under {FUTURES_PATH} -- both settlement parquets are absent, or "
+            "neither carries any of them. Handing usd_panel a mask with no coverage would "
+            "silently revert EVERY symbol to the pre-fix, unsafe return-nullity inference "
+            "(the C1 regression) behind nothing but a log line."
+        )
     logger.info("traded panel: %d dates x %d symbols", panel.height, len(panel.columns) - 1)
     return panel
 

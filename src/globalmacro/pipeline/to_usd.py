@@ -34,6 +34,18 @@ def _fx_return_over_observations(symbol: str, ccy: str, *, has_traded: bool) -> 
         # mask knows nothing about and reports as False. Or-ing keeps those on the old
         # return-nullity inference, and makes the correction one-directional: an FX interval
         # can only ever be narrowed towards a real observation, never widened.
+        #
+        # RESIDUAL: this union is also the source of the 16 (of ~1.17M) tier2 cells that
+        # still land on the wrong FX interval after this fix (down from 1,686, measured
+        # against ground truth date.shift(1).over('clscode')). 5 of the 16 are cells the OLD
+        # return-nullity-only rule got RIGHT and this union gets WRONG: HG 2006-07-05,
+        # SI 1988-04-04, SI 2002-12-02, SO3 2008-05-27, SO3 2010-05-04. All five are CT/CS
+        # asymmetry -- `traded` is unioned across BOTH cycles, but the symbol's return on
+        # these dates is priced by only ONE cycle (verified: CT), off THAT cycle's own row
+        # grid. The other cycle (CS) prices an intermediate date CT does not (e.g. HG
+        # 2006-07-03), and the union marks that date "traded" anyway -- a false intermediate
+        # observation on a grid the actual return was never computed from, narrowing the FX
+        # interval short of the true span.
         observed_here = observed_here | pl.col(f"{TRADED_PREFIX}{symbol}").fill_null(False)
     observed = pl.when(observed_here).then(level).otherwise(None)
     prev_observation = observed.forward_fill().shift(1)
