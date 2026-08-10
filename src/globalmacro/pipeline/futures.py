@@ -180,7 +180,8 @@ def apply_finalised_return_guard(wide_contr_data: pl.DataFrame) -> pl.DataFrame:
 def select_top_contracts_by_volume(contr_data: pl.DataFrame) -> pl.DataFrame:
     """Pick one row per (clscode, date_, order) slot: the highest-volume contract sharing
     that expiry rank on that day (`order` = the dense rank of distinct lasttrddate within
-    the class-day, i.e. front month = 1, second month = 2, ...).
+    the class-day, i.e. front month = 1, second month = 2, ...). Only order <= 5 (the top
+    five expiries) survives the filter below.
 
     `futcode` (a per-contract identifier, present via the dsfutcontrinfo join) is a secondary
     sort key so the choice is a function of the data alone. Without it, `.sort_by("volume")
@@ -188,9 +189,21 @@ def select_top_contracts_by_volume(contr_data: pl.DataFrame) -> pl.DataFrame:
     volume -- polars sorts are not stable by default, so which row wins would depend on the
     DataFrame's incoming row order, which is not itself guaranteed stable across runs (see
     the standing pipeline-reproducibility finding). Measured on the configured universe:
-    hundreds of (clscode, date_, order) groups have more than one row sharing the max
-    volume, concentrated in a handful of clscodes (6Z, ATX, IR, MD, PSI); futcode is unique
-    within every one of them, so it fully resolves the tie.
+    337 (clscode, date_, order) groups have more than one row sharing the max volume (334
+    with a genuinely different settlement across the tied rows, 3 value-duplicates) --
+    ATX 215, 6Z 64, IR 57, PSI 1, MD 0. (MD's 18 pre-splice ties are consumed by the
+    EMD <- MD splice before this function ever sees them; they are not part of the 337.)
+    futcode is unique within every one of the 337, so it fully resolves the tie.
+
+    Downstream effect for the gated rerun: adding this tie-break moves 325 cells across the
+    8 futures-produced CSVs versus the order-dependent selection previously shipped --
+    tier1 ret_1 18 (CS) / 19 (CT), tier2 ret_1 29 / 29, tier1 ret_2 47 (CS) / 53 (CT), tier2
+    ret_2 63 / 67. Zero null<->value flips, no column-count movement, no first/last-date
+    movement, so a rerun gate's count and date checks will not fire on this change -- only
+    a cell-level (--cells) comparison sees it. ATX's moved cells surface under the
+    post-splice `FATX` column, not `ATX`. `main()` feeds daily_ret_1_{CS,CT} into
+    build.py:321-322, so this also carries into async_daily/async_monthly and their _usd
+    siblings, for at most 58 symbol-days.
     """
     return (
         contr_data.sort(['clscode', 'date_', 'lasttrddate'])
