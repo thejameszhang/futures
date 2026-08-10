@@ -14,8 +14,10 @@ import polars as pl
 
 from globalmacro.build import first_valid_date
 from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
+from globalmacro.utils.capabilities import sync_panels_ready
 from globalmacro.utils.paths import FX_PATH
 from globalmacro.validation.base import Check, Invariant
+from globalmacro.validation.mode import current_mode
 from globalmacro.validation.synthetic import (
     daily_corr,
     load_panel,
@@ -69,11 +71,11 @@ def _pairs() -> pl.DataFrame:
     )
 
 
-def source_diagonal() -> pl.DataFrame:
+def source_diagonal(datasets: tuple[str, ...] = ("sync", "async")) -> pl.DataFrame:
     """Per currency: each synthetic's daily correlation against each futures panel."""
     datastream, compustat = _synthetics()
     rows = []
-    for dataset in ("sync", "async"):
+    for dataset in datasets:
         pre, ship = pre_splice_panel(dataset), shipped_panel(dataset, tier=1)
         for symbol in sorted(c for c in datastream.columns if c != "date"):
             if symbol not in ship.columns or symbol not in pre.columns:
@@ -106,17 +108,47 @@ def source_diagonal() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+_SOURCES = {"sync": "Compustat", "async": "Datastream"}
+
+
+def _invariant_name(dataset: str) -> str:
+    """The exact invariant name _invariants() emits for `dataset`. Shared with
+    synthetic_fx_check.dropped_invariants below, so the sync-side name run.py prints
+    under "## Skipped" in async-only mode is the SAME string _invariants() would emit
+    for it in full mode -- not a second, independently-typed literal that happens to
+    match today and silently stops matching if _SOURCES is ever edited (see the
+    `Check.dropped_invariants` field's own comment in base.py: this is a shared
+    constant, not a call into the check itself, so it does not run the sync-only code
+    async-only mode exists to avoid)."""
+    return f"{_SOURCES[dataset]} synthetic beats the other on the {dataset} futures"
+
+
+_DIAGONAL_PDF = "fx_source_diagonal.pdf"
+
+
+def _grade_sync() -> bool:
+    """The sync half needs BOTH: the sync panels present (sync_panels_ready), AND the
+    resolved mode actually "full" (validation.mode.current_mode) -- an explicit
+    --async-only must suppress it even when the panels are on disk and fresh. Pure and
+    data-free: neither operand reads a file, so this is unit-testable by monkeypatching
+    sync_panels_ready and setting the mode via validation.mode.validation_mode, with no
+    real data involved. Defaults to sync_panels_ready().ready alone whenever nothing has
+    set the mode (current_mode()'s own default is "full") -- the original behaviour."""
+    return current_mode() == "full" and sync_panels_ready().ready
+
+
 def _invariants() -> list[Invariant]:
-    d = source_diagonal()
+    datasets = ("sync", "async") if _grade_sync() else ("async",)
+    d = source_diagonal(datasets)
     out = []
-    for dataset, source in (("sync", "Compustat"), ("async", "Datastream")):
+    for dataset in datasets:
         sub = d.filter(pl.col("dataset") == dataset)
         wins = sub.filter(pl.col("winner") == pl.col("expected")).height
         total = sub.height
         out.append(
             Invariant(
                 check=NAME,
-                name=f"{source} synthetic beats the other on the {dataset} futures",
+                name=_invariant_name(dataset),
                 value=f"{wins}/{total}",
                 passed=total > 0 and wins == total,
             )
@@ -125,6 +157,8 @@ def _invariants() -> list[Invariant]:
 
 
 def _figures(out_dir: Path) -> None:
+    if not _grade_sync():
+        return          # a paired sync-vs-async comparison has no meaning with one side missing
     from globalmacro.validation.plots import plot_paired_bars
 
     d = source_diagonal()
@@ -138,7 +172,7 @@ def _figures(out_dir: Path) -> None:
         title="Daily correlation of each synthetic FX future with the real future\n"
               "Compustat wins on sync (09:31 ET); Datastream wins on async (settlement)",
         ylabel="daily correlation",
-        path=out_dir / "fx_source_diagonal.pdf",
+        path=out_dir / _DIAGONAL_PDF,
     )
 
 
@@ -150,4 +184,6 @@ synthetic_fx_check = Check(
     series_labels=("CIP synthetic", "real future"),
     invariants=_invariants,
     figures=_figures,
+    dropped_invariants=(_invariant_name("sync"),),
+    dropped_figures=(_DIAGONAL_PDF,),
 )

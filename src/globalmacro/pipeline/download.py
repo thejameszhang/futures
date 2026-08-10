@@ -12,7 +12,7 @@ from tqdm import tqdm
 from globalmacro.utils.paths import COMPUSTAT_PATH, DATASTREAM_PATH, FUTURES_PATH
 
 # database -> (WRDS library, explicit table list). Tightened to ONLY the tables
-# the pipeline actually consumes (see plan). No prefix pulls: the old dsf*/eco*
+# the pipeline actually consumes. No prefix pulls: the old dsf*/eco*
 # prefix pulls dragged in ~180 GB of unused tables.
 PULL_SPECS: dict[str, tuple[str, list[str]]] = {
     "equities":  ("tr_ds_equities", ["ds2indexdata"]),

@@ -3,11 +3,14 @@
 consumed table exists, is non-empty, has the same columns as the current repo
 copy, and its date coverage reaches recent data. Exit non-zero on any failure."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
+
 import polars as pl
+
 from globalmacro.pipeline.download import PULL_SPECS
-from globalmacro.utils.paths import DATASTREAM_PATH, COMPUSTAT_PATH
+from globalmacro.utils.paths import COMPUSTAT_PATH, DATASTREAM_PATH
 
 REPO = Path(__file__).resolve().parents[1]
 REPO_DATA = REPO / "data"

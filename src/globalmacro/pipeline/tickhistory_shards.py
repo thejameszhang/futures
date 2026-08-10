@@ -9,7 +9,8 @@ import pyarrow.parquet as pq
 
 from globalmacro.utils.paths import TICKHISTORY_PATH
 
-# Mirror the consumer's scan_csv overrides EXACTLY (tickhistory.py:28 / :64).
+# Mirror the consumer's scan_csv overrides EXACTLY (tickhistory.py's
+# load_trades_data / load_quotes_data).
 SCHEMA_OVERRIDES: dict[str, dict[str, type[pl.DataType]]] = {
     "trades": {"Price": pl.Float64, "Volume": pl.Int64},
     "quotes": {"Close Bid": pl.Float64, "Close Ask": pl.Float64, "GMT Offset": pl.Float32},

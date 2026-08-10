@@ -7,7 +7,11 @@ agrees which rule owns each live file. Never greps repo root '.' (would scan
 the 2.5 TB data/ tree); greps code dirs only, with fixed strings.
 """
 from __future__ import annotations
-import csv, fnmatch, subprocess, sys
+
+import csv
+import fnmatch
+import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -107,11 +111,11 @@ def main() -> int:
     for unit, rule, err in resolve():
         if err:
             if unit.endswith("_passive_returns.csv") and err == "UNCLASSIFIED":
-                warnings.append(f"quarantine-pending (Task 2 not run yet): {unit}")
+                warnings.append(f"quarantine-pending (classification not yet run): {unit}")
             else:
                 errors.append(f"{err}: {unit}")
             continue
-        tier, cons, kind = rule["tier"], rule["consumer"], rule["kind"]
+        tier, cons = rule["tier"], rule["consumer"]
         base = unit.split("/")[-1]
         # HARD read-safety: a moved-out file must not be read by the producer.
         if tier in ("C1", "C2") and not cons.startswith("producer-output"):
@@ -140,8 +144,10 @@ def main() -> int:
             if not ok:
                 errors.append(f"DOWNLOAD SPEC MISMATCH: {r['pattern']} not produced by download --database {db}")
 
-    for w in warnings: print("WARN:", w)
-    for e in errors: print("FAIL:", e)
+    for w in warnings:
+        print("WARN:", w)
+    for e in errors:
+        print("FAIL:", e)
     print(f"\n{len(decision_units())} live units, {len(rules)} rules, {len(errors)} errors, {len(warnings)} warnings")
     return 1 if errors else 0
 

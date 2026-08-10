@@ -44,7 +44,9 @@ def test_windowed_cutoff_matches_first_valid_date_of_pre_and_window_starts_at_or
     assert out is not None
     cutoff, window = out
     assert cutoff == first_valid_date(pre, "X")
-    assert window.get_column("date").min() >= cutoff
+    window_start = window.get_column("date").min()
+    assert isinstance(window_start, date)
+    assert window_start >= cutoff
     assert set(window.columns) == {"date", "x", "y"}
 
 

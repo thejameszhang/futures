@@ -42,5 +42,7 @@ def test_build_synthetic_reproduces_cip_fixture():
                    on="date", how="inner").drop_nulls())
         assert m.height > 100, f"{s}: too few overlapping rows to be a meaningful check"
         compared += m.height
-        assert (m["mine"] - m["expected"]).abs().max() < 1e-12, f"{s}: CIP drifted after refactor"
+        max_abs_diff = (m["mine"] - m["expected"]).abs().max()
+        assert isinstance(max_abs_diff, float)
+        assert max_abs_diff < 1e-12, f"{s}: CIP drifted after refactor"
     assert compared > 100

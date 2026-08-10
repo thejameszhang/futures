@@ -3,11 +3,13 @@
 rule still has a live file (nothing over-moved). (3) No producer source
 references a moved-out dir. Uses resolve() for precedence-correct assignment."""
 from __future__ import annotations
-import subprocess, sys
+
+import subprocess
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audit_data import REPO, SRC, load_rules, resolve
+from audit_data import SRC, load_rules, resolve
 
 
 def main() -> int:

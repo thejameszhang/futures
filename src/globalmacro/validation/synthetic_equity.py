@@ -27,7 +27,9 @@ from globalmacro.build import (
     load_symbols,
     load_synthetic_returns,
 )
+from globalmacro.utils.capabilities import sync_panels_ready
 from globalmacro.validation.base import Check, Invariant
+from globalmacro.validation.mode import current_mode
 from globalmacro.validation.synthetic import (
     daily_corr,
     pre_splice_panel,
@@ -54,6 +56,17 @@ _FX_SYNTHETIC_COLS = ("NOK", "SEK", "6N", "6A")
 # index's exchange, a human judgement -- see build.AMERICAS_CASH_INDICES.
 MIN_ALIGNMENT_SIGNAL = 0.30
 
+# Shared between _invariants()/_figures() and synthetic_equity_check's dropped_*
+# fields below, so the names/filename async-only prints under "## Skipped" cannot
+# drift from what full mode would actually emit for the same invariant/figure (see
+# synthetic_fx._invariant_name's docstring for the same rationale; see the
+# `Check.dropped_invariants` field's own comment in base.py -- this is a shared
+# constant, not a call into the check, so it does not run the sync-only code
+# async-only mode exists to avoid).
+_ALIGNMENT_INVARIANT = "shipped alignment is the one the data prefers, per symbol"
+_COVERAGE_INVARIANT = "every Americas symbol is actually under test"
+_ALIGNMENT_PDF = "equity_alignment.pdf"
+
 
 @lru_cache(maxsize=1)
 def _synth_panels() -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -72,9 +85,10 @@ def _equity_only(df: pl.DataFrame) -> pl.DataFrame:
 def _synthetic_base() -> pl.DataFrame:
     """The UNLAGGED synthetic equity panel, exactly as build derives it.
 
-    This is the async panel, NOT spot_equity_returns.csv. load_synthetic_returns does real
-    work on the raw CSV -- it coalesces each multi-dsindexcode index with its historical
-    predecessor and subtracts rf (build.py:340-342) -- so the raw file differs from what
+    This is the async panel, NOT spot_equity_returns.csv. build.load_synthetic_returns does
+    real work on the raw CSV -- it coalesces each multi-dsindexcode index with its
+    historical predecessor and subtracts rf (its equity-splicing loop, over
+    `equity.dsindexcode`/`equity.dsindexmnem`) -- so the raw file differs from what
     actually ships for AP, FIE, FXS30 and Z. Comparing against the raw CSV makes those four
     match NEITHER alignment candidate, and the invariant then reports them as misaligned
     when they are fine.
@@ -230,7 +244,18 @@ def alignment() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def _grade_sync() -> bool:
+    """Mirrors synthetic_fx._grade_sync: the sync half needs BOTH the sync panels present
+    (sync_panels_ready) AND the resolved mode actually "full" (validation.mode.
+    current_mode) -- an explicit --async-only must suppress it even when the panels are
+    on disk and fresh. Data-free, so unit-testable by monkeypatching sync_panels_ready
+    and setting the mode via validation.mode.validation_mode."""
+    return current_mode() == "full" and sync_panels_ready().ready
+
+
 def _invariants() -> list[Invariant]:
+    if not _grade_sync():
+        return []          # both invariants derive from alignment(), which is sync-only
     a = alignment()
 
     # Grade only the symbols the data can actually speak about. An indeterminate symbol is
@@ -264,13 +289,13 @@ def _invariants() -> list[Invariant]:
     return [
         Invariant(
             check=NAME,
-            name="shipped alignment is the one the data prefers, per symbol",
+            name=_ALIGNMENT_INVARIANT,
             value=detail,
             passed=total > 0 and correct == total,
         ),
         Invariant(
             check=NAME,
-            name="every Americas symbol is actually under test",
+            name=_COVERAGE_INVARIANT,
             value=f"{len(expected_americas) - len(missing)}/{len(expected_americas)}"
                   + (f" (MISSING: {missing})" if missing else ""),
             passed=not missing,
@@ -279,6 +304,8 @@ def _invariants() -> list[Invariant]:
 
 
 def _figures(out_dir: Path) -> None:
+    if not _grade_sync():
+        return          # equity_alignment.pdf is a sync-only comparison; nothing to draw
     from globalmacro.validation.plots import plot_paired_bars
 
     a = alignment().with_columns(
@@ -295,7 +322,7 @@ def _figures(out_dir: Path) -> None:
         title="Daily correlation of the synthetic equity return with the sync future\n"
               "The 09:31 ET window holds the PREVIOUS session for Americas indices only",
         ylabel="daily correlation",
-        path=out_dir / "equity_alignment.pdf",
+        path=out_dir / _ALIGNMENT_PDF,
     )
 
 
@@ -307,4 +334,6 @@ synthetic_equity_check = Check(
     series_labels=("spot synthetic", "real future"),
     invariants=_invariants,
     figures=_figures,
+    dropped_invariants=(_ALIGNMENT_INVARIANT, _COVERAGE_INVARIANT),
+    dropped_figures=(_ALIGNMENT_PDF,),
 )

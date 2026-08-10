@@ -4,8 +4,10 @@ current dataset). For each dataset file, per-instrument Pearson correlation of
 fresh vs current returns; PASS iff median >= 0.99. Fresh data past the current
 end date is expected and excluded from grading."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -25,7 +27,12 @@ DATASETS = [
 def _load(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["date"] = pd.to_datetime(df["date"])
-    return df.set_index("date").sort_index().apply(pd.to_numeric, errors="coerce")
+    out = df.set_index("date").sort_index().apply(pd.to_numeric, errors="coerce")
+    # .apply() is typed DataFrame | Series (its return shape isn't statically known);
+    # applying pd.to_numeric column-by-column over a DataFrame always yields a
+    # DataFrame back, so assert it rather than let the ambiguity leak into every caller.
+    assert isinstance(out, pd.DataFrame)
+    return out
 
 
 def grade_one(rel: str):
@@ -36,10 +43,20 @@ def grade_one(rel: str):
     syms = [c for c in cur.columns if c in fresh.columns]
     corrs = []
     for s in syms:
-        j = pd.DataFrame({"cur": cur[s], "fresh": fresh[s]}).dropna()
+        # df[label] is typed Series | DataFrame -- pandas returns a DataFrame instead of
+        # a Series if the source CSV has a duplicate column name for `s`. That would
+        # silently corrupt the grading below, so assert the expected shape rather than
+        # let it through.
+        cur_s, fresh_s = cur[s], fresh[s]
+        assert isinstance(cur_s, pd.Series) and isinstance(fresh_s, pd.Series), (
+            f"duplicate column {s!r} in source data"
+        )
+        j = pd.DataFrame({"cur": cur_s, "fresh": fresh_s}).dropna()
         if len(j) < 24:
             continue
-        r = j["cur"].corr(j["fresh"])
+        j_cur, j_fresh = j["cur"], j["fresh"]
+        assert isinstance(j_cur, pd.Series) and isinstance(j_fresh, pd.Series)
+        r = j_cur.corr(j_fresh)
         if pd.notna(r):
             corrs.append((s, r))
     med = float(np.median([r for _, r in corrs])) if corrs else float("nan")

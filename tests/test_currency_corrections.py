@@ -3,9 +3,10 @@ from datetime import date
 import polars as pl
 
 from globalmacro.pipeline.tickhistory import apply_unit_transforms, manual_corrections
+from globalmacro.utils.models import Future
 
 
-class _F:  # minimal Future stand-in; manual_corrections only reads .symbol
+class _F(Future):  # minimal Future stand-in; manual_corrections only reads .symbol
     def __init__(self, symbol):
         self.symbol = symbol
 

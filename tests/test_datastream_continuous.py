@@ -14,7 +14,7 @@ def test_pulled_slice_reproduces_on_disk_within_window(tmp_path):
     """The freshly pulled slice matches the on-disk file's Settlement on shared
     (ClsCode, CalcSeriesName, Date_) keys within the file's date window, within tolerance,
     over the tier1 clscode universe datastream_comparison.py actually validates. Cross-vintage
-    revisions beyond tolerance are reported, not hard-failed (spec I-2)."""
+    revisions beyond tolerance are reported, not hard-failed."""
     from globalmacro.pipeline.download import pull_datastream_continuous
     from globalmacro.utils.config import load_config
     from globalmacro.utils.paths import FUTURES_PATH, PROJECT_ROOT

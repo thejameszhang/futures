@@ -335,10 +335,14 @@ if __name__ == "__main__":
     # Two source-specific spot panels (no shared tousd panel):
     #   async  -> Datastream direct (end-of-day / settlement-timed)
     #   sync   -> Compustat cross   (WM/R 4pm London ~ 11am ET)
+    # Async first, and completely. Compustat is a separate WRDS entitlement and its panel
+    # feeds SYNC outputs generally -- not just the _usd sidecar, but sync dataset content
+    # too (the synthetic-sync splice backfills NOK/SEK/6N/6A pre-listing); a failure there
+    # must not also cost us the async panels we have already computed.
     fx_async = build_datastream_direct_panel()
-    fx_sync = save_compustat_fx_rates()  # GBP cross on Compustat exrt_dly
     fx_async.write_csv(FX_PATH / "fx_async.csv")
-    fx_sync.write_csv(FX_PATH / "fx_sync.csv")
-
     build_synthetic(fx_async).write_csv(FX_PATH / "synthetic_fx_returns_async.csv")
+
+    fx_sync = save_compustat_fx_rates()  # GBP cross on Compustat exrt_dly
+    fx_sync.write_csv(FX_PATH / "fx_sync.csv")
     build_synthetic(fx_sync).write_csv(FX_PATH / "synthetic_fx_returns_sync.csv")

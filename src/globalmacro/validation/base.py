@@ -59,6 +59,18 @@ class Check:
     invariants: Callable[[], list[Invariant]] | None = None
     # Optional one-off justification figures; called with the check's out_dir.
     figures: Callable[[Path], None] | None = None
+    # True when the check cannot run without the sync panels. Filtered out entirely in
+    # async-only mode; see run.py:_available_checks.
+    requires_sync: bool = False
+    # Names of invariants/figure filenames this check's own invariants()/figures() omit
+    # in async-only mode, WHILE THE CHECK ITSELF STILL RUNS (requires_sync=False). Static,
+    # not derived by calling the check with mode="full": deriving it would mean running
+    # the sync-only code async-only mode exists to avoid. Only synthetic_fx and
+    # synthetic_equity set these; every other check either always emits the same
+    # invariants/figures or is dropped whole (requires_sync=True, already named under
+    # run.py's "## Skipped" checks list). See run.py:_dropped_invariants/_dropped_figures.
+    dropped_invariants: tuple[str, ...] = ()
+    dropped_figures: tuple[str, ...] = ()
 
 
 def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
@@ -77,7 +89,15 @@ def grade(name: str, slug: str, correlations: pl.DataFrame) -> CheckResult:
     )
 
 
-def write_summary(results: list[CheckResult], invariants: list[Invariant], path: Path) -> None:
+def write_summary(
+    results: list[CheckResult],
+    invariants: list[Invariant],
+    path: Path,
+    skipped: list[str] | None = None,
+    dropped_invariants: list[str] | None = None,
+    dropped_figures: list[str] | None = None,
+    stale_figures_may_remain: bool = False,
+) -> None:
     lines = [
         "# Validation Summary",
         "",
@@ -105,5 +125,35 @@ def write_summary(results: list[CheckResult], invariants: list[Invariant], path:
         for i in invariants:
             status = "✅ PASS" if i.passed else "❌ FAIL"
             lines.append(f"| {i.check} | {i.name} | {i.value} | {status} |")
+    if skipped or dropped_invariants or dropped_figures:
+        lines += [
+            "",
+            "## Skipped",
+            "",
+            "Checks, invariants and figures that need the sync panels and were not run "
+            "in this mode -- named explicitly rather than silently absent.",
+        ]
+        if stale_figures_may_remain:
+            # This mode was AUTO-detected, not explicitly requested -- deleting
+            # figures from an earlier full run on a machine the researcher never
+            # asked to downgrade is at least as risky as silently overwriting them,
+            # so nothing was removed. Disclose the possibility instead of letting the
+            # table above (which calls them SKIPPED) imply they are gone.
+            lines.append(
+                "Mode was auto-detected rather than explicitly requested, so figures "
+                "from an earlier full run may still be sitting on disk -- pass "
+                "--async-only explicitly to remove them."
+            )
+        lines += [
+            "",
+            "| Item | Result |",
+            "|---|:--:|",
+        ]
+        for name in skipped or []:
+            lines.append(f"| {name} | SKIPPED (async-only run) |")
+        for name in dropped_invariants or []:
+            lines.append(f"| Invariant: {name} | SKIPPED (async-only run) |")
+        for name in dropped_figures or []:
+            lines.append(f"| Figure: {name} | SKIPPED (async-only run) |")
     lines.append("")
     path.write_text("\n".join(lines))

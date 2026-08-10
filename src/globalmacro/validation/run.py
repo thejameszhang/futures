@@ -3,30 +3,178 @@
 datasets, grade each identically, render its comparison.pdf, write per-dataset
 symbol-count PDFs, and write one VALIDATION_SUMMARY.md."""
 import argparse
+import dataclasses
 import os
+from pathlib import Path
 
 import polars as pl
 
+from globalmacro.utils.capabilities import (
+    resolve_mode,
+    sync_panels_fresh,
+    sync_panels_ready,
+)
 from globalmacro.utils.paths import DATASETS_ROOT, VALIDATION_OUTPUT
 from globalmacro.validation.base import Invariant, grade, write_summary
 from globalmacro.validation.consistency import consistency_check
 from globalmacro.validation.datastream_comparison import datastream_check
 from globalmacro.validation.fx_futures import fx_futures_vs_spot_check
+from globalmacro.validation.mode import validation_mode
 from globalmacro.validation.plots import plot_comparison, plot_symbol_counts
 from globalmacro.validation.spot_fx import spot_fx_check
 from globalmacro.validation.synthetic_equity import synthetic_equity_check
 from globalmacro.validation.synthetic_fx import synthetic_fx_check
 
+# The literal filename check.pairs's render (via plot_comparison below) writes to,
+# and the convention every check.figures implementation in this codebase also
+# follows for its primary comparison figure (see fx_futures.plot_fx_vs_spot_comparison).
+# Named once here so _stale_figure_paths's cleanup references the SAME string the write
+# site uses, rather than a second, independently-typed literal that could drift.
+_COMPARISON_PDF = "comparison.pdf"
 
-def _available_checks():
+# The literal filename the main() loop writes EVERY check's graded correlations
+# to, unconditionally (regardless of check.pairs/check.figures) -- named once here for
+# the same reason _COMPARISON_PDF is, so the stale-figure cleanup's second reference to
+# it cannot drift from the write site.
+_CORRELATIONS_CSV = "correlations.csv"
+
+# The symbol_counts/ subdirectory name, used at both the write site (main(),
+# below) and the stale-figure cleanup (_stale_figure_paths) -- same drift concern.
+_SYMBOL_COUNTS_DIR = "symbol_counts"
+
+
+def _available_checks(mode: str = "full"):
     checks = [datastream_check, consistency_check, synthetic_fx_check,
               synthetic_equity_check, spot_fx_check, fx_futures_vs_spot_check]
     try:
         from globalmacro.validation.external_comparison import external_check
-        checks.append(external_check)          # optional, gitignored, local-only
+        # external_comparison.py is gitignored and untracked (confidential-
+        # adjacent) -- it CANNOT carry requires_sync=True itself and
+        # have that travel with the merge; a local edit to a gitignored file is
+        # invisible to `git status` and to review, and any clone/worktree with a
+        # different (or default requires_sync=False) copy would run this check in
+        # async-only mode and try to read tier1/sync/sync_daily.csv, which doesn't
+        # exist there. State the requirement here instead, in tracked code -- the
+        # only place it can actually travel with the branch. Check is a plain,
+        # non-frozen dataclass, so dataclasses.replace() works.
+        checks.append(dataclasses.replace(external_check, requires_sync=True))
     except ImportError:
         pass
+    if mode == "async-only":
+        return [c for c in checks if not c.requires_sync]
     return checks
+
+
+def _skipped_checks(mode: str) -> list[str]:
+    if mode != "async-only":
+        return []
+    kept = {c.slug for c in _available_checks("async-only")}
+    return [c.name for c in _available_checks("full") if c.slug not in kept]
+
+
+def _dropped_invariants(mode: str) -> list[str]:
+    """Invariant names that the checks still RUNNING in this mode omit -- distinct from
+    _skipped_checks, which names checks that don't run at all. Static per-Check data
+    (Check.dropped_invariants), not derived by re-running anything in full mode."""
+    if mode != "async-only":
+        return []
+    return [name for c in _available_checks(mode) for name in c.dropped_invariants]
+
+
+def _dropped_figures(mode: str) -> list[str]:
+    """Sibling of _dropped_invariants, for figure filenames."""
+    if mode != "async-only":
+        return []
+    return [name for c in _available_checks(mode) for name in c.dropped_figures]
+
+
+def _dropped_symbol_count_stems(mode: str) -> list[str]:
+    """Which _SYMBOL_COUNT_SOURCES entries THIS mode's _symbol_count_sources
+    filters out -- derived from that function's own filter, the same way
+    _dropped_figures derives from Check.dropped_figures, rather than a fresh
+    "tier1_sync_daily" literal that could drift out of sync with it."""
+    if mode != "async-only":
+        return []
+    kept = {stem for stem, _, _ in _symbol_count_sources(mode)}
+    return [stem for stem, _, _ in _SYMBOL_COUNT_SOURCES if stem not in kept]
+
+
+def _stale_figure_paths(mode: str) -> list[Path]:
+    """After a full run, an async-only run's own VALIDATION_SUMMARY.md calls a
+    check/figure SKIPPED while its artifacts may still be sitting on disk from that
+    earlier full run -- the summary says one thing, the tree says another. Names the
+    on-disk paths that must not survive an async-only run, from three sources ONLY
+    (all already tracked, static, per-Check/per-source data -- nothing here is derived
+    by running anything):
+
+      * a check dropped WHOLE (requires_sync=True, named under _skipped_checks) --
+        its correlations.csv (written unconditionally by main()'s loop, for every
+        check that ran) and, if it has one, its comparison.pdf, written either via
+        check.pairs (this module's own plot_comparison(..., out_dir / _COMPARISON_PDF)
+        call above) or a custom check.figures whose output filename this codebase's
+        convention also names _COMPARISON_PDF (fx_futures.plot_fx_vs_spot_comparison).
+        correlations.csv is the machine-readable half of the same artifact
+        comparison.pdf visualizes -- arguably the more dangerous one to leave stale,
+        since nothing about it looks like a diagnostic plot a reader would think to
+        distrust.
+      * a check still RUNNING in this mode but dropping some of its own figures --
+        each name in that check's own declared Check.dropped_figures (see
+        _dropped_figures above).
+      * a symbol_counts/*.pdf source this mode's _symbol_count_sources drops (see
+        _dropped_symbol_count_stems above) -- e.g. symbol_counts/tier1_sync_daily.pdf.
+        Unlike the two sources above, this one is NOT a Check at all:
+        _symbol_count_sources("async-only") filters its source out entirely, so it is
+        never rewritten by main()'s symbol-counts loop, never appears in
+        _dropped_figures, and nothing in the summary mentions it without this.
+
+    Full mode returns []: nothing here may ever touch a file when nothing was
+    actually skipped.
+    """
+    if mode != "async-only":
+        return []
+    kept_slugs = {c.slug for c in _available_checks(mode)}
+    paths: list[Path] = []
+    for check in _available_checks("full"):
+        out_dir = VALIDATION_OUTPUT / check.slug
+        if check.slug not in kept_slugs:
+            paths.append(out_dir / _CORRELATIONS_CSV)
+            if check.pairs is not None or check.figures is not None:
+                paths.append(out_dir / _COMPARISON_PDF)
+        else:
+            for fig_name in check.dropped_figures:
+                paths.append(out_dir / fig_name)
+    sc_dir = VALIDATION_OUTPUT / _SYMBOL_COUNTS_DIR
+    for stem in _dropped_symbol_count_stems(mode):
+        paths.append(sc_dir / f"{stem}.pdf")
+    return paths
+
+
+def _remove_stale_figures(mode: str) -> list[Path]:
+    """Unlink exactly _stale_figure_paths(mode) (missing_ok=True: a clean researcher
+    tree with no prior full run has nothing to remove). Guarded hard, independent of
+    the mode check already inside _stale_figure_paths: every path removed must
+    resolve to a bare filename directly inside VALIDATION_OUTPUT/<check-slug>/ --
+    never a nested path, a path with a separator in the filename, or anything that
+    could resolve outside VALIDATION_OUTPUT. Returns what it removed, for logging."""
+    if mode != "async-only":
+        return []
+    removed = []
+    for p in _stale_figure_paths(mode):
+        # p must be exactly VALIDATION_OUTPUT/<check-slug>/<bare filename> -- refuse
+        # anything else rather than unlink it. _stale_figure_paths only ever builds
+        # paths this shape from tracked string literals, so this should never fire;
+        # it exists as a second, independent line of defense against a future edit
+        # to that function (or to a Check's slug/dropped_figures) introducing a
+        # separator or a "..".
+        if p.parent.parent != VALIDATION_OUTPUT:
+            continue
+        if not p.name or "/" in p.name or p.name in (".", ".."):
+            continue
+        existed = p.exists()
+        p.unlink(missing_ok=True)   # tolerant of a genuinely clean tree (no prior full run)
+        if existed:
+            removed.append(p)
+    return removed
 
 
 def _load_wide(path):
@@ -44,64 +192,187 @@ _SYMBOL_COUNT_SOURCES = [
 ]
 
 
+def _symbol_count_sources(mode: str = "full"):
+    # Match the parent directory NAME, not the stem or a path substring. A stem filter
+    # (e.g. "sync" in "tier1_async_daily") would silently drop every source, since
+    # "sync" is a substring of "async". A path-substring filter ("/sync/" in the full
+    # path) has the same failure mode one level up: DATASETS_ROOT is env-configurable
+    # (paths.py, FUTURES_DATASETS_ROOT) and can itself contain a "sync" path component
+    # (e.g. a relocated data directory under .../sync/datasets) -- every source's path
+    # would then contain "/sync/" and every source would be silently dropped.
+    if mode == "async-only":
+        return [s for s in _SYMBOL_COUNT_SOURCES if s[1].parent.name != "sync"]
+    return _SYMBOL_COUNT_SOURCES
+
+
+def _parse_args(argv=None):
+    p = argparse.ArgumentParser(prog="globalmacro validate")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--async-only", dest="mode", action="store_const", const="async-only",
+                   help="run only the checks that don't require the sync panels")
+    g.add_argument("--full", dest="mode", action="store_const", const="full",
+                   help="require the sync panels; fail rather than silently degrade")
+    p.set_defaults(mode=None)
+    return p.parse_args(argv)
+
+
 def main(argv=None):
-    argparse.ArgumentParser(prog="globalmacro validate").parse_args(argv)
+    args = _parse_args(argv)
+    mode = resolve_mode(args.mode, sync_panels_ready(), "validate")
+    # Whether async-only was ASKED for, distinct from `mode`, which is also
+    # true after an auto-detected downgrade. Only the explicit case may delete
+    # anything -- see the _remove_stale_figures call site below.
+    #
+    # Checking `args.mode == "async-only"` alone still
+    # collapses when reached via `globalmacro run` -- slurm/run_all.sh forwards the
+    # RESOLVED mode as an explicit `--async-only` on the sbatch command line whether
+    # a researcher typed it or it was auto-detected from a machine that lost its tick
+    # shards but kept stale sync artifacts (a deliberate run_all.sh design choice).
+    # `args.mode` cannot
+    # distinguish those two on its own; GM_MODE_AUTODETECTED is the side channel
+    # run_all.sh sets (only when MODE_EXPLICIT=0) precisely so this can. Its absence
+    # (a direct `globalmacro validate --async-only` invocation, or any other caller)
+    # leaves this identical to checking `args.mode == "async-only"` alone.
+    explicit_async_only = (
+        args.mode == "async-only" and os.environ.get("GM_MODE_AUTODETECTED") != "1"
+    )
+    # Record which mode produced this run's output, as the first line of
+    # stdout. Stdout-only -- does not alter any graded number or write to a file.
+    print(f"mode: {mode}")
+    if mode == "full":
+        # sync_panels_ready() only checked existence. async-only builds rewrite the
+        # async panels on every run but leave any previously-built sync panels
+        # untouched, so a machine that ran full mode once and async-only since would
+        # otherwise grade fresh async panels against stale sync ones and report a
+        # confident, wrong verdict. Refuse rather than risk that -- see
+        # capabilities.sync_panels_fresh for the mtime rule.
+        freshness = sync_panels_fresh()
+        if not freshness.ready:
+            raise SystemExit(f"globalmacro validate: {freshness.message}")
     os.makedirs(VALIDATION_OUTPUT, exist_ok=True)
     results = []
     invariants: list[Invariant] = []
-    for check in _available_checks():
-        correlations = check.run()
-        out_dir = VALIDATION_OUTPUT / check.slug
-        os.makedirs(out_dir, exist_ok=True)
-        correlations.write_csv(str(out_dir / "correlations.csv"))   # full universe
-        # Grade only what ships. Diagnostic rows (used=false) stay in the CSV but must
-        # never move the median -- grading a series no reader receives is meaningless.
-        graded = (
-            correlations.filter(pl.col("used"))
-            if "used" in correlations.columns
-            else correlations
-        )
-        r = grade(check.name, check.slug, graded)
-        results.append(r)
-        status = "PASS" if r.passed else "FAIL"
-        print(f"[{status}] {r.name:32s} n={r.n:4d} median={r.median:.4f} "
-              f"mean={r.mean:.4f} min={r.minimum:.4f} (<0.80: {r.n_below})")
+    # Scoped for exactly this loop: the individual checks' _invariants()/_figures() take
+    # no arguments (base.Check), so this is how they learn the resolved mode -- an
+    # explicit --async-only must suppress their sync-derived output even when the sync
+    # panels are present and fresh (see synthetic_fx._grade_sync / synthetic_equity.
+    # _grade_sync). The context manager resets validation.mode's module state on the way
+    # out, exception or not, so a second main() call in the same process never inherits it.
+    with validation_mode(mode):
+        for check in _available_checks(mode):
+            correlations = check.run()
+            out_dir = VALIDATION_OUTPUT / check.slug
+            os.makedirs(out_dir, exist_ok=True)
+            correlations.write_csv(str(out_dir / _CORRELATIONS_CSV))   # full universe
+            # Grade only what ships. Diagnostic rows (used=false) stay in the CSV but must
+            # never move the median -- grading a series no reader receives is meaningless.
+            graded = (
+                correlations.filter(pl.col("used"))
+                if "used" in correlations.columns
+                else correlations
+            )
+            r = grade(check.name, check.slug, graded)
+            results.append(r)
+            status = "PASS" if r.passed else "FAIL"
+            print(f"[{status}] {r.name:32s} n={r.n:4d} median={r.median:.4f} "
+                  f"mean={r.mean:.4f} min={r.minimum:.4f} (<0.80: {r.n_below})")
 
-        if check.invariants is not None:
-            for inv in check.invariants():
-                invariants.append(inv)
-                tag = "PASS" if inv.passed else "FAIL"
-                print(f"        [{tag}] {inv.name}: {inv.value}")
+            if check.invariants is not None:
+                # sync_panels_ready()/sync_stage_outputs_ready() still don't
+                # cover EVERY file this can transitively read -- build_synced_dataset()
+                # also reads a hand-placed MANUAL prerequisite (see
+                # sync_stage_outputs_ready()'s docstring) that is deliberately excluded
+                # from both predicates, so a full-mode resolution can still reach here
+                # with a file missing. Unlike `pairs`/`figures` below, this call sits
+                # outside any try -- without this, the researcher gets a raw
+                # FileNotFoundError traceback, no remedy, and no mention of
+                # --async-only. Only FileNotFoundError is caught: a genuine invariant
+                # FAILURE is not an exception (it's a False Invariant.passed, handled
+                # by the loop below and the final `ok` check) and any OTHER exception
+                # is a real bug that must still fail the run loudly.
+                try:
+                    computed_invariants = check.invariants()
+                except FileNotFoundError as e:
+                    # The original wording offered `build --full` as
+                    # the FIRST remedy, but the reachable cause here is a hand-placed
+                    # MANUAL prerequisite (see sync_stage_outputs_ready()'s docstring
+                    # above) that `build --full` would also fail on -- rebuilding
+                    # doesn't place the file. Name that remedy first.
+                    raise SystemExit(
+                        f"globalmacro validate: {check.name} needs a file that is "
+                        f"missing ({e}). Either place the missing file (see "
+                        "USAGE.md's Manual Prerequisite Data Files) and rerun "
+                        "`globalmacro build --full`, or run `globalmacro validate "
+                        "--async-only` to skip the checks that need it."
+                    ) from e
+                for inv in computed_invariants:
+                    invariants.append(inv)
+                    tag = "PASS" if inv.passed else "FAIL"
+                    print(f"        [{tag}] {inv.name}: {inv.value}")
 
-        if check.pairs is not None:
-            # Plotting is a secondary deliverable — never let a render failure
-            # abort grading or the summary write.
-            try:
-                plot_comparison(
-                    check.pairs(), check.series_labels,
-                    f"{check.name}: cumulative monthly log returns, per Tier-1 asset",
-                    out_dir / "comparison.pdf",
-                )
-                print(f"        wrote {out_dir / 'comparison.pdf'}")
-            except Exception as e:
-                print(f"        WARN: comparison.pdf failed for {check.slug}: {e}")
+            if check.pairs is not None:
+                # Plotting is a secondary deliverable — never let a render failure
+                # abort grading or the summary write.
+                try:
+                    plot_comparison(
+                        check.pairs(), check.series_labels,
+                        f"{check.name}: cumulative monthly log returns, per Tier-1 asset",
+                        out_dir / _COMPARISON_PDF,
+                    )
+                    print(f"        wrote {out_dir / _COMPARISON_PDF}")
+                except Exception as e:
+                    print(f"        WARN: comparison.pdf failed for {check.slug}: {e}")
 
-        if check.figures is not None:
-            try:
-                check.figures(out_dir)
-            except Exception as e:
-                print(f"        WARN: figures failed for {check.slug}: {e}")
+            if check.figures is not None:
+                try:
+                    check.figures(out_dir)
+                except Exception as e:
+                    print(f"        WARN: figures failed for {check.slug}: {e}")
 
-    sc_dir = VALIDATION_OUTPUT / "symbol_counts"
+    sc_dir = VALIDATION_OUTPUT / _SYMBOL_COUNTS_DIR
     os.makedirs(sc_dir, exist_ok=True)
-    for stem, src, title in _SYMBOL_COUNT_SOURCES:
+    for stem, src, title in _symbol_count_sources(mode):
         try:
             plot_symbol_counts(_load_wide(src), title, sc_dir / f"{stem}.pdf")
             print(f"        wrote {sc_dir / stem}.pdf")
         except Exception as e:
             print(f"        WARN: symbol_counts {stem} failed: {e}")
 
-    write_summary(results, invariants, VALIDATION_OUTPUT / "VALIDATION_SUMMARY.md")
+    skipped = _skipped_checks(mode)
+    for name in skipped:
+        print(f"[SKIP] {name:32s} SKIPPED (async-only run)")
+
+    dropped_invariants = _dropped_invariants(mode)
+    dropped_figures = _dropped_figures(mode)
+    for name in dropped_invariants:
+        print(f"[SKIP] invariant: {name} SKIPPED (async-only run)")
+    for name in dropped_figures:
+        print(f"[SKIP] figure: {name} SKIPPED (async-only run)")
+
+    # An async-only run must not leave stale PDFs from an earlier full run on
+    # disk while its own summary calls them SKIPPED -- that is the output actively
+    # lying, not merely omitting. No-op in full mode (see _remove_stale_figures).
+    #
+    # The stale-figure cleanup originally keyed on the RESOLVED mode alone, so it
+    # fired on an auto-detected downgrade the researcher never asked for -- inverting
+    # the principle that auto-detect may only downgrade a machine that has never
+    # built the sync half. Deletion of shipped artifacts must be at least as
+    # conservative as refusing to submit a DAG: only an EXPLICIT --async-only may
+    # delete anything. On an auto-detected downgrade, delete nothing and disclose the
+    # risk in the summary instead (write_summary's stale_figures_may_remain) -- both
+    # existing independent guards inside _remove_stale_figures/_stale_figure_paths
+    # (the mode check, and the path-shape guard) are unchanged and still apply
+    # whenever this IS reached.
+    if explicit_async_only:
+        for p in _remove_stale_figures(mode):
+            print(f"        removed stale {p} (async-only run; from an earlier full run)")
+    stale_figures_may_remain = mode == "async-only" and not explicit_async_only
+
+    write_summary(
+        results, invariants, VALIDATION_OUTPUT / "VALIDATION_SUMMARY.md",
+        skipped, dropped_invariants, dropped_figures,
+        stale_figures_may_remain=stale_figures_may_remain,
+    )
     print(f"\nSummary written to {VALIDATION_OUTPUT / 'VALIDATION_SUMMARY.md'}")
     ok = all(r.passed for r in results) and all(i.passed for i in invariants)
     return 0 if ok else 1

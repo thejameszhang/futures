@@ -40,6 +40,11 @@ testpaths = ["tests"]
 # root to sys.path so tests can `from scripts.foo import bar` (native pytest
 # option since 7.0, no plugin required).
 pythonpath = ["."]
+# A misspelled marker (e.g. `needs_sync` typo'd) would otherwise only warn
+# (PytestUnknownMarkWarning) and the test would run unguarded on whatever
+# machine collects it -- for needs_sync that means "runs and errors on a
+# tick-less machine", precisely the state --strict-markers exists to eliminate.
+addopts = "--strict-markers -p pytester"
 
 [tool.ruff]
 # Rule families mirror jkp-data for cross-repo lint consistency. line-length is
@@ -64,3 +69,12 @@ reportMissingImports = true
 reportMissingTypeStubs = false
 venvPath = "."
 venv = ".venv"
+# analysis/ is untracked, gitignored scratch space (.gitignore:23) -- it isn't part of
+# the project's shipped source and was never meant to be type-checked. Scoping to the
+# tracked tree also matches what `git diff --stat` can show: nothing here reaches
+# analysis/, so nothing here can affect it.
+include = ["src", "tests", "scripts"]
+# tests/test_verify_tickhistory_shards.py imports scripts/verify_tickhistory_shards.py
+# via a runtime sys.path.insert (scripts/ has no __init__.py and isn't an installed
+# package); tell pyright about that path so the import resolves statically too.
+extraPaths = ["scripts"]

@@ -67,8 +67,10 @@ def _max_deviation(published: pl.DataFrame, rebuilt: pl.DataFrame) -> float:
 
 @pytest.mark.parametrize(
     "tier,dataset,fx_file",
-    [(1, "async", "fx_async.csv"), (1, "sync", "fx_sync.csv"),
-     (2, "async", "fx_async.csv"), (2, "sync", "fx_sync.csv")],
+    [(1, "async", "fx_async.csv"),
+     pytest.param(1, "sync", "fx_sync.csv", marks=pytest.mark.needs_sync),
+     (2, "async", "fx_async.csv"),
+     pytest.param(2, "sync", "fx_sync.csv", marks=pytest.mark.needs_sync)],
 )
 def test_usd_panel_reconstructs_exactly(tier, dataset, fx_file):
     local = _panel(f"tier{tier}/{dataset}/{dataset}_daily.csv")
@@ -80,9 +82,9 @@ def test_usd_panel_reconstructs_exactly(tier, dataset, fx_file):
 @pytest.mark.parametrize(
     "tier,dataset,right_fx,wrong_fx",
     [(1, "async", "fx_async.csv", "fx_sync.csv"),
-     (1, "sync", "fx_sync.csv", "fx_async.csv"),
+     pytest.param(1, "sync", "fx_sync.csv", "fx_async.csv", marks=pytest.mark.needs_sync),
      (2, "async", "fx_async.csv", "fx_sync.csv"),
-     (2, "sync", "fx_sync.csv", "fx_async.csv")],
+     pytest.param(2, "sync", "fx_sync.csv", "fx_async.csv", marks=pytest.mark.needs_sync)],
 )
 def test_usd_panel_uses_the_right_fx_source(tier, dataset, right_fx, wrong_fx):
     # The wiring test. An async panel built with sync FX would still correlate ~0.98 with

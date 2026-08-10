@@ -18,6 +18,7 @@ look sub-daily, and wrongly truncates it.
 import math
 from datetime import date, timedelta
 
+import pandas as pd
 import pandas_market_calendars as pmc
 import polars as pl
 import pytest
@@ -52,7 +53,13 @@ EXPECTED_DAILY_START = {
 
 
 def _sessions(calendar, start, end):
-    return set(pmc.get_calendar(calendar).schedule(str(start), str(end)).index.date)
+    # schedule() is annotated -> pd.DataFrame, so its .index is typed as the generic
+    # pandas Index, not DatetimeIndex -- it is one at runtime (see schedule_from_days,
+    # which builds it from a pd.DatetimeIndex of valid trading days). pandas' own
+    # stubs don't expose DatetimeIndex.date either (it's mixin-delegated), so go
+    # through Series.dt, which is fully typed.
+    idx = pmc.get_calendar(calendar).schedule(str(start), str(end)).index
+    return set(pd.Series(idx).dt.date)
 
 
 def _frame(dates):
@@ -182,7 +189,7 @@ def _add_months(d, months):
 
 @pytest.mark.parametrize("symbol,expected", sorted(EXPECTED_DAILY_START.items()))
 def test_the_shipped_series_starts_where_expected(symbol, expected):
-    # Passes only AFTER Task 5 regenerates spot_equity_returns.csv.
+    # Passes only after spot_equity_returns.csv is regenerated.
     spot = _spot()
     if symbol not in spot.columns:
         pytest.skip(f"{symbol} not in the shipped frame")
@@ -226,6 +233,11 @@ def test_no_unpinned_series_has_a_sub_daily_leading_edge():
         if s.height < 250:
             continue
         first = s.get_column("date").min()
+        # .min() is typed over every polars dtype's Python literal; the "date" column is
+        # pl.Date (see _spot's strptime), so this is a real date at runtime -- assert it
+        # rather than assume, so a dtype regression fails loudly here instead of on the
+        # .year/.month access below.
+        assert isinstance(first, date), f"{symbol}: expected a date, got {type(first)!r}"
         window_start = first
         window_end = _add_months(date(first.year, first.month, 1), 12)  # exclusive
         in_window = s.filter(

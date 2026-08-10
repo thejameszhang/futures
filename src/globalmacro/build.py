@@ -1,14 +1,17 @@
+import argparse
 import logging
 import os
+import sys
 from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypedDict, cast
 
 import polars as pl
 
 from globalmacro.pipeline.fx import SYMBOL_TO_CURCDD_MAPPING
 from globalmacro.pipeline.to_usd import usd_panel
+from globalmacro.utils.capabilities import resolve_mode, sync_stage_outputs_ready
 from globalmacro.utils.config import load_config
 from globalmacro.utils.models import AssetClass, Future
 from globalmacro.utils.panels import (
@@ -54,6 +57,17 @@ GICS_SECTOR_TICKERS: dict[str, str] = {
     "55": "XAU",  # Utilities
     "60": "XAR",  # Real Estate
 }
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(prog="globalmacro build", allow_abbrev=False)
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--async-only", dest="mode", action="store_const", const="async-only",
+                   help="build only the async datasets (no tick data required)")
+    g.add_argument("--full", dest="mode", action="store_const", const="full",
+                   help="require the sync inputs; fail rather than silently degrade")
+    p.set_defaults(mode=None)
+    return p.parse_args(argv)
 
 
 def rename_gics_to_tickers(sectors: pl.DataFrame) -> pl.DataFrame:
@@ -625,45 +639,53 @@ def filter_dataset_by_monthly_returns(dataset: pl.DataFrame) -> tuple[pl.DataFra
     return dataset, dataset_monthly
 
 def save_datasets(
-        synced: pl.DataFrame,
+        synced: pl.DataFrame | None,
         asynced: pl.DataFrame,
         asynced_monthly: pl.DataFrame,
         tier1_symbols: list[str],
         tier2_symbols: list[str]
-    ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    ) -> tuple[
+        pl.DataFrame | None, pl.DataFrame, pl.DataFrame,
+        pl.DataFrame | None, pl.DataFrame, pl.DataFrame,
+    ]:
     tier1_symbols = sorted(tier1_symbols)
     all_symbols = sorted(set(tier1_symbols + tier2_symbols))
 
     logger.info(f"Saving Tier 1 datasets: {len(tier1_symbols)} symbols")
     tier1_asynced_monthly = drop_all_null_rows(asynced_monthly.select(["date"] + tier1_symbols))
     tier1_asynced = drop_all_null_rows(asynced.select(["date"] + tier1_symbols))
-    tier1_synced = drop_all_null_rows(synced.select(["date"] + tier1_symbols))
+    tier1_synced = (drop_all_null_rows(synced.select(["date"] + tier1_symbols))
+                    if synced is not None else None)
     tier1_asynced_monthly.write_csv(DATASETS_ROOT / "tier1" / "async" / "async_monthly.csv")
     tier1_asynced.write_csv(DATASETS_ROOT / "tier1" / "async" / "async_daily.csv")
-    tier1_synced.write_csv(DATASETS_ROOT / "tier1" / "sync" / "sync_daily.csv")
+    if tier1_synced is not None:
+        tier1_synced.write_csv(DATASETS_ROOT / "tier1" / "sync" / "sync_daily.csv")
 
     logger.info(f"Saving Tier 2 datasets: {len(tier2_symbols)} symbols")
     tier2_asynced_monthly = drop_all_null_rows(asynced_monthly.select(["date"] + all_symbols))
     tier2_asynced = drop_all_null_rows(asynced.select(["date"] + all_symbols))
-    tier2_synced_symbols = [symbol for symbol in all_symbols if symbol in synced.columns]
-    missing_tier2_synced = sorted(set(all_symbols) - set(tier2_synced_symbols))
-    if missing_tier2_synced:
-        logger.warning(
-            "Tier 2 synced missing symbols (keeping async-only): %s",
-            ", ".join(missing_tier2_synced),
-        )
-    tier2_synced = drop_all_null_rows(synced.select(["date"] + tier2_synced_symbols))
+    tier2_synced = None
+    if synced is not None:
+        tier2_synced_symbols = [symbol for symbol in all_symbols if symbol in synced.columns]
+        missing_tier2_synced = sorted(set(all_symbols) - set(tier2_synced_symbols))
+        if missing_tier2_synced:
+            logger.warning(
+                "Tier 2 synced missing symbols (keeping async-only): %s",
+                ", ".join(missing_tier2_synced),
+            )
+        tier2_synced = drop_all_null_rows(synced.select(["date"] + tier2_synced_symbols))
     tier2_asynced_monthly.write_csv(DATASETS_ROOT / "tier2" / "async" / "async_monthly.csv")
     tier2_asynced.write_csv(DATASETS_ROOT / "tier2" / "async" / "async_daily.csv")
-    tier2_synced.write_csv(DATASETS_ROOT / "tier2" / "sync" / "sync_daily.csv")
+    if tier2_synced is not None:
+        tier2_synced.write_csv(DATASETS_ROOT / "tier2" / "sync" / "sync_daily.csv")
 
     return tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly
 
 
 def save_usd_datasets(
-    tier1_synced: pl.DataFrame, tier1_asynced: pl.DataFrame,
-    tier2_synced: pl.DataFrame, tier2_asynced: pl.DataFrame,
-    symbol_to_ccy: dict[str, str], fx_async: pl.DataFrame, fx_sync: pl.DataFrame,
+    tier1_synced: pl.DataFrame | None, tier1_asynced: pl.DataFrame,
+    tier2_synced: pl.DataFrame | None, tier2_asynced: pl.DataFrame,
+    symbol_to_ccy: dict[str, str], fx_async: pl.DataFrame, fx_sync: pl.DataFrame | None,
     out_root: Path = DATASETS_ROOT,
 ) -> None:
     """Write *_usd.csv siblings. async panels use Datastream FX (fx_async); sync panels
@@ -726,10 +748,12 @@ def save_usd_datasets(
         m.write_csv(out_root / rel)
     u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv")
     monthly(u, "tier1/async/async_monthly_usd.csv")
-    daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv")
+    if tier1_synced is not None and fx_sync is not None:
+        daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv")
     u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv")
     monthly(u, "tier2/async/async_monthly_usd.csv")
-    daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv")
+    if tier2_synced is not None and fx_sync is not None:
+        daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv")
 
 
 def currency_health(
@@ -782,19 +806,18 @@ def load_symbols_to_save(futures: list[Future]) -> list[str]:
     return to_save
 
 
-def main() -> None:
-    tier1_futures, tier1_symbols = load_symbols(1)
-    tier2_futures, tier2_symbols = load_symbols(2)
+class AsyncOutputs(TypedDict):
+    asynced: pl.DataFrame
+    asynced_monthly: pl.DataFrame
 
-    equities = [
-        future
-        for future in (tier1_futures + tier2_futures)
-        if future.dsindexcode is not None
-    ]
-    rf = load_rf()
-    synthetic_returns, synthetic_returns_synced = load_synthetic_returns(rf, equities)
 
-    log_section("Dataset preparation")
+class SyncOutputs(TypedDict):
+    synced: pl.DataFrame
+    pre_splice_synced: pl.DataFrame
+
+
+def build_async(synthetic_returns: pl.DataFrame) -> AsyncOutputs:
+    """Everything the async datasets need. No tick data, no sync panel."""
     asynced = load_async_dataset(tier=2)
     asynced = keep_after_date(asynced, "FBTP", date(2009, 9, 14), inclusive=True)
     asynced = keep_after_date(asynced, "PLN", date(2004, 8, 1), inclusive=True)
@@ -805,11 +828,16 @@ def main() -> None:
     asynced = splice_synthetic_returns(asynced, synthetic_returns, "Datastream")
     asynced = fill_asynced_gaps_with_synthetic_returns(asynced, synthetic_returns)
     asynced = drop_all_null_rows(asynced).filter(pl.col("date") <= pl.date(2025, 12, 31))
+    asynced, asynced_monthly = filter_dataset_by_monthly_returns(asynced)
+    return {"asynced": asynced, "asynced_monthly": asynced_monthly}
 
+
+def build_sync(synthetic_returns_synced: pl.DataFrame) -> SyncOutputs:
+    """Everything that needs the tickhistory stage's outputs."""
     synced = build_synced_dataset(tier=2)
     pre_splice_synced = synced  # BEFORE splice_synthetic_returns: real-splice-aware (6E<-DM), synthetic-blind
     synced = splice_synthetic_returns(synced, synthetic_returns_synced, "TickHistory", skip_if_before=date(1996, 1, 4))
-    # Capture-site guard (criterion c-2, "never the CIP synthetic"): a late-listing G10 future
+    # Capture-site guard ("never the CIP synthetic"): a late-listing G10 future
     # (NOK, real 2002) is finite in the SYNTHETIC-BLIND pre-splice panel only from its real
     # start -- strictly LATER than in the post-splice `synced`, where the CIP synthetic backfills
     # it from 1996. If a future edit captured `pre_splice_synced` AFTER the splice, these dates
@@ -823,30 +851,89 @@ def main() -> None:
     )
     synced = keep_after_date(synced, "PLN", date(2004, 7, 14), inclusive=True)
     synced = keep_after_date(synced, "CZK", date(2004, 7, 14), inclusive=True)
+    return {"synced": synced, "pre_splice_synced": pre_splice_synced}
 
-    asynced, asynced_monthly = filter_dataset_by_monthly_returns(asynced)
 
-    tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly = save_datasets(synced, asynced, asynced_monthly, load_symbols_to_save(tier1_futures), load_symbols_to_save(tier2_futures))
+def _validate_mode(mode: str) -> None:
+    """`main()` is a public function callable directly with any string -- not just
+    through the `__main__` CLI path, which already validates via `resolve_mode`.
+    `main("Full")` or a typo'd `main("aysnc-only")` would otherwise silently take
+    the async-only branch (mode == "full" is False for anything but the exact
+    string) and report success on a truncated deliverable. Raise loudly instead.
 
-    log_subsection("Currency spike / gap diagnostics")
-    currency_symbols = [
-        f.symbol for f in tier1_futures + tier2_futures if AssetClass.CURRENCY in f.asset_class
+    Factored out of `main()` so it can be exercised directly in tests -- this repo's
+    tests must never call `main()` itself (it would build the real datasets).
+    """
+    if mode not in ("full", "async-only"):
+        raise ValueError(
+            f'globalmacro build: unrecognized mode {mode!r}; expected "full" or "async-only"'
+        )
+
+
+def main(mode: Literal["full", "async-only"] = "full") -> None:
+    # Validate BEFORE logging -- the old order let main("Bogus")
+    # write "build mode: Bogus" to validation_report.txt and only THEN raise
+    # (unreachable from the CLI, since resolve_mode() already only ever returns
+    # "full"/"async-only", but main() is directly callable with any string).
+    # _validate_mode raises immediately for anything else, producing no output of
+    # its own (see test_validate_mode_produces_no_output_for_a_valid_mode) -- so
+    # this reorder keeps the guarantee intact: for the two mode values that
+    # ever reach here in practice, the log line below is still the first EFFECTIVE
+    # (output-producing) statement main() executes, even though it is no longer
+    # the literal first statement in the function body (see
+    # test_build_mode_is_logged_as_the_first_statement_in_main).
+    _validate_mode(mode)
+    # Deliberate, owner-approved: the ONE intentional change to a shipped
+    # artifact. validation_report.txt is written by the
+    # FileHandler attached in the __main__ block below, so this is its first line --
+    # it now records which mode produced the datasets it describes. Adds exactly one
+    # line; changes no number and no dataset.
+    logger.info(f"build mode: {mode}")
+    tier1_futures, tier1_symbols = load_symbols(1)
+    tier2_futures, tier2_symbols = load_symbols(2)
+
+    equities = [
+        future
+        for future in (tier1_futures + tier2_futures)
+        if future.dsindexcode is not None
     ]
-    for line in currency_health(tier2_synced, currency_symbols):
-        logger.warning(line)
+    rf = load_rf()
+    synthetic_returns, synthetic_returns_synced = load_synthetic_returns(rf, equities)
+
+    log_section("Dataset preparation")
+    async_out = build_async(synthetic_returns)
+    sync_out = build_sync(synthetic_returns_synced) if mode == "full" else None
+
+    tier1_synced, tier1_asynced, tier1_asynced_monthly, tier2_synced, tier2_asynced, tier2_asynced_monthly = save_datasets(
+        sync_out["synced"] if sync_out is not None else None,
+        async_out["asynced"], async_out["asynced_monthly"],
+        load_symbols_to_save(tier1_futures), load_symbols_to_save(tier2_futures))
+
+    if tier2_synced is not None:
+        log_subsection("Currency spike / gap diagnostics")
+        currency_symbols = [
+            f.symbol for f in tier1_futures + tier2_futures if AssetClass.CURRENCY in f.asset_class
+        ]
+        for line in currency_health(tier2_synced, currency_symbols):
+            logger.warning(line)
 
     log_subsection("USD-converted datasets")
     fx_async = read_csv(FX_PATH / "fx_async.csv")
-    fx_sync = read_csv(FX_PATH / "fx_sync.csv")
-    # Blend the G10 FX-futures return into the sync Compustat levels (sync _usd only; async
-    # untouched). Uses SYMBOL_TO_CURCDD_MAPPING (6E->EUR), NOT build_currency_map (all-USD).
-    fx_sync = build_sync_fx_panel(fx_sync, pre_splice_synced, SYMBOL_TO_CURCDD_MAPPING)
+    fx_sync = None
+    if sync_out is not None:
+        fx_sync = read_csv(FX_PATH / "fx_sync.csv")
+        # Blend the G10 FX-futures return into the sync Compustat levels (sync _usd only; async
+        # untouched). Uses SYMBOL_TO_CURCDD_MAPPING (6E->EUR), NOT build_currency_map (all-USD).
+        fx_sync = build_sync_fx_panel(fx_sync, sync_out["pre_splice_synced"], SYMBOL_TO_CURCDD_MAPPING)
     symbol_to_ccy = build_currency_map(tier1_futures + tier2_futures)
     save_usd_datasets(tier1_synced, tier1_asynced, tier2_synced, tier2_asynced,
                       symbol_to_ccy, fx_async, fx_sync)
 
 
 if __name__ == "__main__":
+    _args = _parse_args(sys.argv[1:])
+    _mode = resolve_mode(_args.mode, sync_stage_outputs_ready(), "build")
+
     VALIDATION_DIR = VALIDATION_OUTPUT
     os.makedirs(VALIDATION_DIR, exist_ok=True)  # must exist before the FileHandler opens the report
     logger = logging.getLogger(__name__)
@@ -873,10 +960,20 @@ if __name__ == "__main__":
         COMPUSTAT_PATH,
         TICKHISTORY_PATH,
     ]
+    if _mode == "async-only":
+        # No sync half is produced in this mode -- don't advertise a tree that
+        # will never be filled.
+        _sync_folders = {DATASETS_ROOT / "tier1" / "sync", DATASETS_ROOT / "tier2" / "sync"}
+        folders_to_create = [f for f in folders_to_create if f not in _sync_folders]
     for folder in folders_to_create:
         os.makedirs(folder, exist_ok=True)
 
-    main()
+    # resolve_mode()'s declared return type is `str` (it is a general-purpose
+    # validator, not scoped to build's own Literal), but it only ever returns
+    # "full" or "async-only" -- enforced dynamically by main()'s own
+    # _validate_mode() check immediately below, so this narrows a value that is
+    # already runtime-checked rather than asserting past a real gap.
+    main(cast(Literal["full", "async-only"], _mode))
 
     logger.removeHandler(handler)
     handler.close()

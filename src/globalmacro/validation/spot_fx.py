@@ -68,6 +68,16 @@ def _shipped_currencies() -> list[str]:
 
 
 def _panels() -> tuple[pl.DataFrame, pl.DataFrame]:
+    # fx_sync.csv is read unconditionally here, and this check stays in the async-only set
+    # (it is not requires_sync=True). That is deliberate, not an oversight: Compustat is a
+    # pipeline-wide prerequisite, not a tick-data one -- build.load_synthetic_returns reads
+    # its derivative (synthetic_fx_returns_sync.csv) in EVERY mode, async-only included.
+    # `globalmacro build` itself, in every mode, cannot succeed without
+    # that file, which fx.py writes to this same directory strictly AFTER fx_sync.csv in one
+    # invocation -- so by the time a validate run has anything built to grade, fx_sync.csv is
+    # already on disk. A missing-file error here would mean Compustat access itself is
+    # broken, which should fail loudly, not be silently downgraded through a second
+    # capability axis.
     return load_panel(FX_PATH / "fx_async.csv"), load_panel(FX_PATH / "fx_sync.csv")
 
 

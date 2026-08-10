@@ -91,3 +91,96 @@ def test_write_summary_omits_invariants_table_when_none(tmp_path):
     path = Path(tmp_path) / "SUMMARY.md"
     write_summary([grade("Demo", "demo", _df([0.99]))], [], path)
     assert "## Invariants" not in path.read_text()
+
+
+def test_write_summary_default_skipped_matches_three_positional_call(tmp_path):
+    """`skipped` was appended with a default -- the pre-existing three-positional
+    call above must keep working unchanged."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary([grade("Demo", "demo", _df([0.99]))], [], path)
+    assert "## Skipped" not in path.read_text()
+
+
+def test_write_summary_renders_skipped_section(tmp_path):
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency", "External ground-truth cross-check"],
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "Async vs sync consistency" in text
+    assert "External ground-truth cross-check" in text
+    assert text.count("SKIPPED (async-only run)") == 2
+
+
+def test_write_summary_renders_dropped_invariants_and_figures(tmp_path):
+    """A check that keeps running in async-only mode but drops SOME of its
+    invariants/figures must have those named too, not just wholly-skipped checks."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency"],
+        ["Compustat synthetic beats the other on the sync futures"],
+        ["fx_source_diagonal.pdf", "equity_alignment.pdf"],
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "Async vs sync consistency" in text
+    assert "Invariant: Compustat synthetic beats the other on the sync futures" in text
+    assert "Figure: fx_source_diagonal.pdf" in text
+    assert "Figure: equity_alignment.pdf" in text
+    assert text.count("SKIPPED (async-only run)") == 4
+
+
+def test_write_summary_renders_dropped_invariants_with_no_skipped_checks(tmp_path):
+    """Async-only can drop a partial-check invariant/figure with NO check fully
+    skipped (hypothetically) -- the section must still render from dropped_invariants/
+    dropped_figures alone, not require `skipped` to be truthy too."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        None,
+        ["shipped alignment is the one the data prefers, per symbol"],
+        None,
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "Invariant: shipped alignment is the one the data prefers, per symbol" in text
+
+
+def test_write_summary_full_mode_omits_skipped_section_entirely(tmp_path):
+    """Byte-identical full mode: skipped/dropped_invariants/dropped_figures all empty
+    (run.py's mode == "full" branch) must render NOTHING under '## Skipped'."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary([grade("Demo", "demo", _df([0.99]))], [], path, [], [], [])
+    assert "## Skipped" not in path.read_text()
+
+
+def test_write_summary_discloses_stale_figures_when_flagged(tmp_path):
+    """An auto-detected async-only downgrade deletes nothing, so the summary
+    must say so -- one extra sentence in the '## Skipped' preamble, opted into via
+    stale_figures_may_remain (default False, see the sibling test below)."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency"], None, None,
+        stale_figures_may_remain=True,
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "may still be sitting on disk" in text
+    assert "--async-only explicitly" in text
+
+
+def test_write_summary_omits_stale_figures_disclosure_by_default(tmp_path):
+    """The default (explicit --async-only, or full mode) must NOT print the
+    disclosure -- deletion already happened, or nothing was ever skipped."""
+    path = Path(tmp_path) / "SUMMARY.md"
+    write_summary(
+        [grade("Demo", "demo", _df([0.99]))], [], path,
+        ["Async vs sync consistency"],
+    )
+    text = path.read_text()
+    assert "## Skipped" in text
+    assert "may still be sitting on disk" not in text
