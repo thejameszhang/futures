@@ -473,13 +473,13 @@ def test_stale_figure_paths_empty_in_full_mode(monkeypatch):
 
 
 def test_stale_figure_paths_includes_whole_drop_extra_figures(monkeypatch):
-    """I3 fix (gitignored external_comparison.py's per-instrument daily figures): a
+    """Covers gitignored external_comparison.py's per-instrument daily figures: a
     check dropped WHOLE whose figures() writes more than the single comparison.pdf
     (e.g. one file per instrument) must have every one of those extra bare filenames
     named, not just the fixed comparison.pdf/correlations.csv pair."""
     skipped_with_extras = Check(
-        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_f9_stub_run,
-        pairs=_f9_stub_pairs, requires_sync=True,
+        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_figs_stub_run,
+        pairs=_stale_figs_stub_pairs, requires_sync=True,
         whole_drop_extra_figures=("daily_A_async.pdf", "daily_B_sync.pdf"),
     )
 
@@ -501,11 +501,11 @@ def test_stale_figure_paths_includes_whole_drop_extra_figures(monkeypatch):
 def test_remove_stale_figures_deletes_whole_drop_extra_figures(monkeypatch, tmp_path):
     """Companion to the above: the extras are actually REACHABLE by the removal guard
     -- a bare filename directly under VALIDATION_OUTPUT/<slug>/, flat, not nested. This
-    is the shape _daily_figures now writes (I3: it used to nest under out_dir/daily/,
+    is the shape _daily_figures now writes (it used to nest under out_dir/daily/,
     which the guard structurally refuses -- see
     test_remove_stale_figures_guard_rejects_path_traversal below)."""
     skipped_with_extras = Check(
-        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_f9_stub_run,
+        name="Skipped-with-extras stub", slug="skipped_extras_stub", run=_stale_figs_stub_run,
         requires_sync=True,
         whole_drop_extra_figures=("daily_A_async.pdf", "daily_B_sync.pdf"),
     )

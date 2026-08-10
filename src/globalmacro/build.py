@@ -351,8 +351,8 @@ def load_traded_panel(symbols: Iterable[str]) -> pl.DataFrame:
     coverage falls back to return-nullity in usd_panel's union (never to a wrong answer). But
     if the resulting panel ends up with NO column for ANY requested symbol (both parquets
     absent, or neither carries any requested symbol), that fallback is total: `has_traded` is
-    False everywhere, the FX leg reverts silently to the exact C1 regression this mask exists
-    to fix, and nothing marks the run as degraded but a log line. Raise instead, matching this
+    False everywhere, the FX leg reverts silently to the pre-fix return-nullity inference this
+    mask exists to fix, and nothing marks the run as degraded but a log line. Raise instead, matching this
     module's existing fail-loudly idiom (build_currency_map, rename_gics_to_tickers): a run
     with no observation signal at all must not produce output that looks the same as one with
     a working mask.

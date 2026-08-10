@@ -124,10 +124,10 @@ def test_load_traded_panel_reads_every_settlement_slot_and_both_cycles(tmp_path,
 
 
 def test_load_traded_panel_raises_when_both_parquets_are_missing(tmp_path, monkeypatch):
-    """Fix 1 (C1 follow-up): zero coverage used to degrade silently to a date-only frame --
-    `has_traded` False everywhere, the exact pre-fix behaviour, with nothing but a log line
-    to show for it. Construct that condition (an empty FUTURES_PATH, so BOTH cycles are
-    absent) and confirm the guard now fires instead of returning quietly."""
+    """Zero coverage used to degrade silently to a date-only frame -- `has_traded`
+    False everywhere, the exact pre-fix behaviour, with nothing but a log line to
+    show for it. Construct that condition (an empty FUTURES_PATH, so BOTH cycles
+    are absent) and confirm the guard now fires instead of returning quietly."""
     import globalmacro.build as build_module
 
     monkeypatch.setattr(build_module, "FUTURES_PATH", tmp_path)

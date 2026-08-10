@@ -160,9 +160,9 @@ def test_unadjudicable_cells_reports_an_unknown_contract():
 
 
 def test_the_exp_1_roll_branch_reaches_lasttrddate_3():
-    """When exp_1 == 1 the finalised ret_1 is ret_temp_2 (Task 1's shift), so a roll under
-    exp_1 == 1 reaches one slot further than under exp_1 == 0: the denominator is
-    lasttrddate_3.shift(1), not lasttrddate_2.shift(1). Row 0 forces roll for row 1 via the
+    """When exp_1 == 1 the finalised ret_1 is ret_temp_2 (calc_returns_with_price_adj_and_roll's
+    roll shift), so a roll under exp_1 == 1 reaches one slot further than under exp_1 == 0: the
+    denominator is lasttrddate_3.shift(1), not lasttrddate_2.shift(1). Row 0 forces roll for row 1 via the
     days-to-maturity disjunct (daystomaturity_1.shift(1) == 0). Row 1's lasttrddate_2 -- the
     exp_1 == 1 numerator -- is set equal to row 0's lasttrddate_3 -- the correct denominator
     -- so the pair is provably the same contract: neither cross-contract nor unadjudicable.
