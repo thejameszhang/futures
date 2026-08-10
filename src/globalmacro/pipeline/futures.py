@@ -11,6 +11,7 @@ from globalmacro.utils.characteristics import (
     calc_returns_with_price_adj_and_roll,
     calc_total_returns_with_roll,
     contract_identity_exprs,
+    zero_price_denominator,
 )
 from globalmacro.utils.config import load_config
 from globalmacro.utils.paths import (
@@ -172,6 +173,40 @@ def apply_finalised_return_guard(wide_contr_data: pl.DataFrame) -> pl.DataFrame:
         _num, _den = contract_identity_exprs(_i)
         wide_contr_data = wide_contr_data.with_columns(
             pl.when((_num != _den).fill_null(False)).then(None)
+            .otherwise(pl.col(f"ret_{_i}")).alias(f"ret_{_i}")
+        )
+    return wide_contr_data
+
+
+def apply_zero_price_denominator_guard(wide_contr_data: pl.DataFrame, price_type: str) -> pl.DataFrame:
+    """Null a finalised ret_i cell wherever its OWN pre-backfill slot divided by a zero price.
+
+    calc_returns_until_expiry already nulls ret_temp_i at the zero-price division itself
+    (characteristics.py), but the null-coalesce two steps above this call in main() backfills
+    a null ret_1 from ret_2 -- the NEXT contract's return -- whenever ret_2 happens to be
+    non-null. apply_finalised_return_guard cannot catch what that backfill leaves behind:
+    contract_identity_exprs judges the backfilled cell by which contract ret_i's OWN formula
+    would have tracked, and for a same-day roll that is exactly the backfill source's
+    contract too, so num == den and that guard stays silent -- even though the value stored
+    is a DIFFERENT contract's return standing in for one that was genuinely undefined.
+
+    Measured: without this guard, FKLI 2025-10-01's ret_1 does not ship as `inf` -- it ships
+    as 0.007783, ret_2's value (a different, later-dated contract), because ret_temp_2 being
+    null lets the coalesce fall through to ret_2, and apply_finalised_return_guard sees
+    num == den (both lasttrddate_2's contract) and leaves it alone. That is a fabricated
+    number wearing a plausible face, not a fix. This guard re-derives zero_price_denominator
+    fresh from the base columns -- not from ret_temp_i, which the coalesce has already moved
+    past -- for the SAME slot calc_returns_with_price_adj_and_roll selected for ret_i (its
+    exp_1 branching), so it fires regardless of what the backfill did afterwards.
+    """
+    for _i in (1, 2):
+        _own_zero_denom = (
+            pl.when(pl.col('exp_1') == 1)
+            .then(zero_price_denominator(_i + 1, price_type))
+            .otherwise(zero_price_denominator(_i, price_type))
+        ).over('clscode').fill_null(False)
+        wide_contr_data = wide_contr_data.with_columns(
+            pl.when(_own_zero_denom).then(None)
             .otherwise(pl.col(f"ret_{_i}")).alias(f"ret_{_i}")
         )
     return wide_contr_data
@@ -396,6 +431,7 @@ def main():
     )
 
     wide_contr_data = apply_finalised_return_guard(wide_contr_data)
+    wide_contr_data = apply_zero_price_denominator_guard(wide_contr_data, PRICE_TYPE)
 
     os.makedirs(FUTURES_PATH / "debug" / "tables", exist_ok=True)
     os.makedirs(FUTURES_PATH / "debug" / "dates", exist_ok=True)

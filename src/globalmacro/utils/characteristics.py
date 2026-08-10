@@ -17,6 +17,31 @@ def calc_price_with_roll(i: int, price_type: str) -> list[pl.Expr]:
         .alias(f'adj_{price_type}_{i}'),
     ])
 
+def zero_price_denominator(i: int, price_type: str) -> pl.Expr:
+    """True wherever ret_temp_i's roll-adjusted ratio (calc_returns_until_expiry) would
+    divide by a zero price.
+
+    Not `.over('clscode')`-scoped here -- callers decide whether this nests inside an
+    expression that already carries its own `.over('clscode')` (calc_returns_until_expiry)
+    or needs one of its own (futures.py's post-coalesce guard). Single source of truth for
+    "zero denominator": calc_returns_until_expiry uses it to null the ratio at the division
+    itself, and futures.py's apply_zero_price_denominator_guard re-applies it to the
+    FINALISED ret_i so the fix and its downstream guard cannot drift apart -- the same
+    relationship contract_identity_exprs has with apply_finalised_return_guard.
+
+    A settlement (or open) price of exactly 0.0 is not a legitimate price for any instrument
+    in this universe -- unlike WTI's 2020-04-20 negative print, nothing here is worth
+    nothing. It is the vendor's way of recording a contract nobody has traded yet: FKLI
+    2025-09-30, clscode 3731, slot 3 (lasttrddate 2025-11-28) shows settlement 0.0 with
+    volume 0, one day before that contract first traded. Dividing by it is not a return.
+    """
+    roll = (pl.col('daystomaturity_1').shift(1) == 0) | (pl.col('lasttrddate_1') == pl.col('lasttrddate_2').shift(1))
+    denominator = pl.when(roll).then(pl.col(f'lasttrddate_{i + 1}').shift(1)).otherwise(pl.col(f'lasttrddate_{i}').shift(1))
+    same_contract = pl.col(f'lasttrddate_{i}') == denominator
+    denominator_price = pl.when(roll).then(pl.col(f'{price_type}_{i + 1}').shift(1)).otherwise(pl.col(f'{price_type}_{i}').shift(1))
+    return (same_contract & (denominator_price == 0)).fill_null(False)
+
+
 def calc_returns_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     """
     Helper function for calculating returns of futures contracts with and without price adjustment
@@ -36,12 +61,20 @@ def calc_returns_until_expiry(i: int, price_type: str) -> list[pl.Expr]:
     # shift; this guard covers the residual. A ratio between two different contracts is not a
     # return, so emit null rather than a number. 1,074 cells across 105 classes.
     same_contract = pl.col(f'lasttrddate_{i}') == denominator
+    # A same-contract ratio can still divide by a zero price (FKLI 2025-10-01: 6 shipped
+    # cells, the only non-finite value in datasets/). Null it instead of letting it through
+    # as `inf`/`NaN` -- see zero_price_denominator.
+    zero_denom = zero_price_denominator(i, price_type)
     return ([
         pl.when(same_contract)
         .then(
-            pl.when(roll)
-            .then((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i + 1}').shift(1)) - 1)
-            .otherwise((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1)
+            pl.when(zero_denom)
+            .then(None)
+            .otherwise(
+                pl.when(roll)
+                .then((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i + 1}').shift(1)) - 1)
+                .otherwise((pl.col(f'{price_type}_{i}') / pl.col(f'{price_type}_{i}').shift(1)) - 1)
+            )
         )
         .otherwise(None)
         .over('clscode').alias(f'ret_temp_{i}'),
@@ -137,9 +170,18 @@ def calc_total_returns_with_roll(i: int, price_type: str) -> list[pl.Expr]:
     Returns:
         pl.Expr - the returns of the i-th month contract without price adjustment and roll
     """
+    # This branch has its own zero-price division (price_type_i.shift(1), independent of
+    # ret_temp_{i+1}'s own zero-price guard in calc_returns_until_expiry) and nothing
+    # coalesces ret_total_i afterwards, so nulling it here at the source is sufficient --
+    # no post-hoc guard is needed the way ret_1/ret_2 need one in futures.py.
+    zero_denom = (pl.col(f'{price_type}_{i}').shift(1) == 0).fill_null(False)
     return ([
         pl.when(((pl.col('exp_1') == 1) & (pl.col('switch_1') == 1)) & (pl.col('daystomaturity_1').shift(1) != 0))
-        .then((pl.col(f'{price_type}_{i + 1}').shift(1) / pl.col(f'{price_type}_{i}').shift(1)) * (pl.col(f'ret_temp_{i + 1}') + 1) - 1)
+        .then(
+            pl.when(zero_denom)
+            .then(None)
+            .otherwise((pl.col(f'{price_type}_{i + 1}').shift(1) / pl.col(f'{price_type}_{i}').shift(1)) * (pl.col(f'ret_temp_{i + 1}') + 1) - 1)
+        )
         .otherwise(pl.col(f'ret_{i}'))
         .over(pl.col('clscode'))
         .alias(f'ret_total_{i}'),
