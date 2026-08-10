@@ -49,7 +49,7 @@ def load_trades_data(path: str) -> pl.DataFrame:
         # tie-break inherits a fresh permutation each run: .sort() is a deterministic function
         # of its input, but sorting a permuted frame on the non-unique key `local_datetime`
         # yields a permuted output, not a canonical one. Pinning the order here is what makes
-        # everything downstream reproducible. See .superpowers/sdd/tickhistory-nondeterminism-rootcause.md.
+        # everything downstream reproducible.
         .unique(keep='first', maintain_order=True)
         .with_columns([
             (pl.col("datetime") + pl.duration(hours=pl.col("GMT Offset"))).alias("local_datetime"),
@@ -81,9 +81,10 @@ def load_quotes_data(path: str) -> pl.DataFrame:
             pl.col("#RIC").str.extract(r"c(\d)$").cast(pl.UInt8).alias("order"),
         ])
         # See load_trades_data above: maintain_order=True pins the row order so downstream
-        # sorts and tie-breaks are reproducible. (The quotes' own last() site at :432-433 is
-        # provably a no-op on current data -- 0 of 801,531 groups ambiguous -- but this still
-        # keeps the loader itself deterministic for any future consumer.)
+        # sorts and tie-breaks are reproducible. (The quotes' own last_bid/last_ask
+        # aggregation, built later in process_future, is provably a no-op on current
+        # data -- 0 of 801,531 groups ambiguous -- but this still keeps the loader
+        # itself deterministic for any future consumer.)
         .unique(keep='first', maintain_order=True)
         .with_columns([
             (pl.col("datetime") + pl.duration(hours=pl.col("GMT Offset"))).alias("local_datetime"),
@@ -108,14 +109,14 @@ def load_open_prices() -> pl.DataFrame:
         .filter((pl.col("clscode") != 290) | (pl.col("date") < date(2003, 12, 22)))
         # A literal 0.0 is Datastream's "no trade yet" marker, not a real price -- same family
         # as the FKLI zero-settlement bug fixed in 5468d2c. Left unfiltered it can reach
-        # `lasttrdprice_cN` via `coalesce(open_N, ...)` at :481/:498 (coalesce treats 0.0 as a
-        # valid non-null value), and from there `compute_settlement_price` may accept it
-        # outright whenever a stale bid/ask spread happens to straddle zero. Nulled per-column
-        # here, mirroring load_trades_data's own zero-price handling (:42), rather than
-        # dropping the whole row the way load_quotes_data's filter does at :94: open_1..4 are
-        # four independent contract-order prices sharing one row per (clscode, date), so a
-        # row-level filter would also discard the other three orders' valid prices on a date
-        # where only one order happened to print zero.
+        # `lasttrdprice_cN` via the `coalesce(open_N, ...)` fallback in process_future's
+        # US-exchange branch (coalesce treats 0.0 as a valid non-null value), and from there
+        # `compute_settlement_price` may accept it outright whenever a stale bid/ask spread
+        # happens to straddle zero. Nulled per-column here, mirroring load_trades_data's own
+        # zero-price handling, rather than dropping the whole row the way load_quotes_data's
+        # filter does: open_1..4 are four independent contract-order prices sharing one row
+        # per (clscode, date), so a row-level filter would also discard the other three
+        # orders' valid prices on a date where only one order happened to print zero.
         .with_columns([pl.when(pl.col(c) == 0.0).then(None).otherwise(pl.col(c)).alias(c) for c in open_cols])
         .collect()
     )
@@ -187,8 +188,7 @@ def compute_vwap(time_filtered_data: pl.DataFrame, datetime_column: str) -> pl.D
     threads; only the 2-key shape shows thread sensitivity. (A prior version of this
     docstring reported "4 distinct hashes across 5 thread counts" for the plain sum without
     noting that this was measured on the 2-key shape, not the shipped one -- that was wrong
-    and is corrected here; see .superpowers/sdd/tickhistory-nondeterminism-rootcause.md
-    sec 6, corrected alongside this docstring.)
+    and is corrected here.)
 
     The fix is still worth keeping even though the shipped shape isn't currently
     thread-exposed: the 2-key sensitivity tracks polars' internal chunk count, which it
@@ -409,26 +409,27 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     # longer depends on anything unpinned, so no secondary key is needed for reproducibility.
     #
     # DECISION: do not add a secondary tie-break key (e.g. pl.col("Price")) at this site or
-    # at :331 below. Adding one would not be a no-op: it would change WHICH tied price wins,
-    # from "last in pinned row order" (today's behavior, once Fix 1 pins that order) to
-    # "highest price at the tied timestamp" -- across up to 14,881 ambiguous commodity groups
-    # and 5,751 ambiguous currency groups (full-history tie census; see the root-cause doc
-    # sec 3). That is a value change with no analytical benefit: "last in pinned order" and
-    # "highest price" are both arbitrary conventions, neither more correct than the other,
+    # at the all_lasttrdprices computation below. Adding one would not be a no-op: it would
+    # change WHICH tied price wins, from "last in pinned row order" (today's behavior, once
+    # the loader's row order is pinned) to "highest price at the tied timestamp" -- across up
+    # to 14,881 ambiguous commodity groups and 5,751 ambiguous currency groups (full-history
+    # tie census). That is a value change with no analytical benefit: "last in pinned order"
+    # and "highest price" are both arbitrary conventions, neither more correct than the other,
     # and the current one is already deterministic -- the only property reproducibility
     # requires. Adding a secondary key later would cost a SECOND gated production rerun, on
-    # top of the one Fixes 1/2 already require; this decision not to is made now, deliberately,
-    # while that first rerun is still unpaid, specifically to avoid paying for a second one for
-    # no analytical gain. Re-verified on two shards the implementer never used for the original
-    # measurement (2008-09 and 2021-03 commodity, 6 repeated calls each): 1 distinct
-    # value-per-key hash for both this site and :331, both months.
+    # top of the one this determinism fix already requires; this decision not to is made now,
+    # deliberately, while that first rerun is still unpaid, specifically to avoid paying for a
+    # second one for no analytical gain. Re-verified on two shards the implementer never used
+    # for the original measurement (2008-09 and 2021-03 commodity, 6 repeated calls each): 1
+    # distinct value-per-key hash for both this site and the all_lasttrdprices computation
+    # below, both months.
     #
-    # This decision depends on Fix 1 (the .unique(..., maintain_order=True) above) continuing
+    # This decision depends on the .unique(..., maintain_order=True) call above continuing
     # to pin the loader's row order; that dependency is guarded at its origin, not here --
     # test_load_trades_data_row_order_is_stable_across_repeated_calls and
     # test_load_quotes_data_row_order_is_stable_across_repeated_calls in
-    # tests/test_tickhistory_determinism.py fail if Fix 1 regresses, which is what should
-    # catch a reopening of this decision, not a change at this site.
+    # tests/test_tickhistory_determinism.py fail if that pinning regresses, which is what
+    # should catch a reopening of this decision, not a change at this site.
     trades_data = trades_data.filter((pl.col("Price").is_not_null()) & (pl.col("Volume").is_not_null()))
     today_lasttrdprices = trades_data.filter(
         pl.col(DATETIME_COLUMN).dt.time() <= SETTLEMENT_START
@@ -541,14 +542,14 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     # Secondary tie-break key (Close Bid / Close Ask themselves) added as pure hardening for
     # a future venue with multiple bars per minute -- provably a no-op on current data: 0 of
     # 801,531 groups (full tier1_commodity_quotes history, 1996-2025) even need a tie-break,
-    # let alone disagree on value; re-verified directly, not assumed (see the root-cause doc
-    # sec 3 rank 5). A full re-aggregation of that same history with vs. without this key
-    # produced byte-identical frames. Two currency shards spot-checked too (2008-09, 2021-03:
-    # 0/727 and 0/925 groups need a tie-break). Free to add now because it changes nothing
-    # today; if a future tier-2 venue does introduce a tie, both sorts pick the tied row with
-    # the highest value independently (bid highest bid, ask highest ask) -- they are not
-    # guaranteed to come from the same underlying quote row in that case, same as before this
-    # change; see the root-cause doc's Fix 4 for the (unapplied) co-sourcing option.
+    # let alone disagree on value; re-verified directly, not assumed. A full re-aggregation
+    # of that same history with vs. without this key produced byte-identical frames. Two
+    # currency shards spot-checked too (2008-09, 2021-03: 0/727 and 0/925 groups need a
+    # tie-break). Free to add now because it changes nothing today; if a future tier-2 venue
+    # does introduce a tie, both sorts pick the tied row with the highest value independently
+    # (bid highest bid, ask highest ask) -- they are not guaranteed to come from the same
+    # underlying quote row in that case, same as before this change. An alternative that
+    # co-sources bid/ask from the same underlying quote row was considered and not applied.
     last_bid_ask_spread = quotes_data.filter(pl.col(DATETIME_COLUMN).dt.time() <= SETTLEMENT_END).with_columns([
         pl.col(DATETIME_COLUMN).dt.date().alias("date_")
     ]).group_by(["#RIC", "date_", "order"]).agg([

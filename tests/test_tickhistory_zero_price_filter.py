@@ -2,17 +2,16 @@
 
 `open_N`/`settlement_N` == 0.0 is Datastream's "no trade yet" marker, not a real price --
 same family as the FKLI zero-settlement-denominator bug fixed in `5468d2c`. Left unfiltered
-it can reach `lasttrdprice_cN` via `coalesce(open_N, ...)` (`:490`/`:507` after this fix) and
-from there `compute_settlement_price` may accept it outright whenever a stale bid/ask spread
-happens to straddle zero. See `.superpowers/sdd/zero-price-fallback-report.md` for the traced
-before/after on the two real occurrences the census found (GC clscode 1508 2020-12-18, ES
-clscode 1035 2016-11-23) and why neither ever reached a shipped panel cell.
+it can reach `lasttrdprice_cN` via the `coalesce(open_N, ...)` fallback in process_future's
+US-exchange branch and from there `compute_settlement_price` may accept it outright whenever
+a stale bid/ask spread happens to straddle zero. The two real occurrences the census found
+(GC clscode 1508 2020-12-18, ES clscode 1035 2016-11-23) never reached a shipped panel cell.
 
 `load_open_prices`/`load_settlement_prices` null the zero PER COLUMN, not per row: open_1..4
 (resp. settlement_1..4) are four independent contract-order prices sharing one row per
-(clscode, date), so a row-level filter (like the one `load_quotes_data` uses at `:94`, where
-bid/ask genuinely are one paired quote) would also discard the other three orders' valid
-prices on a date where only one order printed a zero.
+(clscode, date), so a row-level filter (like the one `load_quotes_data` uses, where bid/ask
+genuinely are one paired quote) would also discard the other three orders' valid prices on a
+date where only one order printed a zero.
 """
 from datetime import date
 

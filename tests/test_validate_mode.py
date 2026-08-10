@@ -858,8 +858,8 @@ def test_external_split_full_then_async_only_real_data(monkeypatch, tmp_path):
 
     Full mode: both exercises must appear, GRADED, with a real (non-empty) universe,
     and each writes its own correlations.csv/figures under its OWN out_dir. Then, same
-    tmp_path, EXPLICIT async-only mode (task brief: "the requirement most likely to be
-    silently broken"): external_async_daily must run again -- fresh, identical
+    tmp_path, EXPLICIT async-only mode (the requirement most likely to be silently
+    broken): external_async_daily must run again -- fresh, identical
     correlations, since nothing about its computation is mode-dependent -- while every
     one of external's full-mode artifacts (correlations.csv, comparison.pdf, all 138
     per-instrument daily scatter plots across both panels) must be gone."""

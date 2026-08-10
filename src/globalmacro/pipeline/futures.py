@@ -237,8 +237,8 @@ def select_top_contracts_by_volume(contr_data: pl.DataFrame) -> pl.DataFrame:
     movement, so a rerun gate's count and date checks will not fire on this change -- only
     a cell-level (--cells) comparison sees it. ATX's moved cells surface under the
     post-splice `FATX` column, not `ATX`. `main()` feeds daily_ret_1_{CS,CT} into
-    build.py:321-322, so this also carries into async_daily/async_monthly and their _usd
-    siblings, for at most 58 symbol-days.
+    build.py's `load_async_dataset`, so this also carries into async_daily/async_monthly
+    and their _usd siblings, for at most 58 symbol-days.
     """
     return (
         contr_data.sort(['clscode', 'date_', 'lasttrddate'])

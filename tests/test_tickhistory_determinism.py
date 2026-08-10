@@ -1,7 +1,6 @@
 """tickhistory.py must be reproducible: the same logical input, in a different physical row
 order or read back under a different POLARS_MAX_THREADS, must produce a byte-identical
-output. See .superpowers/sdd/tickhistory-nondeterminism-rootcause.md for the investigation
-this fixes.
+output.
 
 Two independent mechanisms are involved, so two independent kinds of fixture are needed:
 
@@ -39,7 +38,7 @@ from globalmacro.pipeline import tickhistory_shards as ts
 from globalmacro.utils.paths import TICKHISTORY_PATH as REAL_TICKHISTORY_PATH
 
 # ---------------------------------------------------------------------------
-# Fix 1: loader row-order determinism (`.unique(keep='first', maintain_order=True)`)
+# Loader row-order determinism (`.unique(keep='first', maintain_order=True)`)
 # ---------------------------------------------------------------------------
 
 # 5 distinct timestamps x 2 distinct trades (different Price) per timestamp, each row
@@ -101,7 +100,7 @@ def test_load_quotes_data_row_order_is_stable_across_repeated_calls(tmp_path, mo
 
 
 # ---------------------------------------------------------------------------
-# Fix 2: VWAP sum determinism (`.sort_by(datetime, Price, Volume).sum()`)
+# VWAP sum determinism (`.sort_by(datetime, Price, Volume).sum()`)
 # ---------------------------------------------------------------------------
 
 # A tiny synthetic parquet (even multi-chunk, even 2M rows -- tried up to that while writing
@@ -178,9 +177,8 @@ print(hashlib.sha256(out["vwap"].to_numpy().tobytes()).hexdigest())
 
 @pytest.mark.skipif(not _REAL_COMMODITY_SHARD.exists(), reason="real tickhistory shard absent")
 def test_vwap_is_identical_across_polars_max_threads(tmp_path):
-    """DATA-COUPLED (see note above). Guards the exact property .superpowers/sdd/
-    tickhistory-nondeterminism-rootcause.md sec 6 reports for the VWAP: same physical input,
-    different POLARS_MAX_THREADS, must give the same result.
+    """DATA-COUPLED (see note above). Guards the exact property for the VWAP: same
+    physical input, different POLARS_MAX_THREADS, must give the same result.
 
     HONEST CAVEAT, found while mutation-testing this test (reverting compute_vwap's keyed
     sum back to plain .sum() and re-running): on this shard, the mutant does NOT fail this
@@ -191,9 +189,9 @@ def test_vwap_is_identical_across_polars_max_threads(tmp_path):
     with "#RIC") DOES show thread sensitivity on the same data and thread range -- so the
     effect is real, but it depends on grouping-key shape in a way this investigation did not
     fully resolve, and it is the row-shuffle test above, not this one, that is the confirmed,
-    mutation-killing regression guard for Fix 2. This test is kept because the invariant is
-    still one the shipped code must hold and item 4 of the task asked for it explicitly, not
-    because it is proven to catch a reversion on this data.
+    mutation-killing regression guard for the keyed VWAP sum. This test is kept because the
+    invariant is still one the shipped code must hold, not because it is proven to catch a
+    reversion on this data.
     """
     shard_dir = _symlink_shard(tmp_path)
     script = _THREAD_SCRIPT.format(shard_dir=str(shard_dir), rics=_RICS_5x4)
@@ -208,9 +206,9 @@ def test_vwap_is_identical_across_polars_max_threads(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Sites 2/3 (:326 today_lasttrdprices, :331 all_lasttrdprices): DECISION, not a fix.
-# Pinning the loader's row order (Fix 1) is sufficient to make these deterministic; no
-# secondary tie-break key was added. Evidence:
+# today_lasttrdprices / all_lasttrdprices: DECISION, not a fix. Pinning the loader's
+# row order is sufficient to make these deterministic; no secondary tie-break key
+# was added. Evidence:
 #   - naive repeated-call hashing of the FULL output frame appeared to "vary" (20/20 distinct)
 #     even on a fixed physical input -- but that was a row-order artifact of group_by's own
 #     non-guaranteed emission order (these frames are consumed downstream via a KEYED join on
@@ -220,7 +218,8 @@ def test_vwap_is_identical_across_polars_max_threads(tmp_path):
 #     commodity shard, is no: identical across 20 repeated calls AND across
 #     POLARS_MAX_THREADS in {1, 2, 4, 8, 16, 32} in fresh processes.
 #   - This test reproduces that finding at fixture scale, against the real (fixed)
-#     load_trades_data, using expressions that mirror :326/:331 verbatim.
+#     load_trades_data, using expressions that mirror today_lasttrdprices/all_lasttrdprices
+#     verbatim.
 # ---------------------------------------------------------------------------
 
 def _value_by_key_hash(df: pl.DataFrame, value_col: str) -> str:
@@ -247,13 +246,13 @@ def test_lasttrdprice_tiebreak_value_is_stable_once_loader_order_is_pinned(tmp_p
         trades_data = th.load_trades_data("tier1_commodity_trades.csv").with_columns(
             pl.col(datetime_column).dt.date().alias("date_")
         )
-        # mirrors tickhistory.py :326 (today_lasttrdprices)
+        # mirrors tickhistory.py's today_lasttrdprices computation
         today = trades_data.filter(pl.col(datetime_column).dt.time() <= settlement_start).group_by(
             ["#RIC", "date_", "order"]
         ).agg([pl.col("Price").sort_by(pl.col(datetime_column)).last().alias("lasttrdprice_today")])
         today_hashes.add(_value_by_key_hash(today, "lasttrdprice_today"))
 
-        # mirrors tickhistory.py :331 (all_lasttrdprices)
+        # mirrors tickhistory.py's all_lasttrdprices computation
         allp = trades_data.group_by(["#RIC", "date_", "order"]).agg(
             [pl.col("Price").sort_by(pl.col(datetime_column)).last().alias("lasttrdprice")]
         )
@@ -264,7 +263,7 @@ def test_lasttrdprice_tiebreak_value_is_stable_once_loader_order_is_pinned(tmp_p
 
 
 # ---------------------------------------------------------------------------
-# Site :432-433 (last_bid_ask_spread): OPTIONAL HARDENING, not required by today's data.
+# last_bid_ask_spread: OPTIONAL HARDENING, not required by today's data.
 # Provably a no-op on real data -- 0 of 801,531 groups in the full tier1_commodity_quotes
 # history (1996-2025) even need a tie-break, let alone disagree on value; re-verified
 # directly against the real parquet shards while adding this hardening, and a full
@@ -306,7 +305,7 @@ def test_last_bid_ask_tiebreak_picks_highest_value_and_is_stable(tmp_path, monke
         quotes_data = th.load_quotes_data("tier1_commodity_quotes.csv").with_columns(
             pl.col(datetime_column).dt.date().alias("date_")
         )
-        # mirrors tickhistory.py :432-433 (last_bid_ask_spread), hardened shape
+        # mirrors tickhistory.py's last_bid_ask_spread computation, hardened shape
         spread = quotes_data.group_by(["#RIC", "date_", "order"]).agg([
             pl.col("Close Bid").sort_by(pl.col(datetime_column), pl.col("Close Bid")).last().alias("last_bid"),
             pl.col("Close Ask").sort_by(pl.col(datetime_column), pl.col("Close Ask")).last().alias("last_ask"),
