@@ -386,7 +386,7 @@ def load_traded_panel(symbols: Iterable[str]) -> pl.DataFrame:
             f"symbols under {FUTURES_PATH} -- both settlement parquets are absent, or "
             "neither carries any of them. Handing usd_panel a mask with no coverage would "
             "silently revert EVERY symbol to the pre-fix, unsafe return-nullity inference "
-            "(the C1 regression) behind nothing but a log line."
+            "behind nothing but a log line."
         )
     logger.info("traded panel: %d dates x %d symbols", panel.height, len(panel.columns) - 1)
     return panel
