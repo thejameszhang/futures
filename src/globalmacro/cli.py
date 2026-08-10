@@ -70,6 +70,22 @@ def _capability_report(
     # verdict branches below replaces the check with a plain statement instead.
     _jkp_sectors = _paths.DATA_ROOT / "jkp" / "updated_daily_ind_gics.csv"
     missing_manual_prereqs = [] if _jkp_sectors.exists() else [_jkp_sectors]
+    # P2 (Codex review): build.py:633 reads DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv
+    # in the full/sync build path (build_synced_dataset), and capabilities.py's
+    # sync_stage_outputs_ready() docstring already flags that this file sits outside its
+    # predicate -- a manual input, never a pipeline output, verified against USAGE.md's
+    # Manual Prerequisite Data Files section, same as _jkp_sectors above. Checked only
+    # when shard_cap.ready, matching build_synced_dataset's own reachability
+    # (build.main() only calls it under `if mode == "full"`, and resolve_mode() never
+    # picks full without shard_cap.ready): an async-only machine does not call it and,
+    # per USAGE.md, does not need this file -- checking it unconditionally would falsely
+    # block a report that is otherwise correctly async-only. Without this, a shard-ready
+    # machine missing only this file was told it could build the SYNC datasets, then
+    # failed later in `globalmacro build --full`.
+    if shard_cap.ready:
+        _jkp_sectors_synced = _paths.DATA_ROOT / "jkp" / "updated_daily_ind_gics_synced.csv"
+        if not _jkp_sectors_synced.exists():
+            missing_manual_prereqs.append(_jkp_sectors_synced)
     if not present:
         lseg = "no credentials found"
     elif not checked:

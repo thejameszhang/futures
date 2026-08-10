@@ -54,7 +54,11 @@ def test_report_says_async_when_no_shards(tmp_path, monkeypatch):
 
 
 def test_report_says_both_when_shards_ready(tmp_path, monkeypatch):
+    """P2: the SYNC verdict now also requires the synced JKP file (shard_cap.ready
+    gates build_synced_dataset's read of it), so this fixture must construct it too
+    -- not just the async _jkp_sectors file _with_jkp_sectors already builds."""
     _with_jkp_sectors(monkeypatch, tmp_path)
+    (pathsmod.DATA_ROOT / "jkp" / "updated_daily_ind_gics_synced.csv").write_text("date\n")
     out = cli._capability_report(Capability(True, None), creds=True, checked=False)
     assert "can build the SYNC and ASYNC datasets" in out
     assert "Sync datasets need LSEG tick data" not in out
@@ -148,6 +152,34 @@ def test_missing_synthetic_fx_sync_file_no_longer_blocks_the_report(tmp_path, mo
     assert "synthetic_fx_returns_sync.csv" not in out
     assert "can build the ASYNC datasets." in out
     assert "Compustat entitlement" in out
+
+
+# ---------------------------------------------------------------------------
+# P2 (Codex review): build.py:633 reads
+# DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv in the full/sync build path
+# (build_synced_dataset), but the report previously checked only the ASYNC jkp
+# file -- so a shard-ready machine missing the synced file was told it could
+# build the SYNC datasets, then failed later in `globalmacro build --full`.
+# ---------------------------------------------------------------------------
+
+
+def test_report_names_missing_jkp_synced_file_when_shards_ready(tmp_path, monkeypatch):
+    _with_jkp_sectors(monkeypatch, tmp_path)   # async file present, synced file is not
+    out = cli._capability_report(Capability(True, None), creds=True, checked=False)
+    assert "needs one more file" in out
+    assert "updated_daily_ind_gics_synced.csv" in out
+    assert "can build the SYNC and ASYNC datasets" not in out
+
+
+def test_missing_jkp_synced_file_does_not_block_async_only_report(tmp_path, monkeypatch):
+    """The synced JKP file is read only by the SYNC path (build_synced_dataset,
+    reachable only when shard_cap.ready) -- an async-only-capable machine (shards
+    not ready) does not need it (USAGE.md), so its absence alone must not trigger
+    the "needs one more file" verdict when shard_cap.ready is False."""
+    _with_jkp_sectors(monkeypatch, tmp_path)   # async file present, synced file is not
+    out = cli._capability_report(Capability(False, None), creds=False, checked=False)
+    assert "can build the ASYNC datasets" in out
+    assert "needs one more file" not in out
 
 
 def test_exit_code_zero_when_jkp_missing(monkeypatch, tmp_path):

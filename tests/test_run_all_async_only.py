@@ -292,6 +292,32 @@ def test_shards_absent_sync_panels_present_no_flag_aborts(tmp_path):
     assert "--async-only" in out
 
 
+def test_shards_absent_only_aggregate_panels_present_no_flag_aborts(tmp_path):
+    """P1 (Codex review): sync_panels_ready() delegates to sync_stage_outputs_ready()
+    first, so with the raw stage outputs gone but the 2 shipped aggregate CSVs still
+    on disk (a prior full build, then a scratch purge of the raw stage outputs -- or
+    an unmounted TICKHISTORY_PATH, or a split_tickhistory.sh job killed before it
+    writes a _GATE1_OK marker), BOTH predicates report not-ready. This is the exact
+    blind spot the run_all.sh probe's direct aggregate-panel existence check now
+    closes. Deliberately does NOT call _make_sync_stage_outputs (unlike the two
+    tests above): only the 2 tier{1,2}/sync/sync_daily.csv aggregates are written,
+    so sync_stage_outputs_ready() and (before this fix) sync_panels_ready() both
+    report not-ready while the aggregates are provably still on disk.
+    """
+    env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
+           "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets")}
+    for rel in ("tier1/sync/sync_daily.csv", "tier2/sync/sync_daily.csv"):
+        p = tmp_path / "datasets" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("date\n")
+    r = subprocess.run(["bash", "slurm/run_all.sh", "--dry-run"],
+                       cwd=REPO, capture_output=True, text=True, env=env)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "already has sync" in out
+    assert "sync panels" in out
+
+
 def test_shards_absent_stage_outputs_present_no_flag_aborts(tmp_path):
     """Same defect, other predicate: tickhistory stage outputs (not the aggregated
     sync panels) present with no tick shards and no explicit flag -> exit 1."""

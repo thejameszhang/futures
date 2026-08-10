@@ -129,10 +129,20 @@ fi
 if [ "$MODE" = async-only ] && [ "$MODE_EXPLICIT" = 0 ] && [ -x .venv/bin/python ]; then
   _SYNC_CHECK=$(.venv/bin/python -c "
 from globalmacro.utils.capabilities import sync_panels_ready, sync_stage_outputs_ready
+from globalmacro.utils.paths import DATASETS_ROOT
 found = []
 if sync_stage_outputs_ready().ready:
     found.append('tickhistory stage outputs under datasets/tier{1,2}/sync/')
-if sync_panels_ready().ready:
+# P1 (Codex review): sync_panels_ready() DELIBERATELY delegates to
+# sync_stage_outputs_ready() first (see its docstring) -- so with the raw stage
+# outputs deleted (disk reclaim) but the shipped aggregate CSVs still on disk from
+# a prior full build, BOTH predicates report not-ready and this guard stayed blind
+# to exactly the stale-panels state it exists to catch. ORed in below: a direct
+# file-existence check that consults neither predicate, so the guard fires whenever
+# these files are actually present, regardless of what the predicates say.
+_agg = [DATASETS_ROOT / 'tier1' / 'sync' / 'sync_daily.csv',
+        DATASETS_ROOT / 'tier2' / 'sync' / 'sync_daily.csv']
+if sync_panels_ready().ready or any(p.exists() for p in _agg):
     found.append('sync panels (datasets/tier{1,2}/sync/sync_daily.csv)')
 print('yes' if found else 'no')
 print('; '.join(found))
