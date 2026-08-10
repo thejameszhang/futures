@@ -15,8 +15,8 @@ from globalmacro.utils.paths import DATASETS_ROOT, TICKHISTORY_PATH
 
 # The 9 shard stems the DAG consumes, cross-checked against slurm/run_all.sh by
 # tests/test_capabilities.py. The 12 tickhistory jobs collapse to 9 because the two
-# london currency jobs reuse tier{1,2}_currency, and because tickhistory.py:719 maps
-# both us_equity and nonus_equity to "equity".
+# london currency jobs reuse tier{1,2}_currency, and because tickhistory.py's
+# `__main__` block maps both us_equity and nonus_equity to "equity".
 SHARD_STEMS: tuple[str, ...] = (
     "tier1_bond", "tier1_commodity", "tier1_currency", "tier1_equity",
     "tier1_stir", "tier1_traditional", "tier1_volatility",
@@ -151,8 +151,8 @@ def sync_panels_ready() -> Capability:
 
 # The pair compared per tier by sync_panels_fresh(). Deliberately just the two final
 # aggregates, NOT sync_panels_ready()'s third path (tier2/.../currency_daily_returns.csv):
-# that file is a tickhistory-stage OUTPUT (tickhistory.py:672, also tracked in
-# SYNC_STAGE_OUTPUTS above), one that build_synced_dataset() only ever READS (its
+# that file is a tickhistory-stage OUTPUT (written by tickhistory.py's `main()`, also
+# tracked in SYNC_STAGE_OUTPUTS above), one that build_synced_dataset() only ever READS (its
 # tier-2 currency/equity loop -- NOT the separate tier-1 currency read a few lines
 # above it in the same function, which is a different file) and never writes. As a
 # stage *input*, it has no bearing on whether the sync and async
@@ -168,9 +168,10 @@ _STALENESS_TIERS: tuple[str, ...] = ("tier1", "tier2")
 
 def sync_panels_fresh() -> Capability:
     """Existence is not the same as "from this build". async-only builds rewrite
-    tier{1,2}/async/async_daily.csv on every run (build.py:659-660, 677-678) but skip
-    tier{1,2}/sync/sync_daily.csv entirely (build.py:661-662, 679-680 are gated on
-    mode == "full"). So a machine that once ran full mode and later runs async-only
+    tier{1,2}/async/async_daily.csv on every run (unconditional writes in
+    build.py's `save_datasets`) but skip
+    tier{1,2}/sync/sync_daily.csv entirely (the corresponding writes in `save_datasets`
+    are gated on mode == "full"). So a machine that once ran full mode and later runs async-only
     keeps its old sync panels on disk untouched: sync_panels_ready() still reports
     ready, but a subsequent full-mode validate would grade the FRESH async panels
     against those STALE sync panels -- a confident, wrong verdict for the one check

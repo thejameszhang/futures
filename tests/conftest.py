@@ -28,7 +28,7 @@ from globalmacro.utils.capabilities import sync_panels_ready
 # root of collection). Declaring it in a conftest.py reached only during collection
 # (e.g. one nested under a subpackage) is deprecated/rejected instead.
 # tests/test_tickhistory_credentials.py uses it for a regression test proving the
-# `_no_live_lseg_network` stub below matches validate_credentials' real signature (F1):
+# `_no_live_lseg_network` stub below matches validate_credentials' real signature:
 # that test must trigger this fixture's own teardown assertion for real to prove a
 # keyword-argument call is recorded, which would fail the CURRENT test run if done
 # in-process -- `pytester` runs it as an isolated subprocess instead.
@@ -64,7 +64,7 @@ def pytest_collection_modifyitems(config, items):
 # under tests/. `tc.validate_credentials()` makes a real HTTPS request to
 # selectapi.datascope.refinitiv.com, with real DSS credentials in the request body.
 #
-# Originally this lived only in tests/test_connect_report.py (Task 8), guarding the
+# Originally this lived only in tests/test_connect_report.py, guarding the
 # three `cli.main(["connect", ...])` tests there that rely on `checked and present`
 # gating in cli.py to keep `validate_credentials` unreached. That left
 # tests/test_tickhistory_credentials.py -- the file whose function actually makes the

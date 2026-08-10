@@ -70,8 +70,8 @@ def test_async_only_passes_the_mode_to_build_and_validate():
 
 def test_async_only_build_depends_on_settlement_futures_only():
     """Guards the exact dependency-id list, not just its presence: a `settlement`
-    -> `open` typo in the futures loop (M3) or reading $FUT instead of $FUT_SETTLE
-    here (M4) would both silently swap the build dependency onto the wrong futures
+    -> `open` typo in the futures loop or reading $FUT instead of $FUT_SETTLE
+    here would both silently swap the build dependency onto the wrong futures
     jobs -- the two 24h `open` jobs instead of (or in addition to) the settlement
     pair -- exactly the critical-path regression the settlement-only dependency
     exists to prevent."""
@@ -95,8 +95,8 @@ def test_full_mode_passes_an_explicit_flag_too(tmp_path):
 
 def test_explicit_full_fails_fast_without_shards(tmp_path):
     """The complementary shard state to the fixture above: no shards on disk means
-    an explicit --full must fail fast (Step 4's whole point) rather than submit a
-    DAG with nothing for the tickhistory jobs to read."""
+    an explicit --full must fail fast -- that is the whole point of the flag --
+    rather than submit a DAG with nothing for the tickhistory jobs to read."""
     env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path)}
     r = subprocess.run(["bash", "slurm/run_all.sh", "--dry-run", "--full"],
                        cwd=REPO, capture_output=True, text=True, env=env)
@@ -109,8 +109,9 @@ def test_autodetects_async_only_with_no_shards(tmp_path):
 
     FUTURES_DATASETS_ROOT is overridden alongside TICKHISTORY_PATH: this machine
     (like the owner's) has already built the sync half, so leaving DATASETS_ROOT at
-    its default would make this test collide with the F1 guard below -- the "sync
-    artifacts present" case, not the clean-tree case this test means to cover.
+    its default would make this test collide with the auto-detect guard tested below
+    (which refuses to silently downgrade a machine that already has sync artifacts) --
+    the "sync artifacts present" case, not the clean-tree case this test means to cover.
     """
     env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
            "FUTURES_DATASETS_ROOT": str(tmp_path / "datasets")}
@@ -124,7 +125,7 @@ def _stub_sbatch(bin_dir: Path, capture: Path) -> None:
     `capture` before returning a fake job id -- exactly what a real sbatch would hand
     to the validate.sh job's environment under its default --export=ALL. This is the
     only way to observe env-var propagation through `submit()`'s real
-    `sbatch --parsable ...` call (line 156): --dry-run's submit() branch never
+    `sbatch --parsable ...` call: --dry-run's submit() branch never
     invokes sbatch at all, so it cannot exercise this."""
     stub = bin_dir / "sbatch"
     stub.write_text(
@@ -166,7 +167,7 @@ def _intercepted_env(bin_dir: Path, capture: Path, **extra) -> dict:
 
 
 def test_autodetected_async_only_exports_marker_for_the_validate_job(tmp_path):
-    """R2-1 (Opus review, both reviewers independently, PROVED). Task 9 forwards the
+    """run_all.sh forwards the
     RESOLVED mode as an explicit --async-only whether it was typed or auto-detected --
     `globalmacro validate`'s argv alone can never tell the two apart, which let an
     auto-detected downgrade (e.g. a researcher who reclaimed disk and deleted the tick
@@ -215,7 +216,7 @@ def test_explicit_async_only_does_not_export_the_autodetect_marker(tmp_path):
 
 
 def test_typed_async_only_clears_an_inherited_autodetect_marker(tmp_path):
-    """R3-2 (Opus review B). run_all.sh must set the marker on BOTH branches, not just
+    """run_all.sh must set the marker on BOTH branches, not just
     the auto-detect one: a GM_MODE_AUTODETECTED inherited from an outer environment
     would otherwise survive a TYPED --async-only and suppress the stale-figure cleanup
     the researcher explicitly requested. The flag has to describe this invocation."""
@@ -234,11 +235,11 @@ def test_typed_async_only_clears_an_inherited_autodetect_marker(tmp_path):
 
 
 def _make_sync_panels(root: Path) -> None:
-    """sync_panels_ready()'s three files. Since F3a, sync_panels_ready() itself
+    """sync_panels_ready()'s three files. sync_panels_ready() itself
     consults sync_stage_outputs_ready() first, so a realistic "healthy prior full
     build" fixture needs the ten stage outputs too, or sync_panels_ready() reports
     NOT ready for the wrong reason (missing stage outputs, not missing panels) and
-    F1's guard (which checks .ready on both predicates) never fires. Call
+    the auto-detect guard (which checks .ready on both predicates) never fires. Call
     _make_sync_stage_outputs FIRST for exactly this reason -- tier2/currency's path
     is shared between the two fixtures (see test_capabilities.py's identical note),
     so this call also covers it."""
@@ -254,9 +255,10 @@ def _make_sync_panels(root: Path) -> None:
 
 
 def _make_sync_stage_outputs(root: Path) -> None:
-    """The OTHER of F1's two predicates: tickhistory-stage outputs, not the
-    aggregated sync panels. Exercises sync_stage_outputs_ready() specifically, so
-    the "either" in F1's guard is proved on both branches, not just one."""
+    """The OTHER of the auto-detect guard's two predicates: tickhistory-stage
+    outputs, not the aggregated sync panels. Exercises sync_stage_outputs_ready()
+    specifically, so the "either" in that guard is proved on both branches, not
+    just one."""
     from globalmacro.utils.capabilities import SYNC_STAGE_OUTPUTS
     for tier, cls in SYNC_STAGE_OUTPUTS:
         p = root / tier / "sync" / f"{cls}_daily_returns.csv"
@@ -265,18 +267,18 @@ def _make_sync_stage_outputs(root: Path) -> None:
 
 
 def test_shards_absent_sync_panels_present_no_flag_aborts(tmp_path):
-    """F1 (Reviewer A): auto-detect must not silently downgrade a machine that has
+    """Auto-detect must not silently downgrade a machine that has
     already built the sync half. No tick shards + no explicit flag -> exit 1,
     message names the cause and both remedies.
 
-    N7 (Reviewer B): since F3a, sync_panels_ready() consults sync_stage_outputs_
+    sync_panels_ready() consults sync_stage_outputs_
     ready() first and returns ITS result whenever it isn't ready -- so
     sync_panels_ready().ready now implies sync_stage_outputs_ready().ready, and
     _make_sync_panels (which calls _make_sync_stage_outputs before writing the 3
     aggregates, for exactly this reason) can no longer construct "panels ready,
     stage outputs not" in isolation. This test therefore exercises BOTH predicates
-    ready together, not "sync panels" alone -- F1's "either" can no longer trigger
-    on panels alone, only on stage outputs (which the companion test below,
+    ready together, not "sync panels" alone -- the auto-detect guard's "either" can
+    no longer trigger on panels alone, only on stage outputs (which the companion test below,
     test_shards_absent_stage_outputs_present_no_flag_aborts, covers as the
     genuinely isolable case: stage outputs present, aggregate panels absent)."""
     env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path / "tick"),
@@ -293,7 +295,7 @@ def test_shards_absent_sync_panels_present_no_flag_aborts(tmp_path):
 
 
 def test_shards_absent_only_aggregate_panels_present_no_flag_aborts(tmp_path):
-    """P1 (Codex review): sync_panels_ready() delegates to sync_stage_outputs_ready()
+    """sync_panels_ready() delegates to sync_stage_outputs_ready()
     first, so with the raw stage outputs gone but the 2 shipped aggregate CSVs still
     on disk (a prior full build, then a scratch purge of the raw stage outputs -- or
     an unmounted TICKHISTORY_PATH, or a split_tickhistory.sh job killed before it
@@ -388,9 +390,11 @@ def test_capability_banner_is_not_mistaken_for_the_mode(tmp_path):
 
 def test_broken_venv_capability_check_falls_back_to_full(tmp_path):
     """If the capability check crashes outright (broken venv: import error, etc.),
-    run_all.sh must not abort under `set -e` -- the `|| _CAP=""` at :42 exists so a
+    run_all.sh must not abort under `set -e` -- the `|| _CAP=""` fallback in the
+    capability probe exists so a
     crash degrades to the same "assume --full" fallback as a missing venv, and
-    because MODE_EXPLICIT is correctly 0 here, the fail-fast re-check at :71 must
+    because MODE_EXPLICIT is correctly 0 here, the second, sync-artifact re-check
+    (only reached when MODE resolves to async-only) must
     stay unreached rather than re-running (and re-failing on) the same broken
     import."""
     repo = _fake_repo(tmp_path, python_stub=(
@@ -405,7 +409,7 @@ def test_broken_venv_capability_check_falls_back_to_full(tmp_path):
 
 
 def test_capability_check_error_is_surfaced_not_discarded(tmp_path):
-    """F7: the capability probe's stderr must no longer be thrown away (was
+    """The capability probe's stderr must no longer be thrown away (was
     2>/dev/null). A broken/partial `uv sync`, a .venv built for another
     interpreter, or a misresolved root previously yielded MODE=full with only
     "capability check failed; assuming --full" -- the actual import error was
@@ -426,20 +430,18 @@ def test_capability_check_error_is_surfaced_not_discarded(tmp_path):
 
 
 def test_full_mode_dag_matches_committed_baseline(tmp_path):
-    """Regression guard for the full-mode DAG's dependency edges. Step 8b's
-    comparison against a hand-captured DAG was a one-time manual check whose
-    original capture lives at .superpowers/sdd/dag-pre-task9.txt -- gitignored, so
-    this commits an equivalent copy under tests/data/dag-full-mode-baseline.txt.
+    """Regression guard for the full-mode DAG's dependency edges. This
+    comparison against a hand-captured DAG was originally a one-time manual check;
+    this commits an equivalent copy under tests/data/dag-full-mode-baseline.txt so
+    future runs can diff against it automatically.
     tests/test_capabilities.py's shard-stem guard only greps the two `for c in
     ...; do` class lists, so it can't catch dependency-edge regressions such as a
     dropped ${jLON2}, a tier-2 loop's ids never entering $TICK, or the london->ET
     serialization edge going missing.
 
-    This is the POST-Task-9 full-mode DAG (F11): it includes --full on the
-    build.sh/validate.sh lines, since passing an explicit mode through is current,
-    correct Task-9 behaviour. The original .superpowers/sdd/dag-pre-task9.txt
-    capture predates that and has no flag there -- this committed copy is not a
-    byte-for-byte copy of it, just an equivalent baseline captured after Task 9.
+    The committed baseline includes --full on the
+    build.sh/validate.sh lines, since passing an explicit mode through is the
+    current, correct run_all.sh behaviour.
     """
     _make_shards(tmp_path)
     env = {**os.environ, "TICKHISTORY_PATH": str(tmp_path)}

@@ -21,7 +21,7 @@ def _has_fx_synthetic_data() -> bool:
     return (FX_PATH / "synthetic_fx_returns_async.csv").exists()
 
 
-# --- Task 6: pin the OTHER hardcoded loop -------------------------------------------
+# --- Pin the OTHER hardcoded loop -----------------------------------------------------
 #
 # source_diagonal(datasets: tuple[str, ...] = ("sync", "async")) has its own default,
 # which mirrors the default _grade_sync() steers _invariants() away from. Both stubs
@@ -114,9 +114,9 @@ def test_skipping_never_manufactures_a_failing_invariant(monkeypatch):
         pytest.skip("no on-disk synthetic FX returns to test against")
     invs = synthetic_fx._invariants() + synthetic_equity._invariants()
     assert not any(i.value.startswith("0/0") for i in invs)
-    # DEVIATION from the original brief: its snippet checked `"sync futures" not in
-    # i.name`, which is itself the "async contains sync" trap the whole plan warns
-    # about -- "async futures" CONTAINS the substring "sync futures" (a-SYNC futures),
+    # A naive check of `"sync futures" not in
+    # i.name` would itself fall into the "async contains sync" trap --
+    # "async futures" CONTAINS the substring "sync futures" (a-SYNC futures),
     # so that check would spuriously fail even on a correct implementation. Assert the
     # exact expected name set instead: the only invariant that survives skipping is the
     # async-side one, named for its source, never the sync-side "Compustat ... sync
@@ -126,7 +126,7 @@ def test_skipping_never_manufactures_a_failing_invariant(monkeypatch):
     }
 
 
-# --- F1: the resolved MODE, not the sync-panel capability, must gate the sync half --
+# --- The resolved MODE, not the sync-panel capability, must gate the sync half -----
 
 def test_explicit_async_only_suppresses_sync_even_when_panels_are_ready(monkeypatch):
     """--async-only must win over sync_panels_ready() being True: the capability says
@@ -153,8 +153,9 @@ def test_full_mode_keeps_sync_when_panels_are_ready(monkeypatch):
 def test_grade_sync_defaults_to_the_capability_when_mode_is_unset(monkeypatch):
     """Nothing has called validation_mode() here -> current_mode() is "full" by
     default, so _grade_sync() reduces to sync_panels_ready().ready alone -- the
-    pre-Task-6 guard. This is what keeps _force_async's tests above correct without
-    them ever touching validation.mode."""
+    original guard, before mode-awareness was added. This is what keeps
+    _force_async's tests above correct without them ever touching
+    validation.mode."""
     assert current_mode() == "full"
     absent = Capability(False, None)
     monkeypatch.setattr(synthetic_fx, "sync_panels_ready", lambda: absent)
@@ -164,7 +165,7 @@ def test_grade_sync_defaults_to_the_capability_when_mode_is_unset(monkeypatch):
     assert synthetic_fx._grade_sync() is True
 
 
-# --- F4: the figure branching gets its own guard test, and its own coverage ---------
+# --- The figure branching gets its own guard test, and its own coverage --------------
 
 def test_synthetic_fx_figures_writes_nothing_under_async_only(tmp_path, monkeypatch):
     """Forced async-only, with the guard not bypassable via a ready capability: zero
@@ -201,17 +202,18 @@ def test_synthetic_equity_figures_writes_the_pdf_in_full_mode(tmp_path):
     assert (tmp_path / "equity_alignment.pdf").exists()
 
 
-# --- F2: dropped_invariants/dropped_figures must not drift from what _invariants()/
+# --- dropped_invariants/dropped_figures must not drift from what _invariants()/
 # _figures() actually produce in full mode. Entirely data-free (source_diagonal/
 # alignment/plot_paired_bars stubbed), so -- unlike the real-data tests above -- these
 # run on a clean clone / empty data roots too, where a stale static literal would
-# otherwise go uncaught (the reviewer's D3 mutation: "6 passed, 4 skipped").
+# otherwise go uncaught (e.g. silently reporting "6 passed, 4 skipped" when a
+# figure/invariant was quietly dropped).
 
 def test_synthetic_fx_full_mode_invariants_order_and_count(monkeypatch):
     """Pins the full-mode invariant NAMES/order/count synthetic_fx._invariants() emits
-    when both datasets are graded -- nothing did before (the older open finding F2
-    also closes). The names are literals, not re-derived from _SOURCES, so a rename of
-    _SOURCES (the reviewer's D1 mutation) is caught here directly, independent of the
+    when both datasets are graded -- nothing did before. The names are literals, not
+    re-derived from _SOURCES, so a rename of
+    _SOURCES is caught here directly, independent of the
     vrun-level dropped_invariants pin."""
     monkeypatch.setattr(synthetic_fx, "_grade_sync", lambda: True)
     stub = pl.DataFrame({
@@ -260,7 +262,7 @@ def test_synthetic_equity_full_mode_invariants_names_and_values(monkeypatch):
 
 
 def test_synthetic_fx_figure_path_matches_dropped_figures_data_free(monkeypatch, tmp_path):
-    """F2 proof for D3 (a renamed produced-figure filename): ties the ACTUAL path
+    """Proof that a renamed produced-figure filename is caught: ties the ACTUAL path
     _figures() hands to plot_paired_bars against Check.dropped_figures, entirely
     data-free -- so a drift is caught even under empty data roots, where
     test_synthetic_fx_figures_writes_the_pdf_in_full_mode (real-data) skips."""
@@ -276,7 +278,8 @@ def test_synthetic_fx_figure_path_matches_dropped_figures_data_free(monkeypatch,
 
 
 def test_synthetic_equity_figure_path_matches_dropped_figures_data_free(monkeypatch, tmp_path):
-    """Equity counterpart of the D3 proof above, data-free (alignment() stubbed)."""
+    """Equity counterpart of the renamed-figure-filename proof above, data-free
+    (alignment() stubbed)."""
     monkeypatch.setattr(synthetic_equity, "_grade_sync", lambda: True)
     stub = pl.DataFrame(
         {"instrument": ["X"], "same_day": [0.1], "lag_1": [0.2], "americas": [True]}

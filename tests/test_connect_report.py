@@ -1,4 +1,4 @@
-"""Tests for `globalmacro connect`'s capability report (Task 8).
+"""Tests for `globalmacro connect`'s capability report.
 
 Hermetic by construction: every test that reaches `cli.main(["connect", ...])`
 fakes out `wrds_credentials.get_wrds_credentials` and the `wrds` module itself, so
@@ -33,8 +33,8 @@ from globalmacro.utils.capabilities import Capability
 
 def _with_jkp_sectors(monkeypatch, tmp_path) -> None:
     """Construct a DATA_ROOT with the JKP sector file present, so the "can build"
-    verdict branches are reached without depending on this machine's real data/
-    (F15) -- since F14, `_capability_report` checks this file BEFORE the
+    verdict branches are reached without depending on this machine's real data/ --
+    `_capability_report` checks this file BEFORE the
     shard_cap.ready branch too, so any test that wants a "can build" verdict
     (SYNC-and-ASYNC or ASYNC-only) needs it constructed, not just the
     JKP-missing tests."""
@@ -54,7 +54,7 @@ def test_report_says_async_when_no_shards(tmp_path, monkeypatch):
 
 
 def test_report_says_both_when_shards_ready(tmp_path, monkeypatch):
-    """P2: the SYNC verdict now also requires the synced JKP file (shard_cap.ready
+    """The SYNC verdict now also requires the synced JKP file (shard_cap.ready
     gates build_synced_dataset's read of it), so this fixture must construct it too
     -- not just the async _jkp_sectors file _with_jkp_sectors already builds."""
     _with_jkp_sectors(monkeypatch, tmp_path)
@@ -92,9 +92,9 @@ def test_report_gives_a_remediation_hint_when_no_credentials():
 
 
 # ---------------------------------------------------------------------------
-# F6/F14: `connect` must not claim it can build the ASYNC datasets when the JKP
+# `connect` must not claim it can build the ASYNC datasets when the JKP
 # sector file build_async() needs unconditionally -- in BOTH modes -- is missing.
-# F14 (Reviewer B, BLOCKER): an earlier version of this section also probed
+# An earlier version of this section also probed
 # FX_PATH/synthetic_fx_returns_sync.csv, but that file is a pipeline OUTPUT
 # (fx.py's __main__ writes it), not a prerequisite -- it is absent on 100% of
 # clean clones, so that probe told every clean-clone researcher, including one
@@ -104,7 +104,7 @@ def test_report_gives_a_remediation_hint_when_no_credentials():
 # it in the two "can build" verdicts (see test_missing_synthetic_fx_sync_file_
 # no_longer_blocks_the_report below).
 #
-# F15: every test in this section constructs its own DATA_ROOT under tmp_path --
+# Every test in this section constructs its own DATA_ROOT under tmp_path --
 # never this machine's real data/ -- so it passes identically on a clean
 # researcher clone with nothing in data/jkp/.
 # ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ def test_report_names_missing_jkp_sectors_file(tmp_path, monkeypatch):
 
 
 def test_report_names_missing_jkp_sectors_file_says_it_blocks_any_dataset(tmp_path, monkeypatch):
-    """R2-3: build.main() calls build_async() (the function that reads the JKP
+    """build.main() calls build_async() (the function that reads the JKP
     sector file, via load_sectors_async()) UNCONDITIONALLY, before the `if mode ==
     "full"` branch that gates build_sync() -- so the missing file blocks SYNC just
     as much as ASYNC, not only ASYNC as the old wording implied."""
@@ -131,7 +131,7 @@ def test_report_names_missing_jkp_sectors_file_says_it_blocks_any_dataset(tmp_pa
 
 
 def test_report_names_missing_jkp_sectors_file_still_mentions_compustat(tmp_path, monkeypatch):
-    """R2-4: both "can build" verdict branches carry the Compustat-entitlement
+    """Both "can build" verdict branches carry the Compustat-entitlement
     reminder; the missing-JKP branch omitted it, so a researcher missing JKP never
     saw it even though Compustat is required in every mode too."""
     monkeypatch.setattr(pathsmod, "DATA_ROOT", tmp_path / "no-data")
@@ -140,10 +140,10 @@ def test_report_names_missing_jkp_sectors_file_still_mentions_compustat(tmp_path
 
 
 def test_missing_synthetic_fx_sync_file_no_longer_blocks_the_report(tmp_path, monkeypatch):
-    """F14 regression proof: FX_PATH/synthetic_fx_returns_sync.csv is a pipeline
+    """Regression proof: FX_PATH/synthetic_fx_returns_sync.csv is a pipeline
     OUTPUT, not a prerequisite -- a missing copy (the state of every clean clone)
     must no longer trigger the "needs one more file" verdict, only the
-    genuinely-manual JKP file can. JKP is present here (constructed, F15) so this
+    genuinely-manual JKP file can. JKP is present here (constructed) so this
     isolates the FX_PATH-is-now-ignored behaviour from the JKP check."""
     _with_jkp_sectors(monkeypatch, tmp_path)
     monkeypatch.setattr(pathsmod, "FX_PATH", tmp_path / "no-fx")   # never created
@@ -155,9 +155,9 @@ def test_missing_synthetic_fx_sync_file_no_longer_blocks_the_report(tmp_path, mo
 
 
 # ---------------------------------------------------------------------------
-# P2 (Codex review): build.py:633 reads
-# DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv in the full/sync build path
-# (build_synced_dataset), but the report previously checked only the ASYNC jkp
+# build_synced_dataset (build.py) reads
+# DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv in the full/sync build path,
+# but the report previously checked only the ASYNC jkp
 # file -- so a shard-ready machine missing the synced file was told it could
 # build the SYNC datasets, then failed later in `globalmacro build --full`.
 # ---------------------------------------------------------------------------
@@ -192,7 +192,7 @@ def test_exit_code_zero_when_jkp_missing(monkeypatch, tmp_path):
 
 
 def test_exit_code_zero_when_both_present_no_shards(tmp_path, monkeypatch):
-    """Both prerequisites present, no shards -- hermetic (F15): DATA_ROOT points
+    """Both prerequisites present, no shards -- hermetic: DATA_ROOT points
     at a constructed tmp_path with the JKP file actually on disk, never this
     machine's real files."""
     _with_jkp_sectors(monkeypatch, tmp_path)

@@ -9,7 +9,7 @@ written (and G10-daily-corr->0.95 validated) in `scripts/compare_4pm_london_fx.p
 carrying its own copy.
 
 `fx_futures_vs_spot_check` (registered in `validation/run.py`) is the promoted exercise:
-`run()` walks both modes ("et": the shipped 9:30-ET sync panel; "london": the Task-6
+`run()` walks both modes ("et": the shipped 9:30-ET sync panel; "london": the
 4pm-London-aligned panel) x every `SYMBOL_TO_CURCDD_MAPPING` currency, scoring each pair
 with `fx_futures_correlation`. Only G10-london rows are graded (`used=True`) -- see
 `G10_MAJORS` for why. `figures` is `plot_fx_vs_spot_comparison`, which writes ONE
@@ -40,18 +40,18 @@ from globalmacro.validation.plots import plot_fx_vs_spot_grid
 from globalmacro.validation.synthetic import pre_splice_panel
 
 # mode label -> the sync subdirectory it reads from. "et" (mode a) is the shipped ET sync
-# panel; "london" (mode b) is the Task-6 4pm-London-aligned sync panel and may not exist
+# panel; "london" (mode b) is the 4pm-London-aligned sync panel and may not exist
 # yet -- see `_load_currency_panel`.
 _MODES: tuple[tuple[str, str], ...] = (("et", "sync"), ("london", "sync_london"))
 
 # Grading is restricted to G10-london rows. Grounded in data/comp/{london_4pm,et}_
-# fx_futures_correlation.csv (Task 5/6 output): london-4pm G10 pearson runs 0.87-0.98
+# fx_futures_correlation.csv: london-4pm G10 pearson runs 0.87-0.98
 # (median of the 9 ~=0.98, >=0.95 -> PASS). ET is 0.80-0.87 for the SAME G10 currencies --
 # structurally capped below 0.95 by the ~1.5h 9:30-ET-vs-4pm-London timing gap between the
 # futures settle and the Compustat snapshot, not a data defect -- so ET is a visual
 # spike-free-tracking diagnostic only, never graded. EM (KRW 0.02, PLN 0.34, CZK -0.01,
 # CNY 0.20, ...) is peg/noise-dominated in both modes -- diagnostic only. Do not widen this
-# set without new grounding data; see emfx-task-7-brief.md.
+# set without new grounding data.
 G10_MAJORS = frozenset({"6A", "6C", "6J", "6B", "6E", "6N", "6S", "NOK", "SEK"})
 _MIN_OBS = 30
 
@@ -119,7 +119,7 @@ def _load_currency_panel(symbol: str, sync_dir: str) -> pl.DataFrame | None:
 
     Returns None (never raises) if neither tier has the file, or neither has the column --
     callers must skip missing panels rather than crash. `sync_london` in particular is a
-    Task-6 DAG output and may not have run yet.
+    DAG output and may not have run yet.
     """
     for tier in (1, 2):
         path = DATASETS_ROOT / f"tier{tier}" / sync_dir / "currency_daily_returns.csv"
@@ -181,7 +181,7 @@ def _blend_series(comp_levels: pl.DataFrame) -> dict[str, pl.DataFrame]:
     level differenced over the same futures gaps. On futures-covered days r_spot == r_fut;
     they diverge only the day after a futures holiday -> corr ~0.99.
 
-    Defensive (review C1): returns {} without touching the expensive pre_splice_panel
+    Defensive: returns {} without touching the expensive pre_splice_panel
     build if `comp_levels` carries no G10 currency (toy panels, non-G10-only runs), and
     swallows build_sync_fx_panel's zero-override guard -- so this validation helper never
     aborts the run; a genuinely all-USD real run surfaces as an empty {} -> the invariant

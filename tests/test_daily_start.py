@@ -189,7 +189,7 @@ def _add_months(d, months):
 
 @pytest.mark.parametrize("symbol,expected", sorted(EXPECTED_DAILY_START.items()))
 def test_the_shipped_series_starts_where_expected(symbol, expected):
-    # Passes only AFTER Task 5 regenerates spot_equity_returns.csv.
+    # Passes only after spot_equity_returns.csv is regenerated.
     spot = _spot()
     if symbol not in spot.columns:
         pytest.skip(f"{symbol} not in the shipped frame")

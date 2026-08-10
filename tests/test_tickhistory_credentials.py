@@ -28,7 +28,7 @@ def test_absent_when_only_username_set(monkeypatch):
 
 @pytest.mark.calls_real_validate_credentials
 def test_validate_credentials_never_leaks_on_request_construction_failure(monkeypatch, capsys):
-    """W1 regression: validate_credentials()'s try must start before body/Request
+    """validate_credentials()'s try must start before body/Request
     construction, not just around urlopen(). If it didn't, an exception raised while
     building the request -- which can carry the plaintext request body, i.e. the DSS
     password -- would propagate out of validate_credentials() uncaught, and a caller
@@ -59,7 +59,7 @@ def test_validate_credentials_never_leaks_on_request_construction_failure(monkey
 
 
 def test_network_guard_actually_replaces_validate_credentials():
-    """F3 regression: prove the repo-wide autouse `_no_live_lseg_network` fixture
+    """Prove the repo-wide autouse `_no_live_lseg_network` fixture
     (tests/conftest.py) has actually patched `tc.validate_credentials` for this test,
     not merely been defined and left unused. A conftest.py fixture guarding 349 tests
     can be reduced to a no-op (e.g. `calls = []; yield; assert calls == []` with the
@@ -70,19 +70,20 @@ def test_network_guard_actually_replaces_validate_credentials():
     module's name; the real `validate_credentials` lives in
     `globalmacro.tickhistory_credentials`. If the fixture stopped patching the
     attribute, `tc.validate_credentials` would be the real function again and this
-    assertion is what would catch it (task-10-report.md records the gutted-fixture
-    proof: with the `monkeypatch.setattr` call removed, this assertion fails).
+    assertion is what would catch it (with the `monkeypatch.setattr` call removed,
+    this assertion fails).
     """
     assert tc.validate_credentials.__module__ != "globalmacro.tickhistory_credentials"
 
 
 def test_network_guard_stub_records_keyword_argument_calls(pytester):
-    """F1 regression: the autouse `_no_live_lseg_network` stub in tests/conftest.py
+    """The autouse `_no_live_lseg_network` stub in tests/conftest.py
     installs `lambda *a, **k: calls.append(1) or False` against
     `validate_credentials(timeout: float = 10.0)`'s real signature. The pre-fix
     zero-arg stub (`lambda: calls.append(1) or False`) raises `TypeError` before
     `calls.append(1)` runs on any keyword-argument call; a caller that wraps the call
-    in `except Exception` (cli.py:173 does) swallows that `TypeError`, and the
+    in `except Exception` (cli.py's `main()`, in the `connect` branch, does) swallows
+    that `TypeError`, and the
     guard's own teardown assertion then passes -- reporting "never called" for what
     would be a live HTTPS request in production.
 
@@ -95,7 +96,7 @@ def test_network_guard_stub_records_keyword_argument_calls(pytester):
     the SAME item's teardown then errors, because the call WAS recorded (`calls ==
     [1]`, not `[]`). One passed test plus one teardown error is the proof that a
     keyword-argument call is still caught, not silently lost -- and it is also a live
-    demonstration of F2's corrected report: PASSED in the test body, error only at
+    demonstration of the corrected report: PASSED in the test body, error only at
     teardown, so only the exit code (not a skim for "PASSED") is honest.
 
     (Feeding the pre-fix zero-arg stub through this identical scratch run instead

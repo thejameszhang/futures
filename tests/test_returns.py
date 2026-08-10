@@ -14,7 +14,7 @@ def test_returns_until_expiry_no_roll_is_price_ratio():
         "settlement_1": [100.0, 110.0, 121.0],
         "settlement_2": [200.0, 200.0, 200.0],      # unused in no-roll branch, must exist
     })
-    # Post-currency-switch (Task 0.1), calc_returns_until_expiry returns a single
+    # Post-currency-switch, calc_returns_until_expiry returns a single
     # local expr reading settlement_{i} (no `_local` sibling), aliased ret_temp_{i}.
     out = df.with_columns(calc_returns_until_expiry(1, "settlement"))
     ret = out["ret_temp_1"].to_list()

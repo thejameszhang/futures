@@ -133,7 +133,7 @@ def _grade_sync() -> bool:
     data-free: neither operand reads a file, so this is unit-testable by monkeypatching
     sync_panels_ready and setting the mode via validation.mode.validation_mode, with no
     real data involved. Defaults to sync_panels_ready().ready alone whenever nothing has
-    set the mode (current_mode()'s own default is "full") -- the pre-Task-6 behaviour."""
+    set the mode (current_mode()'s own default is "full") -- the original behaviour."""
     return current_mode() == "full" and sync_panels_ready().ready
 
 

@@ -51,7 +51,7 @@ def _capability_report(
     if present is None:
         present = creds
 
-    # F6/F14: the JKP sector file is a genuine, manual, never-downloadable
+    # The JKP sector file is a genuine, manual, never-downloadable
     # prerequisite -- load_sectors_async() reads it unconditionally, in BOTH
     # modes (build.main() always runs build_async() first, even under --full).
     # Flagging it pre-run is correct and valuable: a missing copy otherwise
@@ -59,9 +59,8 @@ def _capability_report(
     # paths.py rather than assumed: DATA_ROOT is the real constant
     # load_sectors_async() resolves its path from (build.py).
     #
-    # F14 (Reviewer B, BLOCKER): this used to ALSO probe
-    # FX_PATH/synthetic_fx_returns_sync.csv. That file is a pipeline OUTPUT, not a
-    # prerequisite -- fx.py's __main__ writes it via
+    # Do not probe FX_PATH/synthetic_fx_returns_sync.csv here: that file is a
+    # pipeline OUTPUT, not a prerequisite -- fx.py's __main__ writes it via
     # build_synthetic(fx_sync).write_csv(...) -- so it is absent on 100% of clean
     # clones, including a researcher with full Compustat entitlement who has done
     # everything right. No file-presence check can establish a Compustat
@@ -70,8 +69,8 @@ def _capability_report(
     # verdict branches below replaces the check with a plain statement instead.
     _jkp_sectors = _paths.DATA_ROOT / "jkp" / "updated_daily_ind_gics.csv"
     missing_manual_prereqs = [] if _jkp_sectors.exists() else [_jkp_sectors]
-    # P2 (Codex review): build.py:633 reads DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv
-    # in the full/sync build path (build_synced_dataset), and capabilities.py's
+    # build_synced_dataset (build.py) reads DATA_ROOT/jkp/updated_daily_ind_gics_synced.csv
+    # in the full/sync build path, and capabilities.py's
     # sync_stage_outputs_ready() docstring already flags that this file sits outside its
     # predicate -- a manual input, never a pipeline output, verified against USAGE.md's
     # Manual Prerequisite Data Files section, same as _jkp_sectors above. Checked only
@@ -106,9 +105,9 @@ def _capability_report(
     lines.append(f"Tick data:         {tick}")
     if shard_cap.message:
         lines.append(f"                   {shard_cap.message}")
-    # F14: the JKP check now runs BEFORE the shard_cap.ready branch, not only in
-    # its own elif -- the round-1 asymmetry this closes let a shard-ready machine
-    # missing the JKP file be told "can build the SYNC and ASYNC datasets" (JKP
+    # The JKP check runs BEFORE the shard_cap.ready branch, not only in
+    # its own elif -- otherwise a shard-ready machine
+    # missing the JKP file could be told "can build the SYNC and ASYNC datasets" (JKP
     # gates build_async(), which build.main() calls unconditionally in every
     # mode, so shard readiness alone never implied JKP readiness). Applying the
     # SAME corrected check to both success branches, rather than adding a second,
@@ -118,7 +117,7 @@ def _capability_report(
         # Named and pointed at USAGE.md rather than left to a later
         # FileNotFoundError or a DAG stalled behind a failed `comp` download.
         #
-        # R2-3: the missing JKP file blocks BOTH modes, not just async -- verified
+        # The missing JKP file blocks BOTH modes, not just async -- verified
         # against build.py's own main(), which calls build_async() (the function
         # that reads this file, via load_sectors_async()) UNCONDITIONALLY, before
         # the `if mode == "full"` branch that gates build_sync(). A full-mode run
@@ -130,10 +129,11 @@ def _capability_report(
         for p in missing_manual_prereqs:
             lines.append(f"   {p}")
         lines.append("   See USAGE.md's Detailed Data Prerequisites section.")
-        # R2-4: both "can build" branches below carry this reminder; a researcher
+        # Both "can build" branches below carry this reminder; a researcher
         # missing the JKP file needs it just as much (Compustat gates the OTHER
         # manual prerequisite this same report can't verify from a file on disk --
-        # see the F14 note above), and previously never saw it.
+        # see the note above about FX_PATH/synthetic_fx_returns_sync.csv), and
+        # previously never saw it.
         lines.append("   Also requires a Compustat entitlement (comp.exrt_dly) -- see USAGE.md.")
     elif shard_cap.ready:
         lines.append("-> This machine can build the SYNC and ASYNC datasets.")

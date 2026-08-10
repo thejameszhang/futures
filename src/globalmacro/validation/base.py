@@ -134,7 +134,7 @@ def write_summary(
             "in this mode -- named explicitly rather than silently absent (spec §4.6).",
         ]
         if stale_figures_may_remain:
-            # F13: this mode was AUTO-detected, not explicitly requested -- deleting
+            # This mode was AUTO-detected, not explicitly requested -- deleting
             # figures from an earlier full run on a machine the researcher never
             # asked to downgrade is at least as risky as silently overwriting them,
             # so nothing was removed. Disclose the possibility instead of letting the

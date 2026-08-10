@@ -28,17 +28,17 @@ from globalmacro.validation.synthetic_fx import synthetic_fx_check
 # The literal filename check.pairs's render (via plot_comparison below) writes to,
 # and the convention every check.figures implementation in this codebase also
 # follows for its primary comparison figure (see fx_futures.plot_fx_vs_spot_comparison).
-# Named once here so F9's stale-figure cleanup references the SAME string the write
+# Named once here so _stale_figure_paths's cleanup references the SAME string the write
 # site uses, rather than a second, independently-typed literal that could drift.
 _COMPARISON_PDF = "comparison.pdf"
 
-# F16: the literal filename the main() loop writes EVERY check's graded correlations
+# The literal filename the main() loop writes EVERY check's graded correlations
 # to, unconditionally (regardless of check.pairs/check.figures) -- named once here for
 # the same reason _COMPARISON_PDF is, so the stale-figure cleanup's second reference to
 # it cannot drift from the write site.
 _CORRELATIONS_CSV = "correlations.csv"
 
-# F16: the symbol_counts/ subdirectory name, used at both the write site (main(),
+# The symbol_counts/ subdirectory name, used at both the write site (main(),
 # below) and the stale-figure cleanup (_stale_figure_paths) -- same drift concern.
 _SYMBOL_COUNTS_DIR = "symbol_counts"
 
@@ -48,8 +48,8 @@ def _available_checks(mode: str = "full"):
               synthetic_equity_check, spot_fx_check, fx_futures_vs_spot_check]
     try:
         from globalmacro.validation.external_comparison import external_check
-        # F4: external_comparison.py is gitignored and untracked (confidential-
-        # adjacent, .gitignore:34) -- it CANNOT carry requires_sync=True itself and
+        # external_comparison.py is gitignored and untracked (confidential-
+        # adjacent) -- it CANNOT carry requires_sync=True itself and
         # have that travel with the merge; a local edit to a gitignored file is
         # invisible to `git status` and to review, and any clone/worktree with a
         # different (or default requires_sync=False) copy would run this check in
@@ -89,7 +89,7 @@ def _dropped_figures(mode: str) -> list[str]:
 
 
 def _dropped_symbol_count_stems(mode: str) -> list[str]:
-    """F16: which _SYMBOL_COUNT_SOURCES entries THIS mode's _symbol_count_sources
+    """Which _SYMBOL_COUNT_SOURCES entries THIS mode's _symbol_count_sources
     filters out -- derived from that function's own filter, the same way
     _dropped_figures derives from Check.dropped_figures, rather than a fresh
     "tier1_sync_daily" literal that could drift out of sync with it."""
@@ -100,7 +100,7 @@ def _dropped_symbol_count_stems(mode: str) -> list[str]:
 
 
 def _stale_figure_paths(mode: str) -> list[Path]:
-    """F9/F16: after a full run, an async-only run's own VALIDATION_SUMMARY.md calls a
+    """After a full run, an async-only run's own VALIDATION_SUMMARY.md calls a
     check/figure SKIPPED while its artifacts may still be sitting on disk from that
     earlier full run -- the summary says one thing, the tree says another. Names the
     on-disk paths that must not survive an async-only run, from three sources ONLY
@@ -219,23 +219,24 @@ def _parse_args(argv=None):
 def main(argv=None):
     args = _parse_args(argv)
     mode = resolve_mode(args.mode, sync_panels_ready(), "validate")
-    # F13: whether async-only was ASKED for, distinct from `mode`, which is also
+    # Whether async-only was ASKED for, distinct from `mode`, which is also
     # true after an auto-detected downgrade. Only the explicit case may delete
     # anything -- see the _remove_stale_figures call site below.
     #
-    # R2-1 (Opus review, both reviewers independently, PROVED): F13 alone still
+    # Checking `args.mode == "async-only"` alone still
     # collapses when reached via `globalmacro run` -- slurm/run_all.sh forwards the
     # RESOLVED mode as an explicit `--async-only` on the sbatch command line whether
     # a researcher typed it or it was auto-detected from a machine that lost its tick
-    # shards but kept stale sync artifacts (Task 9's design). `args.mode` cannot
+    # shards but kept stale sync artifacts (a deliberate run_all.sh design choice).
+    # `args.mode` cannot
     # distinguish those two on its own; GM_MODE_AUTODETECTED is the side channel
     # run_all.sh sets (only when MODE_EXPLICIT=0) precisely so this can. Its absence
     # (a direct `globalmacro validate --async-only` invocation, or any other caller)
-    # leaves this identical to the F13 check alone.
+    # leaves this identical to checking `args.mode == "async-only"` alone.
     explicit_async_only = (
         args.mode == "async-only" and os.environ.get("GM_MODE_AUTODETECTED") != "1"
     )
-    # F5a: record which mode produced this run's output, as the first line of
+    # Record which mode produced this run's output, as the first line of
     # stdout. Stdout-only -- does not alter any graded number or write to a file.
     print(f"mode: {mode}")
     if mode == "full":
@@ -277,7 +278,7 @@ def main(argv=None):
                   f"mean={r.mean:.4f} min={r.minimum:.4f} (<0.80: {r.n_below})")
 
             if check.invariants is not None:
-                # F3b: sync_panels_ready()/sync_stage_outputs_ready() (F3a) still don't
+                # sync_panels_ready()/sync_stage_outputs_ready() still don't
                 # cover EVERY file this can transitively read -- build_synced_dataset()
                 # also reads a hand-placed MANUAL prerequisite (see
                 # sync_stage_outputs_ready()'s docstring) that is deliberately excluded
@@ -292,7 +293,7 @@ def main(argv=None):
                 try:
                     computed_invariants = check.invariants()
                 except FileNotFoundError as e:
-                    # N4 (Reviewer B): the original wording offered `build --full` as
+                    # The original wording offered `build --full` as
                     # the FIRST remedy, but the reachable cause here is a hand-placed
                     # MANUAL prerequisite (see sync_stage_outputs_ready()'s docstring
                     # above) that `build --full` would also fail on -- rebuilding
@@ -348,13 +349,13 @@ def main(argv=None):
     for name in dropped_figures:
         print(f"[SKIP] figure: {name} SKIPPED (async-only run)")
 
-    # F9/F13: an async-only run must not leave stale PDFs from an earlier full run on
+    # An async-only run must not leave stale PDFs from an earlier full run on
     # disk while its own summary calls them SKIPPED -- that is the output actively
     # lying, not merely omitting. No-op in full mode (see _remove_stale_figures).
     #
-    # F13 (Reviewer A, PROVED): F9 originally keyed on the RESOLVED mode alone, so it
+    # The stale-figure cleanup originally keyed on the RESOLVED mode alone, so it
     # fired on an auto-detected downgrade the researcher never asked for -- inverting
-    # F1's own principle that auto-detect may only downgrade a machine that has never
+    # the principle that auto-detect may only downgrade a machine that has never
     # built the sync half. Deletion of shipped artifacts must be at least as
     # conservative as refusing to submit a DAG: only an EXPLICIT --async-only may
     # delete anything. On an auto-detected downgrade, delete nothing and disclose the

@@ -13,14 +13,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."          # repo root
 S=slurm
 
-# A's TRIVIAL 1: every temp file this script creates (the capability-probe stderr
+# Every temp file this script creates (the capability-probe stderr
 # capture below, and the dry-run job-id counter further down) is cleaned up on ANY
 # exit, including a `set -e` abort in between two mktemp calls -- not just the
 # happy path. Installed here, before the FIRST mktemp, and appended to (never
 # re-registered) by each: a second `trap ... EXIT` would silently REPLACE this one
 # rather than add to it, un-covering whatever it already tracked.
 _TMPFILES=()
-# R2-2 (portability): "${_TMPFILES[@]-}" not "${_TMPFILES[@]}" -- with an EMPTY
+# For portability: "${_TMPFILES[@]-}" not "${_TMPFILES[@]}" -- with an EMPTY
 # array (the state at every exit before the first mktemp call below), bash <= 4.3
 # treats "${arr[@]}" as an unset-variable reference under `set -u` and aborts. This
 # cluster runs bash 5.1.8 (unaffected), but the `-` default keeps the trap itself
@@ -49,7 +49,7 @@ done
 # run_all.sh must stay usable for --dry-run on a machine with no built venv.
 if [ -z "$MODE" ]; then
   if [ -x .venv/bin/python ]; then
-    # F7: capture the probe's stderr instead of discarding it (was 2>/dev/null) --
+    # Capture the probe's stderr instead of discarding it (was 2>/dev/null) --
     # a broken/partial `uv sync`, a .venv built for another interpreter, or a
     # misresolved root previously yielded MODE=full with only "capability check
     # failed; assuming --full" and the actual import error thrown away. The
@@ -91,9 +91,9 @@ print(c.message or '')
 fi
 echo "mode=$MODE" >&2
 
-# R2-1 (Opus review, both reviewers independently): mark whether $MODE was TYPED by
+# Mark whether $MODE was TYPED by
 # the researcher or AUTO-detected from disk. Every `submit ... "--$MODE"` call below
-# forwards the RESOLVED mode as an explicit flag either way (by design, Task 9) --
+# forwards the RESOLVED mode as an explicit flag either way (by design) --
 # so a bare argv (e.g. validate.sh's "$@") cannot tell an auto-detected async-only
 # downgrade nobody asked for apart from a deliberate --async-only. Exporting here,
 # before the first submit()/sbatch call, is enough for every job this script
@@ -133,7 +133,7 @@ from globalmacro.utils.paths import DATASETS_ROOT
 found = []
 if sync_stage_outputs_ready().ready:
     found.append('tickhistory stage outputs under datasets/tier{1,2}/sync/')
-# P1 (Codex review): sync_panels_ready() DELIBERATELY delegates to
+# sync_panels_ready() DELIBERATELY delegates to
 # sync_stage_outputs_ready() first (see its docstring) -- so with the raw stage
 # outputs deleted (disk reclaim) but the shipped aggregate CSVs still on disk from
 # a prior full build, BOTH predicates report not-ready and this guard stayed blind

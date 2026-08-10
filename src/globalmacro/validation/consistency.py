@@ -78,7 +78,7 @@ def _consistency_pairs() -> pl.DataFrame:
     async_m = compute_monthly_returns(_load(DATASETS_ROOT / "tier1" / "async" / "async_daily.csv"))
     # tier1.yaml names, plus the 11 GICS Select-Sector tickers that appear in the
     # datasets but not tier1.yaml (else their panels read "XAB (XAB)"). Sector
-    # labels are build.py:32-44's GICS-code -> ticker comments.
+    # labels mirror the inline comments beside build.py's GICS_SECTOR_TICKERS entries.
     _SECTOR_NAMES = {
         "XAE": "Energy", "XAB": "Materials", "XAI": "Industrials",
         "XAY": "Consumer Discretionary", "XAP": "Consumer Staples",

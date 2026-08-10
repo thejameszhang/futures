@@ -5,8 +5,8 @@ import pytest
 
 FX = Path(__file__).resolve().parents[1] / "src" / "globalmacro" / "pipeline" / "fx.py"
 
-# The two async OUTPUT FILENAMES, not the producing variable name. F8 (Reviewer B,
-# proved by AST simulation): the old guard anchored on the variable name `fx_async`,
+# The two async OUTPUT FILENAMES, not the producing variable name (proved by AST
+# simulation): the old guard anchored on the variable name `fx_async`,
 # so binding the synthetic result to an intermediate -- `synth_async =
 # build_synthetic(fx_async)` above the Compustat call, then `synth_async.write_csv(...)`
 # below it -- left only ONE statement matching "fx_async" AND ".write_csv", so the old
@@ -75,8 +75,8 @@ def test_fx_async_is_written_before_compustat_is_touched():
 
 
 def test_guard_fires_on_the_intermediate_variable_mutant():
-    """F8 (Reviewer B, proved by AST simulation; the fix was written at Task 4 and
-    never applied). Prove the FIXED guard actually rejects the exact regression it
+    """Proved by AST simulation; the fix was written but
+    never applied. Prove the FIXED guard actually rejects the exact regression it
     exists to prevent, rather than merely describing it: build the intermediate-
     variable mutant as a literal source string, run the guard's statement
     extraction over it, and assert the guard FAILS (raises AssertionError).

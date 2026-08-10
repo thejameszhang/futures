@@ -226,7 +226,7 @@ def test_fx_vs_spot_panels_clips_to_shipped_window(monkeypatch):
         return None
 
     monkeypatch.setattr(fx_futures, "_load_currency_panel", fake_loader)
-    # Mirrors how Task-8 tests inject panels via `_load_currency_panel`/
+    # Mirrors how other tests inject panels via `_load_currency_panel`/
     # `save_compustat_fx_rates`: monkeypatch the sync_daily-derived shipped-window
     # lookup directly, so the test has no filesystem coupling to the real
     # tier2/sync/sync_daily.csv.

@@ -221,15 +221,15 @@ def _find_main_function(tree: ast.Module) -> ast.FunctionDef:
     raise AssertionError(f"{BUILD_PY}: no `def main(...):` function found")
 
 
-def test_f5b_build_mode_is_logged_as_the_first_statement_in_main():
-    """F5b (DELIBERATE, OWNER-APPROVED, the one exception to 'no economic logic
-    changes' in this fix round): 'build mode: <mode>' must be main()'s first
+def test_build_mode_is_logged_as_the_first_statement_in_main():
+    """Deliberate, owner-approved -- the one exception to 'no economic logic
+    changes': 'build mode: <mode>' must be main()'s first
     EFFECTIVE (output-producing) statement, so validation_report.txt -- written by
     the FileHandler attached in the __main__ block before main() is called --
     records its own provenance as its first line. Adds exactly one line; changes no
     number and no dataset.
 
-    A's TRIVIAL 2 (this fix round): main()'s literal FIRST statement is now
+    main()'s literal FIRST statement is now
     `_validate_mode(mode)`, not the log call -- the old order let `main("Bogus")`
     write "build mode: Bogus" and only THEN raise. _validate_mode produces no
     output of its own for a valid mode (proven directly, not assumed, in
@@ -289,7 +289,7 @@ def test_f5b_build_mode_is_logged_as_the_first_statement_in_main():
 
 
 def test_validate_mode_produces_no_output_for_a_valid_mode(caplog, capsys):
-    """A's TRIVIAL 2: the reorder above (validate, then log) is only safe -- i.e.
+    """The reorder above (validate, then log) is only safe -- i.e.
     only preserves 'build mode: <mode>' as the first line written to
     validation_report.txt -- if _validate_mode itself writes NOTHING for a valid
     mode. Proven directly rather than assumed: zero log records at ANY level
@@ -311,7 +311,7 @@ def test_folders_to_create_is_mode_dependent():
     """Static AST assertion, no filesystem access and no import of build.
 
     Nothing in the test suite otherwise checks that async-only mode skips
-    creating datasets/tier{1,2}/sync (Step 6) -- a future edit could delete the
+    creating datasets/tier{1,2}/sync -- a future edit could delete the
     mode-dependent filter and stay green while `globalmacro build --async-only`
     advertised a sync/ tree it never fills. This pins the shape of the fix rather
     than its exact filter expression: the resolved-mode variable bound by

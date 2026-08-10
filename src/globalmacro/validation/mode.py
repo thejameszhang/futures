@@ -17,7 +17,7 @@ process test.
 
 Default is "full": a caller that reaches a check's _invariants()/_figures() without going
 through run.py's `with validation_mode(mode):` block -- a unit test invoking the function
-directly, e.g. -- gets the pre-Task-6 behaviour, where the sync/async split was governed
+directly, e.g. -- gets the original behaviour, where the sync/async split was governed
 by sync_panels_ready() alone.
 
 Validated, not just typed: validation_mode() rejects anything outside {"full",

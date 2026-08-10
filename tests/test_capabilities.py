@@ -110,7 +110,7 @@ def test_resolve_mode():
 
 
 def test_resolve_mode_auto_prints_diagnostic_on_partial_state(capsys):
-    """F2: the auto path must not throw away cap.message -- a partial state (e.g. 6
+    """The auto path must not throw away cap.message -- a partial state (e.g. 6
     of 10 tickhistory stage outputs present) must surface it, on stderr only."""
     partial = cap.Capability(False, "missing tickhistory stage outputs: foo.csv")
     mode = cap.resolve_mode(None, partial, "build")
@@ -206,7 +206,7 @@ def _make_sync_panels(root, present):
 
 def test_sync_panels_all_present_is_ready(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
-    # F3a: sync_panels_ready() now consults sync_stage_outputs_ready() first, so a
+    # sync_panels_ready() consults sync_stage_outputs_ready() first, so a
     # healthy check needs the 10 stage outputs on disk too, not just the 3 aggregates.
     _make_sync_stage_outputs(tmp_path, cap.SYNC_STAGE_OUTPUTS)
     _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
@@ -237,14 +237,14 @@ def test_sync_panels_partial_names_the_missing_files(tmp_path, monkeypatch):
     assert "tier2/sync/sync_daily.csv" in c.message
 
 
-# --- F3a: sync_panels_ready() must agree with sync_stage_outputs_ready() -----------
+# --- sync_panels_ready() must agree with sync_stage_outputs_ready() ----------------
 
 
 def test_sync_panels_ready_defers_to_stage_outputs_when_they_disagree(tmp_path, monkeypatch):
-    """Reviewer B's exact defect: the 3 aggregate panels present, but the raw
+    """The exact defect this guards against: the 3 aggregate panels present, but the raw
     tickhistory stage outputs gone (a researcher reclaiming disk after a full run).
-    Before F3a this reported ready=True (validate resolves full) while build's own
-    sync_stage_outputs_ready()-based check reported not-ready (build resolves
+    Before this fix, sync_panels_ready() reported ready=True (validate resolves full) while
+    build's own sync_stage_outputs_ready()-based check reported not-ready (build resolves
     async-only) -- a silent disagreement. Now both must agree: not ready."""
     monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
     _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
@@ -276,7 +276,8 @@ def test_sync_panels_ready_silent_on_genuinely_clean_tree(tmp_path, monkeypatch)
 
 
 def test_healthy_full_machine_all_four_predicates_ready(tmp_path, monkeypatch):
-    """F3a must be a no-op on a healthy full machine: all 10 stage outputs, all 3
+    """sync_panels_ready()'s consultation of sync_stage_outputs_ready() must be a
+    no-op on a healthy full machine: all 10 stage outputs, all 3
     sync panels, matching async panels (for freshness), and a full tick-shard tree
     all present -> every predicate reports ready."""
     monkeypatch.setattr(cap, "TICKHISTORY_PATH", tmp_path / "tick")
@@ -300,7 +301,8 @@ def test_healthy_full_machine_all_four_predicates_ready(tmp_path, monkeypatch):
 
 
 def _collapse(cls: str) -> str:
-    """Mirrors tickhistory.py:719 -- us_equity and nonus_equity share one shard set."""
+    """Mirrors tickhistory.py's `__main__` block -- us_equity and nonus_equity share
+    one shard set."""
     return "equity" if "equity" in cls else cls
 
 

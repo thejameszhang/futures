@@ -22,7 +22,8 @@ def datasets_root(tmp_path, monkeypatch):
 
 def _frame(cols):
     # datetime.date, NOT pl.date() -- the latter is an expression and yields an
-    # Object column that write_csv rejects. See tests/test_usd_build.py:44.
+    # Object column that write_csv rejects. See tests/test_usd_build.py's
+    # test_save_usd_datasets_uses_async_vs_sync_fx, which uses the same pattern.
     return pl.DataFrame({"date": [date(2020, 1, 1)], **{c: [0.01] for c in cols}})
 
 
@@ -67,8 +68,8 @@ def test_save_usd_datasets_writes_no_sync_usd_when_fx_sync_is_none(datasets_root
 def test_save_usd_datasets_writes_no_sync_usd_when_synced_frames_are_none(datasets_root):
     """Pins the `tier1_synced is not None` / `tier2_synced is not None` operands of
     the guards at build.py independently of `fx_sync is not None`: fx_sync here is
-    a REAL frame, so a guard mutated down to bare `if fx_sync is not None:` (the
-    anti-pattern the brief forbids) would try to convert a `None` sync panel and
+    a REAL frame, so a guard mutated down to bare `if fx_sync is not None:` (an
+    anti-pattern) would try to convert a `None` sync panel and
     must be caught -- either by writing a sync _usd file (wrong) or by crashing
     inside save_usd_datasets, both of which fail this test."""
     a = _frame(["ES"])

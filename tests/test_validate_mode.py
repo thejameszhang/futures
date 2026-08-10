@@ -34,7 +34,7 @@ def test_symbol_count_sources_survives_sync_in_root_path(monkeypatch):
     env-configurable (FUTURES_DATASETS_ROOT) and can itself contain a "sync" path
     component (e.g. a relocated data directory under .../sync/datasets). A path-
     substring filter ("/sync/" in the full path) would then match every source's path
-    and silently drop all of them -- exactly the failure the reviewer demonstrated."""
+    and silently drop all of them -- exactly this failure mode."""
     root = Path("/data/sync/datasets")
     sources = [
         ("tier1_sync_daily", root / "tier1" / "sync" / "sync_daily.csv", "x"),
@@ -52,9 +52,9 @@ def test_validate_parses_modes():
     assert vrun._parse_args([]).mode is None
 
 
-def test_available_checks_full_mode_matches_pre_task5_shape():
+def test_available_checks_full_mode_matches_original_shape():
     """Pins that mode="full" (the default) returns the identical checks, in the
-    identical order, that the pre-Task-5 zero-argument _available_checks() returned --
+    identical order, that the original zero-argument _available_checks() returned --
     the filter must be inert in full mode.
 
     "external" is deliberately NOT asserted as present: external_comparison.py is
@@ -77,7 +77,7 @@ def test_skipped_checks_empty_outside_async_only():
 
 def test_skipped_checks_names_the_dropped_full_mode_checks():
     """"external" is only asserted when present -- see the docstring on
-    test_available_checks_full_mode_matches_pre_task5_shape for why it may legitimately
+    test_available_checks_full_mode_matches_original_shape for why it may legitimately
     be absent on a clean clone. The expected count is derived from requires_sync rather
     than hard-coded, so it tracks whichever checks are actually importable."""
     skipped = vrun._skipped_checks("async-only")
@@ -91,7 +91,7 @@ def test_skipped_checks_names_the_dropped_full_mode_checks():
 
 
 def test_available_checks_degrades_gracefully_without_external_module(monkeypatch):
-    """F1 proof: simulates a clean clone, where external_comparison.py (gitignored,
+    """Simulates a clean clone, where external_comparison.py (gitignored,
     confidential, local-only) does not exist on disk at all. Evicts any cached import
     and installs a meta_path finder that makes the module unimportable -- the same
     mechanism a genuinely absent file produces -- rather than relying on it merely
@@ -124,12 +124,12 @@ def test_available_checks_degrades_gracefully_without_external_module(monkeypatc
     assert len(skipped) == len(expected)
 
 
-# --- F4: requires_sync=True for the external check must live in TRACKED code -------
+# --- requires_sync=True for the external check must live in TRACKED code ----------
 
 
 def test_external_check_requires_sync_is_forced_in_tracked_code(monkeypatch):
-    """F4 (Reviewer A, proved). external_comparison.py is gitignored and untracked
-    (.gitignore:34) -- a local requires_sync=True there is invisible to `git status`
+    """external_comparison.py is gitignored and untracked
+    -- a local requires_sync=True there is invisible to `git status`
     and does not travel with the merge; anywhere with a different copy would run
     this check in async-only mode and try to read tier1/sync/sync_daily.csv, which
     doesn't exist there. _available_checks must force requires_sync=True in tracked
@@ -179,7 +179,7 @@ def test_sync_panels_fresh_when_written_alongside_async(tmp_path, monkeypatch):
 
 
 def test_sync_panels_stale_after_async_only_rebuild(tmp_path, monkeypatch):
-    """The exact scenario the reviewer flagged: a full build wrote both halves
+    """The exact scenario this guards against: a full build wrote both halves
     together, then a later async-only build rewrote only the async panel."""
     monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
     _touch(tmp_path / "tier1" / "sync" / "sync_daily.csv", 1_000_000)
@@ -197,10 +197,10 @@ def test_sync_panels_stale_after_async_only_rebuild(tmp_path, monkeypatch):
     assert "tier2" in c.message
 
 
-# --- F5a: the resolved mode is printed as the first line of validate's stdout -----
+# --- The resolved mode is printed as the first line of validate's stdout ----------
 
 
-def test_f5a_mode_is_the_first_line_of_stdout_full(monkeypatch, tmp_path, capsys):
+def test_mode_is_the_first_line_of_stdout_full(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
     monkeypatch.setattr(vrun, "_available_checks", lambda mode: [])
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
@@ -212,7 +212,7 @@ def test_f5a_mode_is_the_first_line_of_stdout_full(monkeypatch, tmp_path, capsys
     assert out.splitlines()[0] == "mode: full"
 
 
-def test_f5a_mode_is_the_first_line_of_stdout_async_only(monkeypatch, tmp_path, capsys):
+def test_mode_is_the_first_line_of_stdout_async_only(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
     monkeypatch.setattr(vrun, "_available_checks", lambda mode: [])
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
@@ -223,7 +223,7 @@ def test_f5a_mode_is_the_first_line_of_stdout_async_only(monkeypatch, tmp_path, 
     assert out.splitlines()[0] == "mode: async-only"
 
 
-# --- F3: validate can resolve full and then die with a raw traceback --------------
+# --- validate can resolve full and then die with a raw traceback ------------------
 
 
 def _make_sync_stage_outputs(root, pairs):
@@ -245,15 +245,16 @@ def _make_sync_panels(root, present):
         p.write_text("date\n")
 
 
-def test_f3a_disagreement_state_now_resolves_async_only(tmp_path, monkeypatch):
-    """Reviewer B's exact scratch-root scenario: a researcher reclaims disk after a
+def test_disagreement_state_now_resolves_async_only(tmp_path, monkeypatch):
+    """The exact scratch-root scenario this guards against: a researcher reclaims disk
+    after a
     full run -- the 3 aggregate sync panels remain, but the raw tickhistory stage
-    outputs are gone. Before F3a, sync_panels_ready() (validate's own predicate)
+    outputs are gone. Before this fix, sync_panels_ready() (validate's own predicate)
     only checked those 3 files and reported ready=True, so an unflagged `globalmacro
     validate` resolved "full" while `globalmacro build` (which checks
     sync_stage_outputs_ready() directly) resolved "async-only" -- a silent
-    disagreement. F3a makes sync_panels_ready() consult sync_stage_outputs_ready()
-    first, so validate's own auto-resolution now agrees with build's: async-only."""
+    disagreement. sync_panels_ready() now consults sync_stage_outputs_ready()
+    first, so validate's own auto-resolution agrees with build's: async-only."""
     monkeypatch.setattr(cap, "DATASETS_ROOT", tmp_path)
     _make_sync_panels(tmp_path, ["tier1_daily", "tier2_daily", "tier2_currency"])
     assert cap.sync_stage_outputs_ready().ready is False
@@ -261,14 +262,14 @@ def test_f3a_disagreement_state_now_resolves_async_only(tmp_path, monkeypatch):
     assert resolved == "async-only"
 
 
-def test_f3b_residual_filenotfounderror_from_invariants_is_actionable(monkeypatch, tmp_path):
-    """F3b covers the gap F3a deliberately leaves open: even with all 10 tickhistory
+def test_residual_filenotfounderror_from_invariants_is_actionable(monkeypatch, tmp_path):
+    """Covers a gap deliberately left open elsewhere: even with all 10 tickhistory
     stage outputs AND all 3 sync panels present (so resolve_mode cleanly resolves
     "full", never reaching its own not-ready SystemExit), build_synced_dataset()
     still reads one file neither predicate covers -- the hand-placed MANUAL JKP
     prerequisite (sync_stage_outputs_ready()'s own docstring: 'a missing manual
     prerequisite should crash loudly in full mode, not silently downgrade'). Before
-    F3b, that FileNotFoundError propagated as a raw traceback with no remedy and no
+    this fix, that FileNotFoundError propagated as a raw traceback with no remedy and no
     mention of --async-only; check.invariants() sits outside any try, unlike
     pairs/figures. Hermetic: a stub Check reproduces the raise directly rather than
     exercising the real synthetic_fx chain, following this file's own established
@@ -289,15 +290,15 @@ def test_f3b_residual_filenotfounderror_from_invariants_is_actionable(monkeypatc
     assert "updated_daily_ind_gics_synced.csv" in msg
     assert "--full" in msg
     assert "--async-only" in msg
-    # N4 (Reviewer B): the reachable cause here is a hand-placed MANUAL prerequisite
+    # The reachable cause here is a hand-placed MANUAL prerequisite
     # that `build --full` would also fail on -- rebuilding doesn't place the file, so
     # placing it must be named as the FIRST remedy, not `build --full`.
     assert "USAGE.md's Manual Prerequisite Data Files" in msg
     assert msg.index("place the missing file") < msg.index("build --full")
 
 
-def test_f3b_genuine_invariant_failure_still_fails_the_run(monkeypatch, tmp_path):
-    """F3b must not blanket-catch: a genuine invariant FAILURE (Invariant.passed is
+def test_genuine_invariant_failure_still_fails_the_run(monkeypatch, tmp_path):
+    """Must not blanket-catch: a genuine invariant FAILURE (Invariant.passed is
     False, not an exception) is untouched by the new try/except and still fails the
     run through the normal ok=False path."""
     def _fails():
@@ -313,8 +314,8 @@ def test_f3b_genuine_invariant_failure_still_fails_the_run(monkeypatch, tmp_path
     assert vrun.main(["--full"]) == 1
 
 
-def test_f3b_non_filenotfound_exceptions_propagate_unconverted(monkeypatch, tmp_path):
-    """F3b's except clause is FileNotFoundError ONLY -- any other exception is a real
+def test_non_filenotfound_exceptions_propagate_unconverted(monkeypatch, tmp_path):
+    """The except clause is FileNotFoundError ONLY -- any other exception is a real
     bug and must still surface as itself, not be swallowed or relabeled."""
     def _boom():
         raise ValueError("genuine bug, not a missing file")
@@ -362,7 +363,7 @@ def test_full_mode_refuses_when_sync_panels_are_stale(monkeypatch, tmp_path):
         vrun.main(["--full"])
 
 
-# --- F2: dropped invariants/figures within a still-running check are named, not silent
+# --- Dropped invariants/figures within a still-running check are named, not silent --
 
 def test_dropped_invariants_empty_in_full_mode():
     assert vrun._dropped_invariants("full") == []
@@ -375,7 +376,7 @@ def test_dropped_figures_empty_in_full_mode():
 def test_dropped_invariants_names_the_three_synthetic_check_invariants():
     """synthetic_fx drops one (the Compustat/sync-side invariant); synthetic_equity
     drops both of its own (both derive from alignment(), which is sync-only) -- three
-    total, matching what the reviewer counted."""
+    total."""
     dropped = vrun._dropped_invariants("async-only")
     assert dropped == [
         "Compustat synthetic beats the other on the sync futures",
@@ -389,17 +390,17 @@ def test_dropped_figures_names_both_synthetic_check_figures():
     assert dropped == ["fx_source_diagonal.pdf", "equity_alignment.pdf"]
 
 
-# --- F9: async-only must not leave stale PDFs the summary calls SKIPPED -----------
+# --- Async-only must not leave stale PDFs the summary calls SKIPPED --------------
 
 
-def _f9_stub_run():
+def _stale_stub_run():
     return pl.DataFrame(
         {"instrument": [], "correlation": [], "n_obs": []},
         schema={"instrument": pl.Utf8, "correlation": pl.Float64, "n_obs": pl.Int64},
     )
 
 
-def _f9_stub_pairs():
+def _stale_stub_pairs():
     return pl.DataFrame(
         {"instrument": [], "name": [], "month": [], "ours": [], "theirs": []},
         schema={"instrument": pl.Utf8, "name": pl.Utf8, "month": pl.Utf8,
@@ -409,65 +410,65 @@ def _f9_stub_pairs():
 
 # A check dropped WHOLE in async-only (requires_sync=True) with a pairs-rendered
 # comparison.pdf -- e.g. consistency_check.
-_F9_SKIPPED_CHECK = Check(
-    name="Skipped stub", slug="skipped_stub", run=_f9_stub_run,
-    pairs=_f9_stub_pairs, requires_sync=True,
+_STALE_SKIPPED_CHECK = Check(
+    name="Skipped stub", slug="skipped_stub", run=_stale_stub_run,
+    pairs=_stale_stub_pairs, requires_sync=True,
 )
 # A check that still RUNS in async-only but drops one of its own figures --
 # e.g. synthetic_fx_check.
-_F9_RUNNING_CHECK = Check(
-    name="Running stub", slug="running_stub", run=_f9_stub_run,
+_STALE_RUNNING_CHECK = Check(
+    name="Running stub", slug="running_stub", run=_stale_stub_run,
     dropped_figures=("dropped_stub.pdf",),
 )
 # A check untouched by any of this -- no pairs, no figures, always kept.
-_F9_KEPT_CHECK = Check(name="Kept stub", slug="kept_stub", run=_f9_stub_run)
+_STALE_KEPT_CHECK = Check(name="Kept stub", slug="kept_stub", run=_stale_stub_run)
 
 
-def _f9_full_checks():
-    return [_F9_SKIPPED_CHECK, _F9_RUNNING_CHECK, _F9_KEPT_CHECK]
+def _stale_full_checks():
+    return [_STALE_SKIPPED_CHECK, _STALE_RUNNING_CHECK, _STALE_KEPT_CHECK]
 
 
-def _f9_available_checks(mode):
+def _stale_available_checks(mode):
     if mode == "async-only":
-        return [c for c in _f9_full_checks() if not c.requires_sync]
-    return _f9_full_checks()
+        return [c for c in _stale_full_checks() if not c.requires_sync]
+    return _stale_full_checks()
 
 
-# F16: a private, test-owned _SYMBOL_COUNT_SOURCES shape (NOT the production one),
+# A private, test-owned _SYMBOL_COUNT_SOURCES shape (NOT the production one),
 # so these tests stay independent of what globalmacro.validation.run's real source
 # list contains -- deterministic, and unaffected if the production list ever grows.
-_F9_SYMBOL_COUNT_SOURCES = [
+_STALE_SYMBOL_COUNT_SOURCES = [
     ("tier1_sync_daily", Path("/fake-data/tier1/sync/sync_daily.csv"), "x"),
     ("tier1_async_daily", Path("/fake-data/tier1/async/async_daily.csv"), "x"),
 ]
 
 
 def test_dropped_symbol_count_stems_matches_symbol_count_sources_filter(monkeypatch):
-    """F16: derived from _symbol_count_sources's own filter, not a fresh literal."""
-    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
+    """Derived from _symbol_count_sources's own filter, not a fresh literal."""
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _STALE_SYMBOL_COUNT_SOURCES)
     assert vrun._dropped_symbol_count_stems("async-only") == ["tier1_sync_daily"]
     assert vrun._dropped_symbol_count_stems("full") == []
 
 
 def test_stale_figure_paths_names_skipped_comparison_pdf_and_dropped_figures(monkeypatch):
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
-    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _STALE_SYMBOL_COUNT_SOURCES)
     paths = vrun._stale_figure_paths("async-only")
     assert vrun.VALIDATION_OUTPUT / "skipped_stub" / "comparison.pdf" in paths
-    # F16: correlations.csv is the machine-readable half of the SAME dropped-check
+    # correlations.csv is the machine-readable half of the SAME dropped-check
     # artifact -- written unconditionally by main()'s loop, so it must be cleaned up
     # alongside comparison.pdf, not just the plot.
     assert vrun.VALIDATION_OUTPUT / "skipped_stub" / "correlations.csv" in paths
     assert vrun.VALIDATION_OUTPUT / "running_stub" / "dropped_stub.pdf" in paths
-    # F16: the sync symbol-count PDF -- not a Check at all, so it was invisible to
-    # F9's original two sources entirely.
+    # The sync symbol-count PDF -- not a Check at all, so it was invisible to
+    # the original two sources entirely.
     assert vrun.VALIDATION_OUTPUT / "symbol_counts" / "tier1_sync_daily.pdf" in paths
     assert len(paths) == 4
 
 
 def test_stale_figure_paths_empty_in_full_mode(monkeypatch):
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
-    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _STALE_SYMBOL_COUNT_SOURCES)
     assert vrun._stale_figure_paths("full") == []
 
 
@@ -476,13 +477,13 @@ def test_remove_stale_figures_deletes_exactly_the_dropped_ones(monkeypatch, tmp_
     are gone and every other file (including siblings in the SAME check/symbol_counts
     directories) survives."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
-    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _F9_SYMBOL_COUNT_SOURCES)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
+    monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", _STALE_SYMBOL_COUNT_SOURCES)
 
     stale1 = tmp_path / "skipped_stub" / "comparison.pdf"
     stale2 = tmp_path / "running_stub" / "dropped_stub.pdf"
-    stale3 = tmp_path / "skipped_stub" / "correlations.csv"          # F16
-    stale4 = tmp_path / "symbol_counts" / "tier1_sync_daily.pdf"     # F16
+    stale3 = tmp_path / "skipped_stub" / "correlations.csv"
+    stale4 = tmp_path / "symbol_counts" / "tier1_sync_daily.pdf"
     # Survivors: a plain file in a fully-kept check's dir, the RUNNING check's own
     # (non-dropped) comparison.pdf, a differently-named sibling in the skipped
     # check's dir (proves this is not a whole-directory wipe), and the symbol-count
@@ -511,7 +512,7 @@ def test_remove_stale_figures_deletes_exactly_the_dropped_ones(monkeypatch, tmp_
 
 def test_remove_stale_figures_deletes_nothing_in_full_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
     stale = tmp_path / "skipped_stub" / "comparison.pdf"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.write_bytes(b"dummy")
@@ -525,12 +526,12 @@ def test_remove_stale_figures_missing_ok_on_clean_tree(monkeypatch, tmp_path):
     """A genuinely clean async-only run (no prior full run, nothing on disk) must
     not raise -- unlink(missing_ok=True)."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
     assert vrun._remove_stale_figures("async-only") == []
 
 
 def test_remove_stale_figures_guard_rejects_path_traversal(monkeypatch, tmp_path):
-    """N5 (Reviewer B). _remove_stale_figures's path-traversal guard (p.parent.parent
+    """_remove_stale_figures's path-traversal guard (p.parent.parent
     != VALIDATION_OUTPUT, and no separator/".."/"" in p.name) had NO test -- a future
     simplification could delete it with the suite green, on deletion code. Craft the
     two shapes the guard exists for and prove both are refused:
@@ -555,11 +556,11 @@ def test_remove_stale_figures_guard_rejects_path_traversal(monkeypatch, tmp_path
 
     absolute_figure_target = tmp_path / "escape" / "x.pdf"
     traversal_check = Check(
-        name="Traversal stub", slug="../..", run=_f9_stub_run,
-        pairs=_f9_stub_pairs, requires_sync=True,
+        name="Traversal stub", slug="../..", run=_stale_stub_run,
+        pairs=_stale_stub_pairs, requires_sync=True,
     )
     leaky_check = Check(
-        name="Leaky stub", slug="leaky_stub", run=_f9_stub_run,
+        name="Leaky stub", slug="leaky_stub", run=_stale_stub_run,
         dropped_figures=(str(absolute_figure_target),),
     )
 
@@ -573,7 +574,7 @@ def test_remove_stale_figures_guard_rejects_path_traversal(monkeypatch, tmp_path
     # Sanity-check the fixture is shaped as intended before trusting the guard result:
     # _stale_figure_paths must actually PRODUCE the malicious candidates, or this test
     # would pass for the wrong reason (nothing to guard against). The traversal slug
-    # produces TWO candidates (comparison.pdf AND correlations.csv, F16), both sharing
+    # produces TWO candidates (comparison.pdf AND correlations.csv), both sharing
     # the same malicious out_dir.
     candidates = vrun._stale_figure_paths("async-only")
     assert len(candidates) == 3
@@ -605,9 +606,9 @@ def test_remove_stale_figures_guard_rejects_path_traversal(monkeypatch, tmp_path
 def test_main_wires_stale_figure_removal_for_async_only(monkeypatch, tmp_path):
     """Proves the cleanup is actually reachable from main(), not just a standalone
     function -- end to end via the repo's established hermetic stubbing pattern.
-    EXPLICIT --async-only (see the auto-detected counterpart below, F13)."""
+    EXPLICIT --async-only (see the auto-detected counterpart below)."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
     monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
 
@@ -620,14 +621,15 @@ def test_main_wires_stale_figure_removal_for_async_only(monkeypatch, tmp_path):
 
 
 def test_main_does_not_remove_stale_figures_when_async_only_is_auto_detected(monkeypatch, tmp_path):
-    """F13 (Reviewer A, PROVED). F9 originally keyed on the RESOLVED mode alone, so it
+    """The stale-figure cleanup originally keyed on the RESOLVED mode alone, so it
     fired on an auto-detected downgrade the researcher never asked for -- deleting five
-    figures that exist in the owner's pristine baseline. Take the exact state A proved:
+    figures that exist in the owner's pristine baseline. Take the exact state that
+    triggers this:
     no explicit flag, sync inputs not ready (auto-resolves async-only) -- deletion must
     require EXPLICIT --async-only; an auto-detected downgrade must delete NOTHING and
     disclose the risk in the summary instead."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
     monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
 
@@ -645,24 +647,24 @@ def test_main_does_not_remove_stale_figures_when_async_only_is_auto_detected(mon
 def test_main_does_not_remove_stale_figures_when_forwarded_async_only_was_auto_detected(
     monkeypatch, tmp_path
 ):
-    """R2-1 (Opus review, both reviewers independently, PROVED). run_all.sh forwards
+    """run_all.sh forwards
     the RESOLVED mode as an explicit --async-only on the sbatch command line whether a
-    researcher typed it or it was auto-detected (Task 9's design) -- so args.mode
-    alone (the F13 guard, test above) cannot tell these apart once reached via
+    researcher typed it or it was auto-detected (by design) -- so args.mode
+    alone (the guard tested above) cannot tell these apart once reached via
     `globalmacro run`: a machine that lost its tick shards but kept stale sync
     artifacts on disk (a researcher reclaiming scratch space) auto-detects
-    async-only, submits `validate.sh --async-only`, and F13 alone still deletes nine
+    async-only, submits `validate.sh --async-only`, and that guard alone still deletes nine
     shipped validation artifacts on a downgrade nobody asked for.
 
     Reproduces exactly the DAG-forwarded shape: an explicit --async-only argv (which
-    F13 alone cannot distinguish from a typed one) PLUS GM_MODE_AUTODETECTED=1 in the
+    that guard alone cannot distinguish from a typed one) PLUS GM_MODE_AUTODETECTED=1 in the
     environment -- what run_all.sh now exports whenever MODE_EXPLICIT=0, before any
     submit()/sbatch call (see test_run_all_async_only.py's companion proof that this
     export actually reaches the validate.sh job, via sbatch's default --export=ALL).
     Must behave exactly like the auto-detected-with-no-flag case above: delete
     nothing, disclose the risk in the summary instead."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
     monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
     monkeypatch.setenv("GM_MODE_AUTODETECTED", "1")
@@ -684,9 +686,9 @@ def test_main_still_removes_stale_figures_for_a_genuinely_typed_async_only(monke
     """Complement of the test above: without GM_MODE_AUTODETECTED set -- a researcher
     typing `globalmacro validate --async-only` directly, or any caller other than an
     auto-detected `globalmacro run` -- deletion must still fire. This fix narrows
-    F13's guard with an extra condition; it must not disable it."""
+    the guard with an extra condition; it must not disable it."""
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
     monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(False, None))
     monkeypatch.delenv("GM_MODE_AUTODETECTED", raising=False)
@@ -701,7 +703,7 @@ def test_main_still_removes_stale_figures_for_a_genuinely_typed_async_only(monke
 
 def test_main_does_not_remove_anything_in_full_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(vrun, "VALIDATION_OUTPUT", tmp_path)
-    monkeypatch.setattr(vrun, "_available_checks", _f9_available_checks)
+    monkeypatch.setattr(vrun, "_available_checks", _stale_available_checks)
     monkeypatch.setattr(vrun, "_SYMBOL_COUNT_SOURCES", [])
     monkeypatch.setattr(vrun, "sync_panels_ready", lambda: cap.Capability(True, None))
     monkeypatch.setattr(vrun, "sync_panels_fresh", lambda: cap.Capability(True, None))
@@ -714,7 +716,7 @@ def test_main_does_not_remove_anything_in_full_mode(monkeypatch, tmp_path):
     assert stale.exists()
 
 
-# --- F1: validation_mode() must reject anything but the two canonical literals ------
+# --- validation_mode() must reject anything but the two canonical literals --------
 
 @pytest.mark.parametrize("bad_mode", ["Full", "FULL", "aysnc-only", "", None])
 def test_validation_mode_rejects_invalid_modes(bad_mode):
@@ -739,7 +741,7 @@ def test_validation_mode_accepts_the_two_canonical_literals():
     assert current_mode() == "full"
 
 
-# --- N4: the docstring promises reset "including on an exception" -- prove it -------
+# --- The docstring promises reset "including on an exception" -- prove it -----------
 
 def test_validation_mode_resets_even_when_the_block_raises():
     assert current_mode() == "full"
@@ -749,7 +751,7 @@ def test_validation_mode_resets_even_when_the_block_raises():
     assert current_mode() == "full"          # reset even though the block raised
 
 
-# --- F1: the mode shim must not leak between two main() calls in one process --------
+# --- The mode shim must not leak between two main() calls in one process ------------
 
 def _stub_correlations():
     return pl.DataFrame(
@@ -759,7 +761,7 @@ def _stub_correlations():
 
 
 def test_validation_mode_does_not_leak_between_two_runs_in_one_process(monkeypatch, tmp_path):
-    """F1's mode shim (validation.mode) is scoped to a single main() call via a context
+    """The mode shim (validation.mode) is scoped to a single main() call via a context
     manager. Prove it: run async-only then full in the same process, with a stub check
     whose invariants() callable records validation.mode.current_mode() -- and confirm
     neither run sees the other's mode, and module state is back to the default ("full")

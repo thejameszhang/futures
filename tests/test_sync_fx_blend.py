@@ -147,7 +147,7 @@ def _has_raw_sync_data() -> bool:
 
 
 def test_never_synthetic_below_cutoff_on_real_panels():
-    # Criterion c-2 REAL-DATA regression (spec Section 3): for a late-listing G10 currency
+    # REAL-DATA regression: for a late-listing G10 currency
     # (NOK, real future 2002), (1) the cutoff from the synthetic-blind pre-splice panel is the
     # REAL 2002 start, NOT the 1996 CIP-synthetic floor; and (2) the blended sync level BELOW
     # that cutoff equals RAW Compustat spot verbatim -- never the synthetic backfill. Uses the

@@ -837,7 +837,7 @@ def build_sync(synthetic_returns_synced: pl.DataFrame) -> SyncOutputs:
     synced = build_synced_dataset(tier=2)
     pre_splice_synced = synced  # BEFORE splice_synthetic_returns: real-splice-aware (6E<-DM), synthetic-blind
     synced = splice_synthetic_returns(synced, synthetic_returns_synced, "TickHistory", skip_if_before=date(1996, 1, 4))
-    # Capture-site guard (criterion c-2, "never the CIP synthetic"): a late-listing G10 future
+    # Capture-site guard ("never the CIP synthetic"): a late-listing G10 future
     # (NOK, real 2002) is finite in the SYNTHETIC-BLIND pre-splice panel only from its real
     # start -- strictly LATER than in the post-splice `synced`, where the CIP synthetic backfills
     # it from 1996. If a future edit captured `pre_splice_synced` AFTER the splice, these dates
@@ -871,20 +871,20 @@ def _validate_mode(mode: str) -> None:
 
 
 def main(mode: Literal["full", "async-only"] = "full") -> None:
-    # A's TRIVIAL 2: validate BEFORE logging -- the old order let main("Bogus")
+    # Validate BEFORE logging -- the old order let main("Bogus")
     # write "build mode: Bogus" to validation_report.txt and only THEN raise
     # (unreachable from the CLI, since resolve_mode() already only ever returns
     # "full"/"async-only", but main() is directly callable with any string).
     # _validate_mode raises immediately for anything else, producing no output of
     # its own (see test_validate_mode_produces_no_output_for_a_valid_mode) -- so
-    # this reorder keeps the F5b guarantee intact: for the two mode values that
+    # this reorder keeps the guarantee intact: for the two mode values that
     # ever reach here in practice, the log line below is still the first EFFECTIVE
     # (output-producing) statement main() executes, even though it is no longer
     # the literal first statement in the function body (see
-    # test_f5b_build_mode_is_logged_as_the_first_statement_in_main).
+    # test_build_mode_is_logged_as_the_first_statement_in_main).
     _validate_mode(mode)
-    # F5b (deliberate, owner-approved): the ONE intentional change to a shipped
-    # artifact in this fix round. validation_report.txt is written by the
+    # Deliberate, owner-approved: the ONE intentional change to a shipped
+    # artifact. validation_report.txt is written by the
     # FileHandler attached in the __main__ block below, so this is its first line --
     # it now records which mode produced the datasets it describes. Adds exactly one
     # line; changes no number and no dataset.

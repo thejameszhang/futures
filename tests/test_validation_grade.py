@@ -94,7 +94,7 @@ def test_write_summary_omits_invariants_table_when_none(tmp_path):
 
 
 def test_write_summary_default_skipped_matches_three_positional_call(tmp_path):
-    """Task 5 appends `skipped` with a default -- the pre-existing three-positional
+    """`skipped` was appended with a default -- the pre-existing three-positional
     call above must keep working unchanged."""
     path = Path(tmp_path) / "SUMMARY.md"
     write_summary([grade("Demo", "demo", _df([0.99]))], [], path)
@@ -115,7 +115,7 @@ def test_write_summary_renders_skipped_section(tmp_path):
 
 
 def test_write_summary_renders_dropped_invariants_and_figures(tmp_path):
-    """F2: a check that keeps running in async-only mode but drops SOME of its
+    """A check that keeps running in async-only mode but drops SOME of its
     invariants/figures must have those named too, not just wholly-skipped checks."""
     path = Path(tmp_path) / "SUMMARY.md"
     write_summary(
@@ -158,7 +158,7 @@ def test_write_summary_full_mode_omits_skipped_section_entirely(tmp_path):
 
 
 def test_write_summary_discloses_stale_figures_when_flagged(tmp_path):
-    """F13: an auto-detected async-only downgrade deletes nothing, so the summary
+    """An auto-detected async-only downgrade deletes nothing, so the summary
     must say so -- one extra sentence in the '## Skipped' preamble, opted into via
     stale_figures_may_remain (default False, see the sibling test below)."""
     path = Path(tmp_path) / "SUMMARY.md"
