@@ -32,6 +32,15 @@ src/globalmacro/validation/datastream_comparison/
 src/analysis/validation/
 # confidential external validation plugin — never commit
 src/globalmacro/validation/external_comparison.py
+# Tier 2 onboarding gate -- the owner's local harness for accepting a new
+# Tier 2 asset (spikes, gaps, coverage, splice integrity). Deliberately
+# local-only: not for other researchers to add assets with, and not
+# something we want to maintain as shared, reviewed infrastructure. Stays
+# on the owner's disk, untracked; contact the owner to add an asset.
+scripts/gate_tier2_asset.py
+src/globalmacro/validation/asset_quality.py
+tests/test_asset_quality.py
+tests/test_gate_tier2_asset.py
 .DS_Store
 .env
 .claude/

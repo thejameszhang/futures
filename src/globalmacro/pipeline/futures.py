@@ -11,6 +11,7 @@ from globalmacro.utils.characteristics import (
     calc_returns_with_price_adj_and_roll,
     calc_total_returns_with_roll,
     contract_identity_exprs,
+    zero_price_denominator,
 )
 from globalmacro.utils.config import load_config
 from globalmacro.utils.paths import (
@@ -177,6 +178,78 @@ def apply_finalised_return_guard(wide_contr_data: pl.DataFrame) -> pl.DataFrame:
     return wide_contr_data
 
 
+def apply_zero_price_denominator_guard(wide_contr_data: pl.DataFrame, price_type: str) -> pl.DataFrame:
+    """Null a finalised ret_i cell wherever its OWN pre-backfill slot divided by a zero price.
+
+    calc_returns_until_expiry already nulls ret_temp_i at the zero-price division itself
+    (characteristics.py), but the null-coalesce two steps above this call in main() backfills
+    a null ret_1 from ret_2 -- the NEXT contract's return -- whenever ret_2 happens to be
+    non-null. apply_finalised_return_guard cannot catch what that backfill leaves behind:
+    contract_identity_exprs judges the backfilled cell by which contract ret_i's OWN formula
+    would have tracked, and for a same-day roll that is exactly the backfill source's
+    contract too, so num == den and that guard stays silent -- even though the value stored
+    is a DIFFERENT contract's return standing in for one that was genuinely undefined.
+
+    Measured: without this guard, FKLI 2025-10-01's ret_1 does not ship as `inf` -- it ships
+    as 0.007783, ret_2's value (a different, later-dated contract), because ret_temp_2 being
+    null lets the coalesce fall through to ret_2, and apply_finalised_return_guard sees
+    num == den (both lasttrddate_2's contract) and leaves it alone. That is a fabricated
+    number wearing a plausible face, not a fix. This guard re-derives zero_price_denominator
+    fresh from the base columns -- not from ret_temp_i, which the coalesce has already moved
+    past -- for the SAME slot calc_returns_with_price_adj_and_roll selected for ret_i (its
+    exp_1 branching), so it fires regardless of what the backfill did afterwards.
+    """
+    for _i in (1, 2):
+        _own_zero_denom = (
+            pl.when(pl.col('exp_1') == 1)
+            .then(zero_price_denominator(_i + 1, price_type))
+            .otherwise(zero_price_denominator(_i, price_type))
+        ).over('clscode').fill_null(False)
+        wide_contr_data = wide_contr_data.with_columns(
+            pl.when(_own_zero_denom).then(None)
+            .otherwise(pl.col(f"ret_{_i}")).alias(f"ret_{_i}")
+        )
+    return wide_contr_data
+
+
+def select_top_contracts_by_volume(contr_data: pl.DataFrame) -> pl.DataFrame:
+    """Pick one row per (clscode, date_, order) slot: the highest-volume contract sharing
+    that expiry rank on that day (`order` = the dense rank of distinct lasttrddate within
+    the class-day, i.e. front month = 1, second month = 2, ...). Only order <= 5 (the top
+    five expiries) survives the filter below.
+
+    `futcode` (a per-contract identifier, present via the dsfutcontrinfo join) is a secondary
+    sort key so the choice is a function of the data alone. Without it, `.sort_by("volume")
+    .first()` has no tie-break whenever two contracts in the same slot report the same
+    volume -- polars sorts are not stable by default, so which row wins would depend on the
+    DataFrame's incoming row order, which is not itself guaranteed stable across runs (see
+    the standing pipeline-reproducibility finding). Measured on the configured universe:
+    337 (clscode, date_, order) groups have more than one row sharing the max volume (334
+    with a genuinely different settlement across the tied rows, 3 value-duplicates) --
+    ATX 215, 6Z 64, IR 57, PSI 1, MD 0. (MD's 18 pre-splice ties are consumed by the
+    EMD <- MD splice before this function ever sees them; they are not part of the 337.)
+    futcode is unique within every one of the 337, so it fully resolves the tie.
+
+    Downstream effect for the gated rerun: adding this tie-break moves 325 cells across the
+    8 futures-produced CSVs versus the order-dependent selection previously shipped --
+    tier1 ret_1 18 (CS) / 19 (CT), tier2 ret_1 29 / 29, tier1 ret_2 47 (CS) / 53 (CT), tier2
+    ret_2 63 / 67. Zero null<->value flips, no column-count movement, no first/last-date
+    movement, so a rerun gate's count and date checks will not fire on this change -- only
+    a cell-level (--cells) comparison sees it. ATX's moved cells surface under the
+    post-splice `FATX` column, not `ATX`. `main()` feeds daily_ret_1_{CS,CT} into
+    build.py's `load_async_dataset`, so this also carries into async_daily/async_monthly
+    and their _usd siblings, for at most 58 symbol-days.
+    """
+    return (
+        contr_data.sort(['clscode', 'date_', 'lasttrddate'])
+        .with_columns(
+            pl.col("lasttrddate").rank("dense").over(['clscode', 'date_']).alias("order")
+        )
+        .group_by(["clscode", "date_", "order"])
+        .agg(pl.all().sort_by(["volume", "futcode"], descending=[True, False], nulls_last=True).first())
+    ).filter(pl.col("order") <= 5)
+
+
 def main():
     info_data = (
         dsfutcontr
@@ -292,15 +365,8 @@ def main():
         .filter((pl.col('clscode') != 259) | (pl.col(PRICE_TYPE) > 1))
     )
 
-    #ordering; if duplicate, keep row with the highest volume
-    contr_data = (
-        contr_data.sort(['clscode', 'date_', 'lasttrddate'])
-        .with_columns(
-            pl.col("lasttrddate").rank("dense").over(['clscode', 'date_']).alias("order")
-        )
-        .group_by(["clscode", "date_", "order"])
-        .agg(pl.all().sort_by("volume", descending=True, nulls_last=True).first())
-    ).filter(pl.col("order") <= 5)
+    #ordering; if duplicate, keep row with the highest volume, tie-broken deterministically by futcode
+    contr_data = select_top_contracts_by_volume(contr_data)
 
     contr_data = contr_data.unique(keep='first').sort(['clscode', 'date_'])
 
@@ -365,6 +431,7 @@ def main():
     )
 
     wide_contr_data = apply_finalised_return_guard(wide_contr_data)
+    wide_contr_data = apply_zero_price_denominator_guard(wide_contr_data, PRICE_TYPE)
 
     os.makedirs(FUTURES_PATH / "debug" / "tables", exist_ok=True)
     os.makedirs(FUTURES_PATH / "debug" / "dates", exist_ok=True)

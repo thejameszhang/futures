@@ -346,6 +346,221 @@ def test_guard_nulls_cross_contract_ret_2_even_when_ret_1_is_clean():
     assert ret2[1] is None
 
 
+def test_a_zero_denominator_return_is_nulled_not_infinite():
+    """The FKLI 2025-10-01 defect, roll branch: yesterday's slot 2 (the denominator, since
+    roll fires via daystomaturity_1.shift(1) == 0) has a settlement of 0.0 -- a vendor's
+    "no trade yet" marker on a freshly-listed contract, not a real price. Without the guard
+    this divides 220.0 / 0.0 and ships `inf`; the fix must null it instead."""
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 20), date(2020, 3, 23)],
+        "daystomaturity_1": [0, 53],
+        "lasttrddate_1": [date(2020, 3, 20), date(2020, 5, 15)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 8, 20)],
+        "settlement_1": [100.0, 220.0],
+        "settlement_2": [0.0, 300.0],
+    })
+    got = _apply(df).get_column("ret_temp_1").to_list()
+    assert got[1] is None
+
+
+def test_a_zero_denominator_in_the_noroll_branch_is_also_nulled():
+    """The no-roll branch (price_i / price_i.shift(1)) has its own division; a zero
+    yesterday-price there must null the same way the roll branch does."""
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "daystomaturity_1": [19, 18],
+        "lasttrddate_1": [date(2020, 3, 21), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 5, 15)],
+        "settlement_1": [0.0, 110.0],
+        "settlement_2": [101.0, 111.0],
+    })
+    got = _apply(df).get_column("ret_temp_1").to_list()
+    assert got[1] is None
+
+
+def test_a_zero_price_that_is_not_the_denominator_does_not_null():
+    """settlement_2 is 0.0 on both rows, but the no-roll branch computed here never reads
+    settlement_2 as a denominator (it divides settlement_1 by its own lag). Guards against a
+    mutant that nulls on ANY zero price in the row rather than specifically the denominator
+    this ratio actually uses."""
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 2), date(2020, 3, 3)],
+        "daystomaturity_1": [19, 18],
+        "lasttrddate_1": [date(2020, 3, 21), date(2020, 3, 21)],
+        "lasttrddate_2": [date(2020, 5, 15), date(2020, 5, 15)],
+        "settlement_1": [100.0, 110.0],
+        "settlement_2": [0.0, 0.0],
+    })
+    got = _apply(df).get_column("ret_temp_1").to_list()
+    assert got[1] is not None and abs(got[1] - 0.1) < 1e-12
+
+
+# ---------------------------------------------------------------------------
+# calc_total_returns_with_roll's own zero-price division
+#
+# The "front month contract rolls and expires on the day before" branch divides
+# by price_type_i.shift(1) independently of ret_temp_{i+1}. Nothing coalesces
+# ret_total_i afterwards, so nulling it at the source (no post-hoc guard
+# needed) is sufficient.
+# ---------------------------------------------------------------------------
+
+
+def test_total_return_zero_denominator_is_nulled_not_infinite():
+    from globalmacro.utils.characteristics import calc_total_returns_with_roll
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 19), date(2020, 3, 20)],
+        "exp_1": [0, 1],
+        "switch_1": [0, 1],
+        "daystomaturity_1": [1, 0],
+        "settlement_1": [0.0, 105.0],
+        "settlement_2": [200.0, 210.0],
+        "ret_temp_2": [None, 0.05],
+        "ret_1": [None, 0.05],
+    })
+    got = df.with_columns(calc_total_returns_with_roll(1, "settlement")).get_column("ret_total_1").to_list()
+    assert got[1] is None
+
+
+def test_total_return_ordinary_roll_case_is_computed_normally():
+    """Sanity check paired with the previous test: the same shape, non-zero denominator,
+    must still compute the documented formula. Kills an over-broad mutant that nulls this
+    branch unconditionally."""
+    from globalmacro.utils.characteristics import calc_total_returns_with_roll
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2020, 3, 19), date(2020, 3, 20)],
+        "exp_1": [0, 1],
+        "switch_1": [0, 1],
+        "daystomaturity_1": [1, 0],
+        "settlement_1": [100.0, 105.0],
+        "settlement_2": [200.0, 210.0],
+        "ret_temp_2": [None, 0.05],
+        "ret_1": [None, 0.05],
+    })
+    got = df.with_columns(calc_total_returns_with_roll(1, "settlement")).get_column("ret_total_1").to_list()
+    expected = (200.0 / 100.0) * (0.05 + 1) - 1
+    assert got[1] is not None and abs(got[1] - expected) < 1e-12
+
+
+# ---------------------------------------------------------------------------
+# apply_zero_price_denominator_guard (futures.py's SECOND post-coalesce guard)
+#
+# calc_returns_until_expiry already nulls ret_temp_i at the zero-price division
+# itself, but the null-coalesce backfills a null ret_1 from ret_2 -- a
+# DIFFERENT contract's return -- exactly like the cross-contract case
+# apply_finalised_return_guard exists for. That guard is powerless here: for a
+# same-day roll, the backfilled cell's num/den both resolve to the SAME
+# contract the backfill source tracks, so it stays silent. These fixtures use
+# FKLI 2025-10-01's real numbers (clscode 3731, 2025-09-30 -> 2025-10-01).
+# ---------------------------------------------------------------------------
+
+
+def test_zero_price_denominator_guard_nulls_a_backfilled_ret_1():
+    """settlement_3 on 2025-09-30 is 0.0 (clscode 3731's slot 3 -- lasttrddate 2025-11-28 --
+    had not traded yet). ret_1 here is set to 0.007783, exactly what the pre-fix coalesce
+    backfills it to from ret_2 (a later-dated contract's return) once ret_temp_2 is null.
+    apply_finalised_return_guard would let this through (num == den for the backfill
+    source); this guard must null it anyway."""
+    from globalmacro.pipeline.futures import apply_zero_price_denominator_guard
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2025, 9, 30), date(2025, 10, 1)],
+        "exp_1": [1, 1],
+        "daystomaturity_1": [0, 30],
+        "lasttrddate_1": [date(2025, 9, 30), date(2025, 10, 31)],
+        "lasttrddate_2": [date(2025, 10, 31), date(2025, 11, 28)],
+        "lasttrddate_3": [date(2025, 11, 28), date(2025, 12, 31)],
+        "lasttrddate_4": [date(2025, 12, 31), date(2026, 1, 30)],
+        "settlement_1": [1610.0, 1623.5],
+        "settlement_2": [1613.0, 1622.0],
+        "settlement_3": [0.0, 1618.5],
+        "settlement_4": [1606.0, 1595.5],
+        "ret_1": [None, 0.007783],
+        "ret_2": [None, 0.007783],
+    })
+    got = apply_zero_price_denominator_guard(df, "settlement")
+    assert got.get_column("ret_1").to_list()[1] is None
+    # ret_2's own slot (settlement_4, 1606.0) never divided by zero -- it must survive.
+    ret2 = got.get_column("ret_2").to_list()[1]
+    assert ret2 is not None and abs(ret2 - 0.007783) < 1e-9
+
+
+def test_zero_price_denominator_guard_leaves_an_ordinary_ret_1_alone():
+    """Same shape with settlement_3 restored to a real (non-zero) price on both rows: the
+    guard must not touch ret_1/ret_2. Kills an unconditional-null mutant."""
+    from globalmacro.pipeline.futures import apply_zero_price_denominator_guard
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2025, 9, 30), date(2025, 10, 1)],
+        "exp_1": [1, 1],
+        "daystomaturity_1": [0, 30],
+        "lasttrddate_1": [date(2025, 9, 30), date(2025, 10, 31)],
+        "lasttrddate_2": [date(2025, 10, 31), date(2025, 11, 28)],
+        "lasttrddate_3": [date(2025, 11, 28), date(2025, 12, 31)],
+        "lasttrddate_4": [date(2025, 12, 31), date(2026, 1, 30)],
+        "settlement_1": [1610.0, 1623.5],
+        "settlement_2": [1613.0, 1622.0],
+        "settlement_3": [1604.0, 1618.5],
+        "settlement_4": [1606.0, 1595.5],
+        "ret_1": [None, 0.00651],
+        "ret_2": [None, 0.00783],
+    })
+    got = apply_zero_price_denominator_guard(df, "settlement")
+    assert got.get_column("ret_1").to_list()[1] is not None
+    assert got.get_column("ret_2").to_list()[1] is not None
+
+
+def test_end_to_end_fkli_shape_survives_the_full_pipeline_as_null():
+    """Runs main()'s exact sequence on a minimal FKLI-shaped fixture -- calc_returns_until_
+    expiry -> calc_returns_with_price_adj_and_roll -> the two coalesce lines ->
+    apply_finalised_return_guard -> apply_zero_price_denominator_guard -- rather than calling
+    the last guard directly with a hand-set ret_1. This is the only test that would catch a
+    regression where futures.py drops the guard call or reorders it before the coalesce
+    (either of which silently un-fixes the defect even with every function above intact)."""
+    from globalmacro.pipeline.futures import (
+        apply_finalised_return_guard,
+        apply_zero_price_denominator_guard,
+    )
+    from globalmacro.utils.characteristics import calc_returns_with_price_adj_and_roll
+    df = pl.DataFrame({
+        "clscode": [1, 1],
+        "date": [date(2025, 9, 30), date(2025, 10, 1)],
+        "exp_1": [1, 1],
+        "daystomaturity_1": [0, 30],
+        "lasttrddate_1": [date(2025, 9, 30), date(2025, 10, 31)],
+        "lasttrddate_2": [date(2025, 10, 31), date(2025, 11, 28)],
+        "lasttrddate_3": [date(2025, 11, 28), date(2025, 12, 31)],
+        "lasttrddate_4": [date(2025, 12, 31), date(2026, 1, 30)],
+        "settlement_1": [1610.0, 1623.5],
+        "settlement_2": [1613.0, 1622.0],
+        "settlement_3": [0.0, 1618.5],
+        "settlement_4": [1606.0, 1595.5],
+    })
+    wide = df.with_columns(
+        calc_returns_until_expiry(1, "settlement")
+        + calc_returns_until_expiry(2, "settlement")
+        + calc_returns_until_expiry(3, "settlement")
+    )
+    wide = wide.with_columns(
+        calc_returns_with_price_adj_and_roll(1) + calc_returns_with_price_adj_and_roll(2)
+    )
+    wide = (
+        wide
+        .with_columns(pl.coalesce(pl.col("ret_2"), pl.col("ret_temp_2"), pl.col("ret_1"), pl.col("ret_temp_1")).alias("ret_2"))
+        .with_columns(pl.coalesce(pl.col("ret_1"), pl.col("ret_2")))
+    )
+    wide = apply_finalised_return_guard(wide)
+    wide = apply_zero_price_denominator_guard(wide, "settlement")
+    ret1 = wide.get_column("ret_1").to_list()
+    ret2 = wide.get_column("ret_2").to_list()
+    assert ret1[1] is None
+    assert ret2[1] is not None and abs(ret2[1] - 0.007783) < 1e-6
+
+
 def test_guard_leaves_unadjudicable_cells_untouched():
     """A single row per clscode has no previous row to shift from, so both num and den
     resolve with a null denominator -- `num != den` is null, not True or False. The

@@ -47,7 +47,10 @@ def _available_checks(mode: str = "full"):
     checks = [datastream_check, consistency_check, synthetic_fx_check,
               synthetic_equity_check, spot_fx_check, fx_futures_vs_spot_check]
     try:
-        from globalmacro.validation.external_comparison import external_check
+        from globalmacro.validation.external_comparison import (
+            external_async_daily_check,
+            external_check,
+        )
         # external_comparison.py is gitignored and untracked (confidential-
         # adjacent) -- it CANNOT carry requires_sync=True itself and
         # have that travel with the merge; a local edit to a gitignored file is
@@ -57,7 +60,21 @@ def _available_checks(mode: str = "full"):
         # exist there. State the requirement here instead, in tracked code -- the
         # only place it can actually travel with the branch. Check is a plain,
         # non-frozen dataclass, so dataclasses.replace() works.
+        #
+        # Both names are imported in the ONE statement above, deliberately: a module
+        # that defines one but not the other (a stale local edit, a half-finished
+        # copy) raises ImportError before either append below runs, so this either
+        # registers both checks or neither -- never a half-registered state where one
+        # exercise silently vanishes from every mode.
         checks.append(dataclasses.replace(external_check, requires_sync=True))
+        # The async-daily check's entire reason to exist is requires_sync=False -- a
+        # researcher with no LSEG tick data (no sync panel on disk at all) must still
+        # get it. Force that explicitly here too, rather than trust the gitignored
+        # module's own default, for the identical reason the line above forces True:
+        # a local edit is invisible to review and does not travel with the branch --
+        # here that would mean silently DISABLING this check for the exact
+        # researchers it exists for, not just running it somewhere it shouldn't.
+        checks.append(dataclasses.replace(external_async_daily_check, requires_sync=False))
     except ImportError:
         pass
     if mode == "async-only":
