@@ -100,11 +100,23 @@ def load_quotes_data(path: str) -> pl.DataFrame:
 def load_open_prices() -> pl.DataFrame:
     """Load open prices from the LSEG Datastream."""
     cs_or_ct = "CS" if ASSET_CLASS == AssetClass.TRADITIONAL else "CT"
+    open_cols = ["open_1", "open_2", "open_3", "open_4"]
     return (
         pl.scan_parquet(FUTURES_PATH / f"datastream_futures_open_{cs_or_ct}.parquet")
         .filter(pl.col("date") >= pl.date(1996, 1, 4))
-        .select(["clscode", "date", "open_1", "open_2", "open_3", "open_4"])
+        .select(["clscode", "date", *open_cols])
         .filter((pl.col("clscode") != 290) | (pl.col("date") < date(2003, 12, 22)))
+        # A literal 0.0 is Datastream's "no trade yet" marker, not a real price -- same family
+        # as the FKLI zero-settlement bug fixed in 5468d2c. Left unfiltered it can reach
+        # `lasttrdprice_cN` via `coalesce(open_N, ...)` at :481/:498 (coalesce treats 0.0 as a
+        # valid non-null value), and from there `compute_settlement_price` may accept it
+        # outright whenever a stale bid/ask spread happens to straddle zero. Nulled per-column
+        # here, mirroring load_trades_data's own zero-price handling (:42), rather than
+        # dropping the whole row the way load_quotes_data's filter does at :94: open_1..4 are
+        # four independent contract-order prices sharing one row per (clscode, date), so a
+        # row-level filter would also discard the other three orders' valid prices on a date
+        # where only one order happened to print zero.
+        .with_columns([pl.when(pl.col(c) == 0.0).then(None).otherwise(pl.col(c)).alias(c) for c in open_cols])
         .collect()
     )
 
@@ -112,11 +124,15 @@ def load_open_prices() -> pl.DataFrame:
 def load_settlement_prices() -> pl.DataFrame:
     """Load settlement prices from the LSEG Datastream; only used for LME Metals."""
     cs_or_ct = "CS" if ASSET_CLASS == AssetClass.TRADITIONAL else "CT"
+    settlement_cols = ["settlement_1", "settlement_2", "settlement_3", "settlement_4"]
     return (
         pl.scan_parquet(FUTURES_PATH / f"datastream_futures_settlement_{cs_or_ct}.parquet")
         .filter(pl.col("date") >= pl.date(1996, 1, 4))
-        .select(["clscode", "date", "settlement_1", "settlement_2", "settlement_3", "settlement_4"])
+        .select(["clscode", "date", *settlement_cols])
         .filter((pl.col("clscode") != 290) | (pl.col("date") < date(2003, 12, 22)))
+        # See load_open_prices above: same zero-price trap, same per-column null (not a
+        # row-drop), one column per contract order.
+        .with_columns([pl.when(pl.col(c) == 0.0).then(None).otherwise(pl.col(c)).alias(c) for c in settlement_cols])
         .collect()
     )
 
