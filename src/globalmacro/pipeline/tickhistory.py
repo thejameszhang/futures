@@ -341,6 +341,29 @@ def attach_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
     ])
 
 
+def attach_traditional_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
+    """Pick the front-month price for a traditional-cycle contract from `front_month`
+    AND record which settlement slot supplied it.
+
+    `front_month` is supposed to land in 1..4, but nothing upstream guarantees that (a
+    join miss leaves it null; an upstream bug could push it out of range), so both the
+    price chain and the slot fall back to c1 together -- if only one of them fell back,
+    `front_slot` would stop describing where the shipped price actually came from.
+    """
+    daily_vwaps = daily_vwaps.with_columns(
+        pl.when(pl.col("front_month") == 1).then(pl.col("settlement_c1"))
+        .when(pl.col("front_month") == 2).then(pl.col("settlement_c2"))
+        .when(pl.col("front_month") == 3).then(pl.col("settlement_c3"))
+        .when(pl.col("front_month") == 4).then(pl.col("settlement_c4"))
+        .otherwise(pl.col("settlement_c1"))  # fallback
+        .alias("front_month_settlement")
+    )
+    return daily_vwaps.with_columns(
+        pl.when(pl.col("front_month").is_between(1, 4)).then(pl.col("front_month"))
+          .otherwise(pl.lit(1)).cast(pl.Int8).alias("front_slot")
+    )
+
+
 def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     """Process a future's data and return the returns series."""
     # Self-provision the debug output dirs (regenerable; moved out by the reorg),
@@ -686,19 +709,8 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
                 .when(pl.col("month_diff") == 3).then(pl.lit(3))
                 .otherwise(pl.lit(1))
             ).alias("front_month")
-        ]).with_columns([
-            # Now use front_month to select the appropriate settlement price
-            pl.when(pl.col("front_month") == 1).then(pl.col("settlement_c1"))
-            .when(pl.col("front_month") == 2).then(pl.col("settlement_c2"))
-            .when(pl.col("front_month") == 3).then(pl.col("settlement_c3"))
-            .when(pl.col("front_month") == 4).then(pl.col("settlement_c4"))
-            .otherwise(pl.col("settlement_c1"))  # fallback
-            .alias("front_month_settlement")
         ])
-        daily_vwaps = daily_vwaps.with_columns(
-            pl.when(pl.col("front_month").is_between(1, 4)).then(pl.col("front_month"))
-              .otherwise(pl.lit(1)).cast(pl.Int8).alias("front_slot")
-        )
+        daily_vwaps = attach_traditional_front_slot(daily_vwaps)
     else:
         daily_vwaps = attach_front_slot(daily_vwaps)
 
