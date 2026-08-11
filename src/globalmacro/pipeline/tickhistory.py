@@ -321,6 +321,26 @@ def apply_unit_transforms(FUTURE: Future, daily_vwaps: pl.DataFrame) -> pl.DataF
     return daily_vwaps
 
 
+def attach_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
+    """Pick the front-month price AND record which slot it came from.
+
+    Recorded here, not reconstructed downstream: settlement_c1 and settlement_c2 are
+    numerically equal on many days, so recovering the slot by comparing values
+    misidentifies them and over-nulls by roughly 8x.
+    """
+    chosen = pl.when(pl.col("expiring_this_month") == 1).then(pl.col("settlement_c2")).otherwise(pl.col("settlement_c1"))
+    slot = pl.when(pl.col("expiring_this_month") == 1).then(pl.lit(2)).otherwise(pl.lit(1))
+    daily_vwaps = daily_vwaps.with_columns([
+        chosen.alias("front_month_settlement"),
+        slot.cast(pl.Int8).alias("front_slot"),
+    ])
+    fell_back = (pl.col("expiring_this_month") == 0) & pl.col("front_month_settlement").is_null()
+    return daily_vwaps.with_columns([
+        pl.when(fell_back).then(pl.col("settlement_c2")).otherwise(pl.col("front_month_settlement")).alias("front_month_settlement"),
+        pl.when(fell_back).then(pl.lit(2)).otherwise(pl.col("front_slot")).cast(pl.Int8).alias("front_slot"),
+    ])
+
+
 def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     """Process a future's data and return the returns series."""
     # Self-provision the debug output dirs (regenerable; moved out by the reorg),
@@ -675,19 +695,12 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
             .otherwise(pl.col("settlement_c1"))  # fallback
             .alias("front_month_settlement")
         ])
+        daily_vwaps = daily_vwaps.with_columns(
+            pl.when(pl.col("front_month").is_between(1, 4)).then(pl.col("front_month"))
+              .otherwise(pl.lit(1)).cast(pl.Int8).alias("front_slot")
+        )
     else:
-        daily_vwaps = daily_vwaps.with_columns([
-            pl.when(pl.col("expiring_this_month") == 1).then(pl.col("settlement_c2")).otherwise(pl.col("settlement_c1")).alias("front_month_settlement")
-        ])
-        # If we should use the current month's data, but we can't determine a settlement price for it,
-        # then use the back month's data
-        daily_vwaps = daily_vwaps.with_columns([
-            pl.when((pl.col("expiring_this_month") == 0) & (pl.col("front_month_settlement").is_null())).then(
-                pl.col("settlement_c2")
-            ).otherwise(
-                pl.col("front_month_settlement")
-            ).alias("front_month_settlement")
-        ])
+        daily_vwaps = attach_front_slot(daily_vwaps)
 
     # Historical price adjustment when the exchange changes contract details -> scales the price appropriately
     if FUTURE.adjustments is not None:
