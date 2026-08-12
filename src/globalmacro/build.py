@@ -257,6 +257,41 @@ def set_null_on_date(df: pl.DataFrame, col: str, target: date) -> pl.DataFrame:
     )
 
 
+def coalesce_before_cutoff(
+    df: pl.DataFrame, primary: str, donor: str, *, date_col: str = "date"
+) -> pl.Expr:
+    """Coalesce `donor` into `primary`, but only for dates strictly before `primary`'s
+    own first observation -- pre-inception backfill, never a gap-fill inside the
+    range `primary` already covers.
+
+    A plain `pl.coalesce([primary, donor])` cannot tell "primary is null because it
+    predates the splice" from "primary is null because something upstream -- the
+    tickhistory provenance guard, among other things -- deliberately left this cell
+    empty". Both look identical to coalesce: a null. Restricting `donor`'s
+    contribution to strictly before `primary`'s own first valid date removes the
+    second case without touching the first, because the guard only ever nulls a cell
+    inside a symbol's already-live range; a cutoff at `primary`'s own start can never
+    fall after a cell the guard produced.
+
+    `first_valid_date(df, primary)` reads `primary` at the moment this call runs, not
+    some earlier snapshot, which matters where a splice chains (`TF` backfilled by
+    `RL`, then `RTY` backfilled by that same, already-spliced `TF`): each step sees
+    the previous step's result, so the chain's pre-inception history still flows
+    through in full.
+
+    If `primary` is entirely null (no cutoff to compute), `donor` fills every row --
+    the same behaviour a bare `pl.coalesce` would have given, since there is no live
+    range yet to protect.
+    """
+    cutoff = first_valid_date(df, primary)
+    donor_expr = (
+        pl.col(donor)
+        if cutoff is None
+        else pl.when(pl.col(date_col) < pl.lit(cutoff)).then(pl.col(donor)).otherwise(None)
+    )
+    return pl.coalesce([pl.col(primary), donor_expr])
+
+
 def drop_columns_by_patterns(
     df: pl.DataFrame,
     *,
@@ -659,7 +694,7 @@ def build_synced_dataset(tier: int = 1) -> pl.DataFrame:
         symbol_ct = f"{symbol}_ct"
         if symbol in trad_ct.columns and symbol_ct in trad_ct.columns:
             trad_ct = trad_ct.with_columns(
-                pl.coalesce([pl.col(symbol_ct), pl.col(symbol)]).alias(symbol)
+                coalesce_before_cutoff(trad_ct, symbol_ct, symbol).alias(symbol)
             ).drop(symbol_ct)
             logger.info(f"Spliced traditional symbol {symbol} with CT data.")
         else:
@@ -671,7 +706,7 @@ def build_synced_dataset(tier: int = 1) -> pl.DataFrame:
     for active, historic in SPLICING_MAP.items():
         if active in synced.columns and historic in synced.columns:
             synced = synced.with_columns(
-                pl.coalesce([pl.col(active), pl.col(historic)]).alias(active)
+                coalesce_before_cutoff(synced, active, historic).alias(active)
             ).drop(historic)
             logger.info(f"Spliced {active} with {historic} and dropped {historic}.")
         else:
