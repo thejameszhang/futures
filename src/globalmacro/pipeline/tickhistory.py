@@ -15,6 +15,22 @@ from globalmacro.utils.paths import (
     PROJECT_ROOT,
     TICKHISTORY_PATH,
 )
+from globalmacro.utils.trade_presence import is_rescuable_mask, trade_counts
+
+# clscode 290 (ER2) stopped backing RL after this handoff; its later Datastream rows are
+# stale and must not enter any RL input. Every loader that reads a clscode's dates --
+# settlement prices, the expiry calendar, and the expiry ladder the rescue rule rolls
+# against -- applies the same cutoff so the three cannot disagree about which expiries RL
+# actually had.
+_STALE_HANDOFF_CLSCODE = 290
+_STALE_HANDOFF_CUTOFF = date(2003, 12, 22)
+
+
+def _keeps_after_stale_handoff(date_col: str) -> pl.Expr:
+    """A keep-mask: True for every row except the stale post-handoff clscode-290 ones,
+    comparing `date_col`. The same expression drives `.filter()` on the settlement,
+    expiry-calendar, and expiry-ladder inputs so they cannot disagree about RL."""
+    return (pl.col("clscode") != _STALE_HANDOFF_CLSCODE) | (pl.col(date_col) < _STALE_HANDOFF_CUTOFF)
 
 
 def load_trades_data(path: str) -> pl.DataFrame:
@@ -130,7 +146,7 @@ def load_settlement_prices() -> pl.DataFrame:
         pl.scan_parquet(FUTURES_PATH / f"datastream_futures_settlement_{cs_or_ct}.parquet")
         .filter(pl.col("date") >= pl.date(1996, 1, 4))
         .select(["clscode", "date", *settlement_cols])
-        .filter((pl.col("clscode") != 290) | (pl.col("date") < date(2003, 12, 22)))
+        .filter(_keeps_after_stale_handoff("date"))
         # See load_open_prices above: same zero-price trap, same per-column null (not a
         # row-drop), one column per contract order.
         .with_columns([pl.when(pl.col(c) == 0.0).then(None).otherwise(pl.col(c)).alias(c) for c in settlement_cols])
@@ -141,7 +157,7 @@ def load_expiry_dates() -> pl.DataFrame:
     """Load expiry dates from the LSEG Datastream."""
     return (
         pl.scan_csv(FUTURES_PATH / "dsfutcontrinfo.csv", ignore_errors=True, schema_overrides={"lasttrddate": pl.Date, "startdate": pl.Date})
-        .filter((pl.col("clscode") != 290) | (pl.col("lasttrddate") < date(2003, 12, 22)))
+        .filter(_keeps_after_stale_handoff("lasttrddate"))
         .filter(pl.col("lasttrddate").is_not_null())
         .select(['clscode', 'lasttrddate', 'startdate'])
         .collect()
@@ -157,6 +173,96 @@ def count_expiries_between(row_date: date, row_trad_last: date, expiry_list: lis
         if d >= row_date and d <= row_trad_last:
             cnt += 1
     return cnt
+
+
+def load_expiry_ladder() -> pl.DataFrame:
+    """Load the rolling expiry ladder from the LSEG Datastream settlement file --
+    `lasttrddate_1..lasttrddate_5`, never `dsfutcontrinfo.csv`. `dsfutcontrinfo.csv`
+    lists months a contract's cycle allows, not months the ladder actually rolled
+    through; the two differ for `GC`. The rescue rule needs the ladder the tick data
+    itself rolled against, not a static contract-info table.
+    """
+    cs_or_ct = "CS" if ASSET_CLASS == AssetClass.TRADITIONAL else "CT"
+    lasttrddate_cols = [f"lasttrddate_{i}" for i in range(1, 6)]
+    return (
+        pl.scan_parquet(FUTURES_PATH / f"datastream_futures_settlement_{cs_or_ct}.parquet")
+        .select(["clscode", *lasttrddate_cols])
+        .collect()
+    )
+
+
+def ladder_expiries_for(clscodes: list[int], ladder: pl.DataFrame) -> list[date]:
+    """The full expiry list one or more clscodes rolled through, read off the ladder's
+    own rolling `lasttrddate_1..5` columns rather than a static contract-info table.
+    Each column is a snapshot of the next N expiries as of some date, so the union of
+    all five across every row is the complete history, not just what was upcoming on
+    any single date.
+    """
+    rows = ladder.filter(pl.col("clscode").is_in(clscodes))
+    expiries: set[date] = set()
+    for i in range(1, 6):
+        col = f"lasttrddate_{i}"
+        # Same stale-handoff cutoff the price and expiry-calendar loaders apply: a
+        # clscode-290 date from after RL moved off it is stale, and the rescue rule must
+        # not roll against an expiry the price/expiry inputs already excluded. Applied
+        # per ladder column because each row carries five.
+        kept = rows.filter(_keeps_after_stale_handoff(col))[col].drop_nulls().to_list()
+        expiries.update(kept)
+    return sorted(expiries)
+
+
+def build_config(tier: int, asset_class: AssetClass, config_path: str | None = None) -> list[Future]:
+    """The list of `Future`s one (tier, asset class) run actually processes.
+
+    A two-RIC future is split into a historical leg (renamed to `ric[0]`, the panel
+    column becoming the RIC itself) and an active leg (`ric[1]`) -- mirroring how a
+    splice's older data and current data are ingested as two separate series.
+    `traditional` carries one more restriction on top of the asset-class match: only
+    futures with a trading-cycle `ct` set enter it.
+    """
+    path = config_path if config_path is not None else str(PROJECT_ROOT / f"tier{tier}.yaml")
+    config: list[Future] = []
+    for future in load_config(path):
+        if future.ric is not None and asset_class in future.asset_class:
+            if len(future.ric) > 1:
+                historical_future = copy.deepcopy(future)
+                historical_future.symbol = f"{future.ric[0]}"
+                historical_future.ric = [future.ric[0]]
+                config.append(historical_future)
+
+                active_future = copy.deepcopy(future)
+                active_future.ric = [future.ric[1]]
+                config.append(active_future)
+            else:
+                config.append(future)
+
+    if asset_class == AssetClass.TRADITIONAL:
+        config = list(filter(lambda f: f.ct is not None, config))
+    return config
+
+
+def clscodes_for(FUTURE: Future) -> list[int]:
+    """The Datastream clscode(s) that back one TickHistory future.
+
+    Most futures map one to one; a handful span an exchange or ticker change and are
+    stitched from two Datastream series -- kept as one lookup so every caller that
+    needs a future's clscodes (settlement prices, the expiry calendar, the expiry
+    ladder) agrees on the same mapping instead of re-deriving it.
+    """
+    if FUTURE.symbol == "G":
+        return [1181, 1176]
+    if FUTURE.symbol == "BRN":
+        return [1175, 1970]
+    if FUTURE.symbol == "160120006":
+        return [3729, 1051]
+    if FUTURE.symbol == "164120019":
+        return [1622, 4648]
+    # TODO: check if we can get earlier data for this
+    # if FUTURE.symbol == "MFS":
+    #     return [244, 3930]
+    if FUTURE.symbol == "RL":
+        return [290, 3590]
+    return [FUTURE.clscode]
 
 
 def compute_vwap(time_filtered_data: pl.DataFrame, datetime_column: str) -> pl.DataFrame:
@@ -321,6 +427,214 @@ def apply_unit_transforms(FUTURE: Future, daily_vwaps: pl.DataFrame) -> pl.DataF
     return daily_vwaps
 
 
+def attach_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
+    """Pick the front-month price AND record which slot it came from.
+
+    Recorded here, not reconstructed downstream: settlement_c1 and settlement_c2 are
+    numerically equal on many days, so recovering the slot by comparing values
+    misidentifies them and over-nulls by roughly 8x.
+    """
+    chosen = pl.when(pl.col("expiring_this_month") == 1).then(pl.col("settlement_c2")).otherwise(pl.col("settlement_c1"))
+    slot = pl.when(pl.col("expiring_this_month") == 1).then(pl.lit(2)).otherwise(pl.lit(1))
+    daily_vwaps = daily_vwaps.with_columns([
+        chosen.alias("front_month_settlement"),
+        slot.cast(pl.Int8).alias("front_slot"),
+    ])
+    fell_back = (pl.col("expiring_this_month") == 0) & pl.col("front_month_settlement").is_null()
+    return daily_vwaps.with_columns([
+        pl.when(fell_back).then(pl.col("settlement_c2")).otherwise(pl.col("front_month_settlement")).alias("front_month_settlement"),
+        pl.when(fell_back).then(pl.lit(2)).otherwise(pl.col("front_slot")).cast(pl.Int8).alias("front_slot"),
+    ])
+
+
+def attach_traditional_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
+    """Pick the front-month price for a traditional-cycle contract from `front_month`
+    AND record which settlement slot supplied it.
+
+    `front_month` is supposed to land in 1..4, but nothing upstream guarantees that (a
+    join miss leaves it null; an upstream bug could push it out of range), so both the
+    price chain and the slot fall back to c1 together -- if only one of them fell back,
+    `front_slot` would stop describing where the shipped price actually came from.
+    """
+    daily_vwaps = daily_vwaps.with_columns(
+        pl.when(pl.col("front_month") == 1).then(pl.col("settlement_c1"))
+        .when(pl.col("front_month") == 2).then(pl.col("settlement_c2"))
+        .when(pl.col("front_month") == 3).then(pl.col("settlement_c3"))
+        .when(pl.col("front_month") == 4).then(pl.col("settlement_c4"))
+        .otherwise(pl.col("settlement_c1"))  # fallback
+        .alias("front_month_settlement")
+    )
+    return daily_vwaps.with_columns(
+        pl.when(pl.col("front_month").is_between(1, 4)).then(pl.col("front_month"))
+          .otherwise(pl.lit(1)).cast(pl.Int8).alias("front_slot")
+    )
+
+
+def provenance_break_mask(symbol_data: pl.DataFrame) -> pl.Series:
+    """The row-level condition `apply_provenance_guard` nulls on, exposed on its own so
+    the rescue rule can identify exactly the cells the guard flagged without
+    re-deriving the condition a second time and risking it drifting out of sync with
+    what the guard actually does. See `apply_provenance_guard` for why each clause
+    is there; this only extracts the boolean, it does not change it.
+    """
+    front_slot_moved = (
+        # A plain != is safe here, not the null-safe ne_missing this codebase
+        # otherwise reaches for on a slot comparison: front_slot is populated on
+        # every row this runs against, on both the traditional and non-traditional
+        # branches, so the only null .shift(1) can introduce is a symbol's first
+        # row -- and fill_null(False) below keeps that row from ever matching.
+        pl.col("front_slot") != pl.col("front_slot").shift(1)
+    )
+    provenance_break = (
+        (~pl.col("shift").is_in([1, -1]))
+        & front_slot_moved
+        & pl.col("ret1").is_not_null()
+    )
+    return symbol_data.select(provenance_break.fill_null(False).alias("break")).to_series()
+
+
+def apply_provenance_guard(symbol_data: pl.DataFrame) -> pl.DataFrame:
+    """Null a finalised ret1_adjusted cell wherever its two ends came from different
+    contract slots. Applied after every coalesce that can build ret1_adjusted --
+    including the edge-case rollback adjustment that runs after the main one -- so a
+    cell this guard suppresses cannot be silently refilled by a later fallback.
+
+    A row-level precondition, not an identity re-derivation. A guard that instead
+    re-derived which contract ret1_adjusted's own formula would have tracked and
+    compared that to the price actually used would stay silent here: the
+    re-derivation runs against the same formula the backfill already passed through,
+    so on a same-day substitution it agrees with itself. front_slot is recorded
+    once, at the moment the price is chosen, and a later fallback cannot move it.
+
+    Scoped away from shift in {1, -1}: those rows are rolls, where the two ends
+    legitimately come from different slots -- rollback_c2_to_c1 deliberately divides
+    settlement_c1(t) by settlement_c2(t-1), so a slot mismatch there is the roll
+    working as intended, not a defect. Leaving the mask unscoped nulls the sync
+    panels' roll returns wholesale (34,066 cells instead of 927).
+
+    ret1 IS NOT NULL is a precondition, not a rescue for one particular row shape:
+    front_slot records the slot the price chain most recently selected, and this
+    clause restricts the guard to cells where ret1 is the value the coalesce actually
+    shipped into ret1_adjusted, so a slot label can never be read against a price it
+    does not describe. On the data this branch ships today the clause is a verified
+    no-op -- the rows it excludes already carry a null ret1_adjusted, so nothing it
+    protects is currently reaching a shipped cell. In particular, the expiry-month
+    rows where the second slot is dark (front_slot reads 2, ret1 is null, the
+    coalesce falls through to ret_c1) are already out of scope before this clause is
+    ever consulted: the transition into the expiry month is a roll and is removed by
+    the shift scope, and every row inside the expiry month keeps front_slot at 2 on
+    both ends and is removed by the slot comparison above. The clause stays in place
+    because the traditional branch's coalesce is not indexed by front_month the way
+    attach_front_slot's is, so a future change to it could produce a row where
+    front_slot and ret1_adjusted disagree in exactly the shape this clause guards
+    against.
+
+    Assumes symbol_data is already sorted by date_: front_slot.shift(1) walks
+    physical row order, not date_ itself. The non-traditional branch guarantees this
+    with an explicit .sort("date_") right before ret1_adjusted is finalised; the
+    traditional branch never re-sorts after computing front_slot, so it is trusting
+    whatever order upstream joins already left it in. This is not a new dependency --
+    ret1 itself is a lag-1 return over the same physical order
+    (front_month_settlement.shift(1)), so a frame that broke this guard's ordering
+    would already have broken ret1 first.
+    """
+    break_ = provenance_break_mask(symbol_data)
+    return symbol_data.with_columns(
+        pl.when(break_).then(None).otherwise(pl.col("ret1_adjusted")).alias("ret1_adjusted")
+    )
+
+
+def rescue_ret1_adjusted(
+    symbol_data: pl.DataFrame, ric_root: str, expiries: list[date], counts: pl.DataFrame
+) -> pl.DataFrame:
+    """Restore ret1_adjusted on cells `apply_provenance_guard` nulled but that were
+    actually a genuine roll: slot 1 dark from a ladder expiry through the panel's
+    previous row, then trading again at the flagged row.
+
+    Recomputes which cells the guard flagged from `ret1`/`shift`/`front_slot` (never
+    touched by the guard) rather than trusting a mask captured before the guard ran,
+    so this function's idea of "what got nulled" cannot drift from what the guard
+    actually nulled. Column order and dtype are preserved: the debug table this feeds
+    depends on both staying stable.
+
+    Only a forward slot move (front_slot 2 -> 1, the price selector rolling back into
+    the nearer contract) is ever a candidate: a continuation chain never reverts to an
+    earlier contract, so a backward move (1 -> 2) can only be the price selector's
+    gap-fill firing when the front month failed to print -- it is a genuine
+    cross-contract return by construction and `is_rescuable_mask`'s darkness reading
+    is never consulted for it. Measured on the shipped panels: every backward-moved
+    cell that reaches this guard has a null settlement_c1 and none sits in the
+    contract's own expiry month, which is the gap-fill signature, not a roll's.
+    """
+    symbol_data = symbol_data.with_columns([
+        provenance_break_mask(symbol_data).alias("_provenance_break"),
+        pl.col("date_").shift(1).alias("_prev_row_date"),
+        (
+            (pl.col("front_slot") == 1) & (pl.col("front_slot").shift(1) == 2)
+        ).alias("_rolled_forward"),
+    ])
+    flagged = symbol_data.filter(pl.col("_provenance_break")).select([
+        pl.lit(ric_root).alias("symbol"),
+        pl.col("date_"),
+        pl.col("_prev_row_date").alias("prev_row_date"),
+        pl.lit(expiries, dtype=pl.List(pl.Date)).alias("expiries"),
+        pl.col("_rolled_forward"),
+    ])
+    rescuable = flagged["_rolled_forward"] & is_rescuable_mask(flagged, counts)
+    rescued_dates = flagged.filter(rescuable)["date_"].to_list()
+    symbol_data = symbol_data.with_columns(
+        pl.when(pl.col("_provenance_break") & pl.col("date_").is_in(rescued_dates))
+        .then(pl.col("ret1"))
+        .otherwise(pl.col("ret1_adjusted"))
+        .alias("ret1_adjusted")
+    )
+    return symbol_data.drop(["_provenance_break", "_prev_row_date", "_rolled_forward"])
+
+
+def substitute_backward_cross_contract_returns(symbol_data: pl.DataFrame) -> pl.DataFrame:
+    """Fill a backward-flagged cell with ret_c2, the deferred contract's own
+    same-contract return -- run after `rescue_ret1_adjusted`, which never restores
+    this direction, so every cell this touches is still the guard's null.
+
+    A backward-flagged cell (`front_slot` 1 -> 2) is a genuine cross-contract break:
+    `apply_provenance_guard` nulled it because settlement_c1(t) was dark and the price
+    chain fell back to settlement_c2(t), a different contract than settlement_c1(t-1).
+    But `ret_c2` never involves settlement_c1 at all -- it is settlement_c2(t) over
+    settlement_c2(t-1), the SAME contract at both ends, present whenever slot 2 traded
+    on both days regardless of what slot 1 was doing. Measured against an external
+    reference with magnitude-matched controls, this substitute lands closer to the
+    reference than the null it replaces on the large majority of cells, and its error
+    sits below the noise floor ordinary (never-flagged) cells carry -- a same-contract
+    return beats no return wherever one is available.
+
+    Never applied to a forward-flagged cell (`front_slot` 2 -> 1), rescued or not. A
+    rescued forward cell is a genuine relabel where the roll moved slot 2 as well as
+    slot 1, so `ret_c2` there is itself cross-contract -- substituting it would
+    reintroduce the exact defect the guard removed. A forward cell the rescue left
+    null stays null here too: this function's own mask (front_slot 1 -> 2) cannot
+    match a forward move (front_slot 2 -> 1) in the first place, so neither forward
+    shape is reachable regardless of rescue's verdict on it.
+
+    Only fills where `ret_c2` is itself non-null -- a cell where slot 2 is also dark
+    has no same-contract return to fall back to and stays null, same as before.
+    """
+    symbol_data = symbol_data.with_columns(
+        provenance_break_mask(symbol_data).alias("_provenance_break")
+    )
+    backward = (
+        pl.col("_provenance_break")
+        & (pl.col("front_slot") == 2)
+        & (pl.col("front_slot").shift(1) == 1)
+    )
+    symbol_data = symbol_data.with_columns(
+        pl.when(backward & pl.col("ret_c2").is_not_null())
+        .then(pl.col("ret_c2"))
+        .otherwise(pl.col("ret1_adjusted"))
+        .alias("ret1_adjusted")
+    )
+    return symbol_data.drop("_provenance_break")
+
+
 def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     """Process a future's data and return the returns series."""
     # Self-provision the debug output dirs (regenerable; moved out by the reorg),
@@ -342,21 +656,7 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
         SETTLEMENT_END = FUTURE.settlement_end
 
     # Mapping one future on TickHistory to multiple futures (clscodes) in Datastream
-    if FUTURE.symbol == "G":
-        clscodes = [1181, 1176]
-    elif FUTURE.symbol == "BRN":
-        clscodes = [1175, 1970]
-    elif FUTURE.symbol == "160120006":
-        clscodes = [3729, 1051]
-    elif FUTURE.symbol == "164120019":
-        clscodes = [1622, 4648]
-    # TODO: check if we can get earlier data for this
-    # elif FUTURE.symbol == "MFS":
-    #     clscodes = [244, 3930]
-    elif FUTURE.symbol == "RL":
-        clscodes = [290, 3590]
-    else:
-        clscodes = [FUTURE.clscode]
+    clscodes = clscodes_for(FUTURE)
 
     assert FUTURE.ric is not None
     FUTURE_RICS = [f"{FUTURE.ric[0]}c1", f"{FUTURE.ric[0]}c2", f"{FUTURE.ric[0]}c3", f"{FUTURE.ric[0]}c4"]
@@ -666,28 +966,10 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
                 .when(pl.col("month_diff") == 3).then(pl.lit(3))
                 .otherwise(pl.lit(1))
             ).alias("front_month")
-        ]).with_columns([
-            # Now use front_month to select the appropriate settlement price
-            pl.when(pl.col("front_month") == 1).then(pl.col("settlement_c1"))
-            .when(pl.col("front_month") == 2).then(pl.col("settlement_c2"))
-            .when(pl.col("front_month") == 3).then(pl.col("settlement_c3"))
-            .when(pl.col("front_month") == 4).then(pl.col("settlement_c4"))
-            .otherwise(pl.col("settlement_c1"))  # fallback
-            .alias("front_month_settlement")
         ])
+        daily_vwaps = attach_traditional_front_slot(daily_vwaps)
     else:
-        daily_vwaps = daily_vwaps.with_columns([
-            pl.when(pl.col("expiring_this_month") == 1).then(pl.col("settlement_c2")).otherwise(pl.col("settlement_c1")).alias("front_month_settlement")
-        ])
-        # If we should use the current month's data, but we can't determine a settlement price for it,
-        # then use the back month's data
-        daily_vwaps = daily_vwaps.with_columns([
-            pl.when((pl.col("expiring_this_month") == 0) & (pl.col("front_month_settlement").is_null())).then(
-                pl.col("settlement_c2")
-            ).otherwise(
-                pl.col("front_month_settlement")
-            ).alias("front_month_settlement")
-        ])
+        daily_vwaps = attach_front_slot(daily_vwaps)
 
     # Historical price adjustment when the exchange changes contract details -> scales the price appropriately
     if FUTURE.adjustments is not None:
@@ -761,6 +1043,32 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
             ).then(pl.coalesce(pl.col("rollback_c2_to_c1"), pl.col("ret1_adjusted"))).otherwise(pl.col("ret1_adjusted")).alias("ret1_adjusted"),
         ]).sort("date_")
 
+    symbol_data = apply_provenance_guard(symbol_data)
+
+    # The rescue rule needs a tick-derived trade-count artifact that only exists for
+    # the (tier, asset class, sync target) triples it has been built for -- absent for
+    # every async run (sync_target == "none") and for any sync run built before its
+    # own artifact. trade_counts raises FileNotFoundError rather than returning an
+    # empty frame in that case; wiring it in unconditionally would abort those runs
+    # instead of leaving the guard's null in place, so its absence is caught here and
+    # logged loudly rather than propagated.
+    try:
+        counts = trade_counts(args.tier, ASSET_CLASS.value, sync_target)
+    except FileNotFoundError as exc:
+        print(
+            f"WARNING: no trade-presence artifact for {FUTURE.symbol} "
+            f"(tier {args.tier}, {ASSET_CLASS.value}, {sync_target}) -- rescuing nothing: {exc}",
+            flush=True,
+        )
+    else:
+        symbol_data = rescue_ret1_adjusted(
+            symbol_data, FUTURE.ric[0], ladder_expiries_for(clscodes, EXPIRY_LADDER), counts
+        )
+
+    # Backward breaks are never rescued above, so this only ever touches cells the
+    # guard nulled and rescue left untouched.
+    symbol_data = substitute_backward_cross_contract_returns(symbol_data)
+
     if ASSET_CLASS != AssetClass.TRADITIONAL:
         symbol_data.write_csv(TICKHISTORY_PATH / "debug" / "tables" / f"{FUTURE.symbol}.csv")
     else:
@@ -811,23 +1119,7 @@ if __name__ == "__main__":
     if ASSET_CLASS is None:
         raise ValueError(f"Invalid asset class: {args.asset_class}")
 
-    CONFIG = []
-    for future in load_config(PROJECT_ROOT / f"tier{args.tier}.yaml"):
-        if future.ric is not None and ASSET_CLASS in future.asset_class:
-            if len(future.ric) > 1:
-                historical_future = copy.deepcopy(future)
-                historical_future.symbol = f"{future.ric[0]}"
-                historical_future.ric = [future.ric[0]]
-                CONFIG.append(historical_future)
-
-                active_future = copy.deepcopy(future)
-                active_future.ric = [future.ric[1]]
-                CONFIG.append(active_future)
-            else:
-                CONFIG.append(future)
-
-    if ASSET_CLASS == AssetClass.TRADITIONAL:
-        CONFIG = list(filter(lambda f: f.ct is not None, CONFIG))
+    CONFIG = build_config(args.tier, ASSET_CLASS)
 
     CLSCODES = [f.clscode for f in CONFIG]
     CALCSERIESNAMES = [f.calcseriesname for f in CONFIG]
@@ -837,6 +1129,7 @@ if __name__ == "__main__":
     US_EXCHANGES = [9051, 1022, 2709, 9144, 1012, 9044, 9250, 9371, 9120]
     ALL_RICS = []
     for future in CONFIG:
+        assert future.ric is not None  # build_config only keeps futures with a ric
         ALL_RICS.extend([f"{future.ric[0]}c1", f"{future.ric[0]}c2", f"{future.ric[0]}c3", f"{future.ric[0]}c4"])
 
     # Processing US equity indices and Non-US equities separately due to memory constraints
@@ -846,6 +1139,7 @@ if __name__ == "__main__":
     OPEN_PRICES = load_open_prices()
     SETTLEMENT_PRICES = load_settlement_prices()
     LSEG_DATA = load_expiry_dates()
+    EXPIRY_LADDER = load_expiry_ladder()
 
     main()
 

@@ -244,24 +244,41 @@ jFx=$(submit "$(join "$(dld fx comp futures)" "$jR")" $S/fx.sh)
 # a stage they can't run.
 jLON1=""; jLON2=""; TICK=""
 if [ "$MODE" = full ]; then
+  # Trade-presence artifacts feed the tickhistory rescue rule: without the artifact for
+  # its (tier, class, sync_target) triple, trade_counts() raises FileNotFoundError and
+  # the panel silently ships "rescuing nothing", dropping the proven-roll returns the
+  # rescue restores. Build one per triple the tickhistory jobs below consume. These read
+  # only the trade shards (no futures parquet), so they run alongside the futures jobs;
+  # each tickhistory job then depends on its own artifact. Heavy classes read the ~400GB
+  # shards and bump memory exactly as their tickhistory counterparts do.
+  declare -A TP
+  for c in commodity currency bond nonus_equity stir traditional us_equity volatility; do
+    case "$c" in commodity|us_equity|nonus_equity) R="$HEAVY_MEM" ;; *) R="" ;; esac
+    TP["1_${c}_et"]=$(submit "" $R $S/trade_presence.sh 1 $c et)
+  done
+  TP["1_currency_london"]=$(submit "" $S/trade_presence.sh 1 currency london)
+  TP["2_currency_et"]=$(submit "" $S/trade_presence.sh 2 currency et)
+  TP["2_equity_et"]=$(submit "" $S/trade_presence.sh 2 equity et)
+  TP["2_currency_london"]=$(submit "" $S/trade_presence.sh 2 currency london)
+
   # London currency runs (both tiers) go first: they write the same shared debug path
   # (data/tickhistory/debug/{tables,dates}/<sym>.csv, no sync_target in the path) as the
   # ET currency runs, so London->ET is serialized to avoid a write race and to leave the
   # ET (shipping) debug tables on disk afterward. validate's fx-vs-spot exercise also
   # needs the sync_london currency panels these produce.
-  jLON1=$(submit "$FUT" $S/tickhistory.sh currency 1 london)
-  jLON2=$(submit "$FUT" $S/tickhistory.sh currency 2 london)
+  jLON1=$(submit "$(join "$FUT" "${TP[1_currency_london]}")" $S/tickhistory.sh currency 1 london)
+  jLON2=$(submit "$(join "$FUT" "${TP[2_currency_london]}")" $S/tickhistory.sh currency 2 london)
 
   TICK="${jLON1}:${jLON2}"
   for c in commodity currency bond nonus_equity stir traditional us_equity volatility; do
     case "$c" in commodity|us_equity|nonus_equity) R="$HEAVY_MEM" ;; *) R="" ;; esac
-    dep="$FUT"
-    [ "$c" = currency ] && dep="$(join "$FUT" "$jLON1")"
+    dep="$(join "$FUT" "${TP[1_${c}_et]}")"
+    [ "$c" = currency ] && dep="$(join "$dep" "$jLON1")"
     id=$(submit "$dep" $R $S/tickhistory.sh $c); TICK="${TICK}:${id}"
   done
   for c in currency equity; do
-    dep="$FUT"
-    [ "$c" = currency ] && dep="$(join "$FUT" "$jLON2")"
+    dep="$(join "$FUT" "${TP[2_${c}_et]}")"
+    [ "$c" = currency ] && dep="$(join "$dep" "$jLON2")"
     id=$(submit "$dep" $S/tickhistory.sh $c 2); TICK="${TICK}:${id}"   # tier 2, standard mem
   done
   TICK="${TICK#:}"
