@@ -9,7 +9,7 @@ def test_load_vix_is_removed():
 def test_build_synced_dataset_has_no_vix_open_param():
     from globalmacro.build import build_synced_dataset
     params = list(inspect.signature(build_synced_dataset).parameters)
-    assert params == ["tier"], f"expected only ['tier'], got {params}"
+    assert "vix_open" not in params, f"vix_open must stay removed, got {params}"
 
 
 def test_splicing_map_has_no_vx_entry():

@@ -427,7 +427,13 @@ def load_traded_panel(symbols: Iterable[str]) -> pl.DataFrame:
     return panel
 
 
-def load_sync_observation_panel(tier: int, sync_target: str, symbols: Iterable[str]) -> pl.DataFrame:
+def load_sync_observation_panel(
+    tier: int,
+    sync_target: str,
+    symbols: Iterable[str],
+    *,
+    splice_cutoffs: dict[str, date] | None = None,
+) -> pl.DataFrame:
     """date x symbol: did the sync stage record a front-month price that day?
 
     sync_daily_usd needs the same real-observation mask load_traded_panel builds for the
@@ -446,6 +452,21 @@ def load_sync_observation_panel(tier: int, sync_target: str, symbols: Iterable[s
     observed under either tier's run for a given date counts as observed (the `.any()` below),
     so unioning is safe.
 
+    `splice_cutoffs` folds a SPLICING_MAP active's donor into its own mask too.
+    build_synced_dataset backfills an active column with its historical donor strictly
+    before the active's own splice cutoff (coalesce_before_cutoff), so on those pre-cutoff
+    dates the shipped value literally IS the donor's return -- but the donor never gets its
+    own column in the shipped panel, so without this the mask has no coverage on exactly
+    the dates its value came from. For each requested symbol that is a SPLICING_MAP key,
+    walk its splice chain (RTY<-TF<-RL and similar): each hop's donor is relabelled to the
+    ORIGINAL requested symbol and restricted to strictly before THAT HOP's own cutoff --
+    `splice_cutoffs[hop]`, not the original symbol's -- mirroring coalesce_before_cutoff's
+    own restriction at every step. A hop with no recorded cutoff stops the chain there
+    rather than folding unguarded: two donors (BDL for FGBL, SMI for FSMI) kept trading in
+    parallel with their replacement contract for months past the replacement's own cutoff,
+    so an unrestricted union would mark "observed" on dates the value assembly never
+    actually draws from that donor.
+
     LOUD ON A COVERAGE HOLE, matching load_traded_panel's contract. Zero coverage would
     silently revert EVERY symbol to the pre-fix, unsafe return-nullity inference behind
     nothing but a log line -- but a hole covering most, not all, of the requested symbols is
@@ -454,17 +475,50 @@ def load_sync_observation_panel(tier: int, sync_target: str, symbols: Iterable[s
     equity-sector series with no tick data behind them, never expected to have a panel.
     """
     wanted = sorted(set(symbols))
+
+    # Every (raw symbol to load, name to relabel it as, exclusive date cutoff) this call
+    # needs. Requested symbols load as themselves, unrestricted; a splice donor loads
+    # under its active's name, gated to before that hop's own cutoff.
+    load_requests: list[tuple[str, str, date | None]] = [(symbol, symbol, None) for symbol in wanted]
+    if splice_cutoffs:
+        for active in wanted:
+            hop = active
+            seen: set[str] = set()
+            while hop in SPLICING_MAP and hop not in seen:
+                seen.add(hop)
+                donor = SPLICING_MAP[hop]
+                hop_cutoff = splice_cutoffs.get(hop)
+                if hop_cutoff is None:
+                    break
+                load_requests.append((donor, active, hop_cutoff))
+                hop = donor
+
+    raw_symbols = sorted({raw for raw, _, _ in load_requests})
     paths = sorted(
         path
         for t in range(1, tier + 1)
         for path in (TICKHISTORY_PATH / "observations").glob(f"tier{t}_*_{sync_target}.parquet")
     )
     parts = [
-        pl.scan_parquet(path).filter(pl.col("symbol").is_in(wanted)).select("symbol", "date", "observed")
+        pl.scan_parquet(path).filter(pl.col("symbol").is_in(raw_symbols)).select("symbol", "date", "observed")
         for path in paths
     ]
     if parts:
-        long = pl.concat(parts).group_by(["symbol", "date"]).agg(pl.col("observed").any()).collect()
+        raw_observed = pl.concat(parts).group_by(["symbol", "date"]).agg(pl.col("observed").any()).collect()
+    else:
+        raw_observed = pl.DataFrame(schema={"symbol": pl.Utf8, "date": pl.Date, "observed": pl.Boolean})
+
+    relabeled = []
+    for raw, relabel_to, cutoff in load_requests:
+        part = raw_observed.filter(pl.col("symbol") == raw)
+        if cutoff is not None:
+            part = part.filter(pl.col("date") < pl.lit(cutoff))
+        if relabel_to != raw:
+            part = part.with_columns(pl.lit(relabel_to).alias("symbol"))
+        relabeled.append(part)
+
+    if relabeled:
+        long = pl.concat(relabeled).group_by(["symbol", "date"]).agg(pl.col("observed").any())
         panel = long.pivot(on="symbol", index="date", values="observed").sort("date")
     else:
         panel = pl.DataFrame(schema={"date": pl.Date})
@@ -696,7 +750,16 @@ def fill_asynced_gaps_with_synthetic_returns(
     return asynced
 
 
-def build_synced_dataset(tier: int = 1) -> pl.DataFrame:
+def build_synced_dataset(
+    tier: int = 1, *, splice_cutoffs: dict[str, date] | None = None
+) -> pl.DataFrame:
+    """splice_cutoffs, when supplied, is filled in place with the exact per-active
+    cutoff coalesce_before_cutoff computes in the SPLICING_MAP loop below -- the sync
+    observation mask needs the same value to gate its own donor fold (see
+    load_sync_observation_panel). Recorded whenever `active` is a column, even if its
+    donor is absent and no coalesce actually runs: that case (FXS30, whose donor OMX
+    is dropped earlier in this function) still needs a cutoff -- `active`'s own,
+    untouched first-valid-date -- for the mask fold to gate against."""
     USE_TRAD = ["I", "SI", "HG", "L", "AP", "GE", "TIFEY"]
     trad = coerce_numeric_data(read_csv(DATASETS_ROOT / "tier1" / "sync" / "traditional_daily_returns.csv"))
     trad = set_null_on_date(trad, "HG", date(2006, 7, 4))
@@ -759,6 +822,11 @@ def build_synced_dataset(tier: int = 1) -> pl.DataFrame:
     synced = outer_join_on_date(synced, trad_ct)
 
     for active, historic in SPLICING_MAP.items():
+        if splice_cutoffs is not None and active in synced.columns:
+            # Same computation coalesce_before_cutoff does internally, on the same
+            # unmodified `synced` -- captured here as a side effect so the caller
+            # doesn't have to re-derive it later from a frame that has already moved on.
+            splice_cutoffs[active] = first_valid_date(synced, active)
         if active in synced.columns and historic in synced.columns:
             synced = synced.with_columns(
                 coalesce_before_cutoff(synced, active, historic).alias(active)
@@ -847,6 +915,7 @@ def save_usd_datasets(
     symbol_to_ccy: dict[str, str], fx_async: pl.DataFrame, fx_sync: pl.DataFrame | None,
     out_root: Path = DATASETS_ROOT,
     traded_async: pl.DataFrame | None = None,
+    splice_cutoffs: dict[str, date] | None = None,
 ) -> None:
     """Write *_usd.csv siblings. async panels use Datastream FX (fx_async); sync panels
     use Compustat FX (fx_sync). Monthly USD is compounded from daily USD.
@@ -855,7 +924,12 @@ def save_usd_datasets(
     parquet, which is what the async returns are computed from; the sync panels are built
     from LSEG tick data on a different sampling calendar (09:31 ET), so the Datastream
     settlement dates are not their observation dates and handing them this mask would be
-    wrong rather than merely useless."""
+    wrong rather than merely useless.
+
+    `splice_cutoffs` (from build_sync) is forwarded to both sync `load_sync_observation_panel`
+    calls so a SPLICING_MAP active's mask also covers the pre-cutoff dates its own value came
+    from a donor -- see that function. Never forwarded to the async leg: async's traded mask
+    isn't sourced from load_sync_observation_panel at all."""
     def _warn_first_obs_lost(df: pl.DataFrame, usd: pl.DataFrame, rel: str) -> None:
         # usd_panel correctly nulls any leading span where a currency's FX history
         # starts after the asset's own returns (safe: never a wrong value) — but
@@ -915,12 +989,16 @@ def save_usd_datasets(
     u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv", traded_async)
     monthly(u, "tier1/async/async_monthly_usd.csv")
     if tier1_synced is not None and fx_sync is not None:
-        traded_sync_t1 = load_sync_observation_panel(1, "et", [c for c in tier1_synced.columns if c != "date"])
+        traded_sync_t1 = load_sync_observation_panel(
+            1, "et", [c for c in tier1_synced.columns if c != "date"], splice_cutoffs=splice_cutoffs
+        )
         daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv", traded_sync_t1)
     u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv", traded_async)
     monthly(u, "tier2/async/async_monthly_usd.csv")
     if tier2_synced is not None and fx_sync is not None:
-        traded_sync_t2 = load_sync_observation_panel(2, "et", [c for c in tier2_synced.columns if c != "date"])
+        traded_sync_t2 = load_sync_observation_panel(
+            2, "et", [c for c in tier2_synced.columns if c != "date"], splice_cutoffs=splice_cutoffs
+        )
         daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv", traded_sync_t2)
 
 
@@ -982,6 +1060,7 @@ class AsyncOutputs(TypedDict):
 class SyncOutputs(TypedDict):
     synced: pl.DataFrame
     pre_splice_synced: pl.DataFrame
+    splice_cutoffs: dict[str, date]
 
 
 def build_async(synthetic_returns: pl.DataFrame) -> AsyncOutputs:
@@ -1002,7 +1081,8 @@ def build_async(synthetic_returns: pl.DataFrame) -> AsyncOutputs:
 
 def build_sync(synthetic_returns_synced: pl.DataFrame) -> SyncOutputs:
     """Everything that needs the tickhistory stage's outputs."""
-    synced = build_synced_dataset(tier=2)
+    splice_cutoffs: dict[str, date] = {}
+    synced = build_synced_dataset(tier=2, splice_cutoffs=splice_cutoffs)
     pre_splice_synced = synced  # BEFORE splice_synthetic_returns: real-splice-aware (6E<-DM), synthetic-blind
     synced = splice_synthetic_returns(synced, synthetic_returns_synced, "TickHistory", skip_if_before=date(1996, 1, 4))
     # Capture-site guard ("never the CIP synthetic"): a late-listing G10 future
@@ -1019,7 +1099,7 @@ def build_sync(synthetic_returns_synced: pl.DataFrame) -> SyncOutputs:
     )
     synced = keep_after_date(synced, "PLN", date(2004, 7, 14), inclusive=True)
     synced = keep_after_date(synced, "CZK", date(2004, 7, 14), inclusive=True)
-    return {"synced": synced, "pre_splice_synced": pre_splice_synced}
+    return {"synced": synced, "pre_splice_synced": pre_splice_synced, "splice_cutoffs": splice_cutoffs}
 
 
 def _validate_mode(mode: str) -> None:
@@ -1096,7 +1176,8 @@ def main(mode: Literal["full", "async-only"] = "full") -> None:
     symbol_to_ccy = build_currency_map(tier1_futures + tier2_futures)
     traded_async = load_traded_panel(c for c in tier2_asynced.columns if c != "date")
     save_usd_datasets(tier1_synced, tier1_asynced, tier2_synced, tier2_asynced,
-                      symbol_to_ccy, fx_async, fx_sync, traded_async=traded_async)
+                      symbol_to_ccy, fx_async, fx_sync, traded_async=traded_async,
+                      splice_cutoffs=sync_out["splice_cutoffs"] if sync_out is not None else None)
 
 
 if __name__ == "__main__":

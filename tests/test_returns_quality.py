@@ -128,6 +128,70 @@ def test_tier2_sync_observation_panel_includes_tier1_inherited_symbols(tmp_path,
     assert panel["BB"].to_list() == [True, False]
 
 
+# ---------------------------------------------------------------------------
+# splice_cutoffs: folding a SPLICING_MAP donor's own observation rows into its
+# active's mask, gated to strictly before that active's splice cutoff.
+# ---------------------------------------------------------------------------
+
+
+def test_donor_observation_folds_into_active_mask_strictly_before_the_splice_cutoff(tmp_path, monkeypatch):
+    # FGBL<-BDL: BDL kept trading in parallel with FGBL for a while past FGBL's own
+    # splice cutoff (a real overlap window, not a hypothetical), so a date AT the
+    # cutoff must be excluded -- only strictly-before dates are ones the value
+    # assembly (coalesce_before_cutoff) ever actually draws BDL's return from.
+    cutoff = date(2020, 1, 3)
+    _write_observation_panel(tmp_path, {
+        "symbol": ["BDL", "BDL", "FGBL"],
+        "date": [date(2020, 1, 1), cutoff, date(2020, 1, 5)],
+        "observed": [True, True, True],
+    })
+    monkeypatch.setattr(build, "TICKHISTORY_PATH", tmp_path)
+
+    panel = load_sync_observation_panel(1, "et", ["FGBL"], splice_cutoffs={"FGBL": cutoff}).sort("date")
+    rows = dict(zip(panel["date"].to_list(), panel["FGBL"].to_list(), strict=True))
+    assert rows[date(2020, 1, 1)] is True, "BDL's pre-cutoff observation must fold into FGBL's mask"
+    assert rows.get(cutoff) is not True, "BDL's AT-cutoff observation must not leak in (strictly before)"
+    assert rows[date(2020, 1, 5)] is True, "FGBL's own observation must still come through unaffected"
+
+
+def test_no_splice_cutoffs_argument_leaves_todays_behaviour_untouched(tmp_path, monkeypatch):
+    # Same fixture as above, but the caller never passes splice_cutoffs -- the
+    # donor must never be scanned at all, matching every call site before this fix.
+    cutoff = date(2020, 1, 3)
+    _write_observation_panel(tmp_path, {
+        "symbol": ["BDL", "BDL", "FGBL"],
+        "date": [date(2020, 1, 1), cutoff, date(2020, 1, 5)],
+        "observed": [True, True, True],
+    })
+    monkeypatch.setattr(build, "TICKHISTORY_PATH", tmp_path)
+
+    panel = load_sync_observation_panel(1, "et", ["FGBL"]).sort("date")
+    rows = dict(zip(panel["date"].to_list(), panel["FGBL"].to_list(), strict=True))
+    assert date(2020, 1, 1) not in rows, "with no splice_cutoffs, BDL must never be folded in"
+    assert rows[date(2020, 1, 5)] is True
+
+
+def test_a_splice_chain_folds_every_hop_gated_by_that_hops_own_cutoff(tmp_path, monkeypatch):
+    # RTY<-TF<-RL. Requesting only RTY must still pick up TF's own observations
+    # (gated by cutoff[RTY]) AND, transitively, RL's (gated by cutoff[TF]) --
+    # closing the chain, not just the first hop.
+    cutoff_rty = date(2020, 1, 10)
+    cutoff_tf = date(2020, 1, 3)
+    _write_observation_panel(tmp_path, {
+        "symbol": ["TF", "RL"],
+        "date": [date(2020, 1, 5), date(2020, 1, 1)],
+        "observed": [True, True],
+    })
+    monkeypatch.setattr(build, "TICKHISTORY_PATH", tmp_path)
+
+    panel = load_sync_observation_panel(
+        1, "et", ["RTY"], splice_cutoffs={"RTY": cutoff_rty, "TF": cutoff_tf}
+    ).sort("date")
+    rows = dict(zip(panel["date"].to_list(), panel["RTY"].to_list(), strict=True))
+    assert rows[date(2020, 1, 5)] is True, "TF's observation (< cutoff[RTY]) must fold into RTY"
+    assert rows[date(2020, 1, 1)] is True, "RL's observation (< cutoff[TF]) must fold into RTY transitively"
+
+
 def test_sync_daily_usd_wiring_narrows_fx_leg_around_a_masked_observation(tmp_path, monkeypatch):
     # BRN's return is null on the middle day -- exactly the cell the provenance guard can
     # null while the front month still priced -- but the tick pipeline still marks it
