@@ -11,6 +11,7 @@
 #   sbatch --mem=1450G --cpus-per-task=32 slurm/trade_presence.sh <tier> <asset_class> <sync_target>
 #SBATCH --partition=cpunormal,build
 source "${SLURM_SUBMIT_DIR:-$PWD}/slurm/_common.sh" || exit 1
+cd "$_GM_REPO"  # so the repo-relative script path below resolves regardless of submit dir
 TIER="${1:?usage: trade_presence.sh <tier> <asset_class> <sync_target>}"
 ASSET_CLASS="${2:?usage: trade_presence.sh <tier> <asset_class> <sync_target>}"
 SYNC_TARGET="${3:?usage: trade_presence.sh <tier> <asset_class> <sync_target>}"
