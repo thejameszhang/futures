@@ -212,6 +212,51 @@ def apply_zero_price_denominator_guard(wide_contr_data: pl.DataFrame, price_type
     return wide_contr_data
 
 
+_BAD_SLOT2_MOVE = 0.30
+
+
+def apply_bad_slot2_print_guard(wide_contr_data: pl.DataFrame) -> pl.DataFrame:
+    """Substitute the traded front-month return for a zero-volume bad slot-2 print in the
+    expiry roll, on the FINALISED ret_1 -- after the coalesce, mirroring the two finalised
+    guards beside it: guarding ret_temp_2 upstream is backfilled away.
+
+    A bad print (slot 2 recorded no trade and moved more than 30%) poisons two finalised
+    cells: the day it is the numerator and the next day where it is the denominator. On a
+    poisoned cell that used slot 2 (exp_1 == 1), use ret_temp_1 (the front month) when the
+    front actually traded (volume_1 > 0), else null. Zero volume plus the traded front
+    disagreeing is the discriminator.
+
+    The bad print itself must fall on the roll (exp_1 == 1): a zero-volume spike while
+    exp_1 == 0 is a settlement spike outside the roll, a different defect this guard doesn't
+    cover. Without that restriction, a spike-and-revert straddling the roll boundary gets
+    half-corrected -- the pre-roll spike ships untouched (fire never reaches it) while the
+    revert that cancels it gets nulled or substituted away, turning a self-cancelling pair
+    into a one-sided error.
+
+    Out of scope, currently absent: the {t, t+1} pairing assumes the slot layout at t+1
+    is the same one that produced the bad print at t. If the front contract itself rolls
+    between t and t+1, that assumption can fail two ways -- ret_temp_1(t+1)'s own roll
+    branch divides by yesterday's slot-2 price, so a roll landing exp_1 == 0 at t+1 can
+    carry the bad print into a cell this guard never fires on (fire requires exp_1 == 1);
+    or, if exp_1(t+1) == 1 (a serial expiry month), the guard does fire but its own
+    substitute (ret_temp_1(t+1)) is the same poisoned roll-branch ratio, injecting the bad
+    print rather than removing it. Neither shape is guarded against here; on the
+    configured universe today, no bad print's following row is itself a roll, so both are
+    measured absent, not merely unlikely.
+    """
+    bad = (
+        (pl.col("exp_1") == 1)
+        & (pl.col("volume_2") == 0)
+        & (pl.col("ret_temp_2").abs() > _BAD_SLOT2_MOVE)
+    ).fill_null(False)
+    poisoned = (bad | bad.shift(1).over("clscode")).fill_null(False)
+    substitute = pl.when(pl.col("volume_1") > 0).then(pl.col("ret_temp_1")).otherwise(None)
+    fire = poisoned & (pl.col("exp_1") == 1)
+    return wide_contr_data.with_columns(
+        pl.when(fire).then(substitute).otherwise(pl.col("ret_1")).alias("ret_1"),
+    )
+
+
 def select_top_contracts_by_volume(contr_data: pl.DataFrame) -> pl.DataFrame:
     """Pick one row per (clscode, date_, order) slot: the highest-volume contract sharing
     that expiry rank on that day (`order` = the dense rank of distinct lasttrddate within
@@ -432,6 +477,7 @@ def main():
 
     wide_contr_data = apply_finalised_return_guard(wide_contr_data)
     wide_contr_data = apply_zero_price_denominator_guard(wide_contr_data, PRICE_TYPE)
+    wide_contr_data = apply_bad_slot2_print_guard(wide_contr_data)
 
     os.makedirs(FUTURES_PATH / "debug" / "tables", exist_ok=True)
     os.makedirs(FUTURES_PATH / "debug" / "dates", exist_ok=True)

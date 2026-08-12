@@ -427,6 +427,61 @@ def load_traded_panel(symbols: Iterable[str]) -> pl.DataFrame:
     return panel
 
 
+def load_sync_observation_panel(tier: int, sync_target: str, symbols: Iterable[str]) -> pl.DataFrame:
+    """date x symbol: did the sync stage record a front-month price that day?
+
+    sync_daily_usd needs the same real-observation mask load_traded_panel builds for the
+    async panels, but the async parquet's settlement dates aren't the sync stage's own
+    sampling calendar. The tick-data pipeline writes one observation panel per class, carrying
+    `observed` -- front-month settlement presence, independent of whether the finalised return
+    survived the provenance guard.
+
+    A tier's sync panel is not built only from that tier's own class runs: build_synced_dataset
+    assembles tier 2 from every tier-1 class CSV plus two tier-2-only extras (currency, equity),
+    so a symbol requested under tier 2 can just as well have been observed under a tier-1 run.
+    Load every class's panel for every tier up to and including the requested one -- tier 1
+    stays tier-1-only (range(1, 2) == {1}, so this is a no-op there), tier 2 pulls tier 1 and
+    tier 2 -- filtered down to the requested symbols, and pivot the union into one date x
+    symbol boolean panel. Symbol names don't collide across tiers' parquets, and a symbol
+    observed under either tier's run for a given date counts as observed (the `.any()` below),
+    so unioning is safe.
+
+    LOUD ON A COVERAGE HOLE, matching load_traded_panel's contract. Zero coverage would
+    silently revert EVERY symbol to the pre-fix, unsafe return-nullity inference behind
+    nothing but a log line -- but a hole covering most, not all, of the requested symbols is
+    just as dangerous and just as silent, so this raises on any gap too, not only a total one.
+    The one legitimate gap is the JKP sector tickers (see GICS_SECTOR_TICKERS): synthetic
+    equity-sector series with no tick data behind them, never expected to have a panel.
+    """
+    wanted = sorted(set(symbols))
+    paths = sorted(
+        path
+        for t in range(1, tier + 1)
+        for path in (TICKHISTORY_PATH / "observations").glob(f"tier{t}_*_{sync_target}.parquet")
+    )
+    parts = [
+        pl.scan_parquet(path).filter(pl.col("symbol").is_in(wanted)).select("symbol", "date", "observed")
+        for path in paths
+    ]
+    if parts:
+        long = pl.concat(parts).group_by(["symbol", "date"]).agg(pl.col("observed").any()).collect()
+        panel = long.pivot(on="symbol", index="date", values="observed").sort("date")
+    else:
+        panel = pl.DataFrame(schema={"date": pl.Date})
+    covered = set(panel.columns) & set(wanted)
+    uncovered = set(wanted) - covered - set(GICS_SECTOR_TICKERS.values())
+    if uncovered:
+        raise ValueError(
+            f"sync observation panel: {len(uncovered)} of {len(wanted)} requested symbols "
+            f"have no observation coverage under {TICKHISTORY_PATH / 'observations'} for "
+            f"tier {tier}, sync target {sync_target!r}: {sorted(uncovered)}. Handing "
+            "usd_panel a mask that silently omits these symbols would revert each one to "
+            "the pre-fix, unsafe return-nullity inference behind nothing but a log line."
+        )
+    logger.info("sync observation panel: %d dates x %d symbols", panel.height, len(panel.columns) - 1)
+    return panel
+
+
 def load_sectors_async() -> pl.DataFrame:
     sectors_async = read_csv(
         DATA_ROOT / "jkp" / "updated_daily_ind_gics.csv",
@@ -860,11 +915,13 @@ def save_usd_datasets(
     u = daily(tier1_asynced, fx_async, "tier1/async/async_daily_usd.csv", traded_async)
     monthly(u, "tier1/async/async_monthly_usd.csv")
     if tier1_synced is not None and fx_sync is not None:
-        daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv")
+        traded_sync_t1 = load_sync_observation_panel(1, "et", [c for c in tier1_synced.columns if c != "date"])
+        daily(tier1_synced, fx_sync, "tier1/sync/sync_daily_usd.csv", traded_sync_t1)
     u = daily(tier2_asynced, fx_async, "tier2/async/async_daily_usd.csv", traded_async)
     monthly(u, "tier2/async/async_monthly_usd.csv")
     if tier2_synced is not None and fx_sync is not None:
-        daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv")
+        traded_sync_t2 = load_sync_observation_panel(2, "et", [c for c in tier2_synced.columns if c != "date"])
+        daily(tier2_synced, fx_sync, "tier2/sync/sync_daily_usd.csv", traded_sync_t2)
 
 
 def currency_health(
