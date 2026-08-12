@@ -12,6 +12,7 @@ from globalmacro.pipeline.tickhistory import (
     clscodes_for,
     ladder_expiries_for,
     rescue_ret1_adjusted,
+    substitute_backward_cross_contract_returns,
 )
 from globalmacro.utils import trade_presence
 from globalmacro.utils.models import AssetClass, Future
@@ -754,6 +755,97 @@ def test_rescue_is_a_no_op_when_nothing_was_flagged():
     })
     out = rescue_ret1_adjusted(symbol_data, "X", [], counts)
     assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+# ---------------------------------------------------------------------------
+# substitute_backward_cross_contract_returns: fills a backward-flagged null
+# (front_slot 1 -> 2) with ret_c2, the deferred contract's own same-contract
+# return. Runs after rescue_ret1_adjusted, which never restores this direction, so
+# every cell in scope here is still the guard's null. Each test below isolates one
+# way a mutant could get this wrong: substituting onto a forward cell (rescued or
+# not), nulling instead of substituting, or reaching past a missing ret_c2.
+# ---------------------------------------------------------------------------
+
+
+def _substitution_frame(shift, slots, ret1, ret_c2, ret1_adjusted=None):
+    return pl.DataFrame({
+        "shift": shift,
+        "front_slot": slots,
+        "ret1": ret1,
+        "ret_c2": ret_c2,
+        "ret1_adjusted": ret1 if ret1_adjusted is None else ret1_adjusted,
+    })
+
+
+def test_substitutes_ret_c2_on_a_backward_flagged_cell():
+    frame = _substitution_frame(
+        shift=[0, 0], slots=[1, 2], ret1=[0.01, 0.02], ret_c2=[0.05, 0.07],
+        ret1_adjusted=[0.01, None],  # already nulled by apply_provenance_guard
+    )
+    out = substitute_backward_cross_contract_returns(frame)
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.07]
+
+
+def test_leaves_a_backward_flagged_cell_null_when_ret_c2_is_also_null():
+    # The 12-of-535 cells with no same-contract return to fall back to.
+    frame = _substitution_frame(
+        shift=[0, 0], slots=[1, 2], ret1=[0.01, 0.02], ret_c2=[0.05, None],
+        ret1_adjusted=[0.01, None],
+    )
+    out = substitute_backward_cross_contract_returns(frame)
+    assert out["ret1_adjusted"].to_list() == [0.01, None]
+
+
+def test_never_substitutes_an_unrescued_forward_flagged_cell():
+    # front_slot moves 2 -> 1 (forward), not 1 -> 2, and was not rescued (still
+    # null). ret_c2 existing here must not matter -- the direction alone rules it
+    # out, the same as it does for a real, un-rescued forward break.
+    frame = _substitution_frame(
+        shift=[0, 0], slots=[2, 1], ret1=[0.01, 0.02], ret_c2=[0.05, 0.09],
+        ret1_adjusted=[0.01, None],
+    )
+    out = substitute_backward_cross_contract_returns(frame)
+    assert out["ret1_adjusted"].to_list() == [0.01, None]
+
+
+def test_never_overwrites_a_rescued_forward_cell():
+    # Same shape as above but rescued (ret1_adjusted restored to ret1). ret_c2 at a
+    # genuine relabel is itself cross-contract, so it must never displace the
+    # rescued value even though it is non-null and different from it.
+    frame = _substitution_frame(
+        shift=[0, 0], slots=[2, 1], ret1=[0.01, 0.02], ret_c2=[0.05, 0.09],
+        ret1_adjusted=[0.01, 0.02],
+    )
+    out = substitute_backward_cross_contract_returns(frame)
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+def test_ignores_a_same_slot_row():
+    frame = _substitution_frame(
+        shift=[0, 0], slots=[1, 1], ret1=[0.01, 0.02], ret_c2=[0.05, 0.09],
+    )
+    out = substitute_backward_cross_contract_returns(frame)
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+def test_leaves_a_roll_untouched_even_with_a_backward_looking_slot_pair():
+    # shift in {1, -1} is a roll; provenance_break_mask excludes it regardless of
+    # what front_slot does, so this must never be treated as a backward break.
+    frame = _substitution_frame(
+        shift=[0, -1], slots=[1, 2], ret1=[0.01, 0.02], ret_c2=[0.05, 0.09],
+    )
+    out = substitute_backward_cross_contract_returns(frame)
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+def test_substitution_preserves_column_order_and_dtypes():
+    frame = _substitution_frame(
+        shift=[0, 0], slots=[1, 2], ret1=[0.01, 0.02], ret_c2=[0.05, 0.07],
+        ret1_adjusted=[0.01, None],
+    )
+    out = substitute_backward_cross_contract_returns(frame)
+    assert out.columns == frame.columns
+    assert out.schema == frame.schema
 
 
 # ---------------------------------------------------------------------------

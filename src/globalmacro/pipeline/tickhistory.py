@@ -570,6 +570,50 @@ def rescue_ret1_adjusted(
     return symbol_data.drop(["_provenance_break", "_prev_row_date", "_rolled_forward"])
 
 
+def substitute_backward_cross_contract_returns(symbol_data: pl.DataFrame) -> pl.DataFrame:
+    """Fill a backward-flagged cell with ret_c2, the deferred contract's own
+    same-contract return -- run after `rescue_ret1_adjusted`, which never restores
+    this direction, so every cell this touches is still the guard's null.
+
+    A backward-flagged cell (`front_slot` 1 -> 2) is a genuine cross-contract break:
+    `apply_provenance_guard` nulled it because settlement_c1(t) was dark and the price
+    chain fell back to settlement_c2(t), a different contract than settlement_c1(t-1).
+    But `ret_c2` never involves settlement_c1 at all -- it is settlement_c2(t) over
+    settlement_c2(t-1), the SAME contract at both ends, present whenever slot 2 traded
+    on both days regardless of what slot 1 was doing. Measured against an external
+    reference with magnitude-matched controls, this substitute lands closer to the
+    reference than the null it replaces on the large majority of cells, and its error
+    sits below the noise floor ordinary (never-flagged) cells carry -- a same-contract
+    return beats no return wherever one is available.
+
+    Never applied to a forward-flagged cell (`front_slot` 2 -> 1), rescued or not. A
+    rescued forward cell is a genuine relabel where the roll moved slot 2 as well as
+    slot 1, so `ret_c2` there is itself cross-contract -- substituting it would
+    reintroduce the exact defect the guard removed. A forward cell the rescue left
+    null stays null here too: this function's own mask (front_slot 1 -> 2) cannot
+    match a forward move (front_slot 2 -> 1) in the first place, so neither forward
+    shape is reachable regardless of rescue's verdict on it.
+
+    Only fills where `ret_c2` is itself non-null -- a cell where slot 2 is also dark
+    has no same-contract return to fall back to and stays null, same as before.
+    """
+    symbol_data = symbol_data.with_columns(
+        provenance_break_mask(symbol_data).alias("_provenance_break")
+    )
+    backward = (
+        pl.col("_provenance_break")
+        & (pl.col("front_slot") == 2)
+        & (pl.col("front_slot").shift(1) == 1)
+    )
+    symbol_data = symbol_data.with_columns(
+        pl.when(backward & pl.col("ret_c2").is_not_null())
+        .then(pl.col("ret_c2"))
+        .otherwise(pl.col("ret1_adjusted"))
+        .alias("ret1_adjusted")
+    )
+    return symbol_data.drop("_provenance_break")
+
+
 def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     """Process a future's data and return the returns series."""
     # Self-provision the debug output dirs (regenerable; moved out by the reorg),
@@ -999,6 +1043,10 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
         symbol_data = rescue_ret1_adjusted(
             symbol_data, FUTURE.ric[0], ladder_expiries_for(clscodes, EXPIRY_LADDER), counts
         )
+
+    # Backward breaks are never rescued above, so this only ever touches cells the
+    # guard nulled and rescue left untouched.
+    symbol_data = substitute_backward_cross_contract_returns(symbol_data)
 
     if ASSET_CLASS != AssetClass.TRADITIONAL:
         symbol_data.write_csv(TICKHISTORY_PATH / "debug" / "tables" / f"{FUTURE.symbol}.csv")
