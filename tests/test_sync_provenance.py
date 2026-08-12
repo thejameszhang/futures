@@ -588,6 +588,26 @@ def test_declines_when_the_expiry_falls_after_the_panel_s_previous_row():
     assert is_rescuable_mask(flagged, counts).to_list() == [False]
 
 
+def test_the_left_edge_search_ignores_trading_outside_the_panel_calendar():
+    # LGOc1 (ICE Gas Oil) prints 6 trades on Sunday 2004-01-18, between the panel's
+    # previous row (Friday the 16th) and the flagged row (Monday the 19th) -- a day
+    # the panel never has a row for. Searching the full calendar for "the last trade
+    # before the flagged row" would land on that Sunday, which sits after
+    # prev_row_date and inverts the window so no expiry can ever fall inside it, on a
+    # RIC the panel's own return never asked about the weekend at all. The search has
+    # to stop at prev_row_date, not date_, so the Sunday print cannot reach it.
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1", "Xc1"],
+        "date_": [date(2020, 1, 15), date(2020, 1, 18), date(2020, 1, 20)],
+        "n_trades": [10, 6, 12],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [True]
+
+
 def test_declines_when_slot_one_traded_at_t_minus_1():
     # Darkness is an absent row, never a zero: here c1 has a row at t-1 (it traded),
     # so the dark run ending at the panel's previous row is empty and no expiry can
@@ -692,6 +712,30 @@ def test_rescue_restores_only_the_rescuable_flagged_row():
     assert out["ret1_adjusted"].to_list() == [0.01, None, 0.03]
     assert out.columns == symbol_data.columns
     assert out.schema == symbol_data.schema
+
+
+def test_rescue_declines_a_backward_slot_move_even_when_darkness_alone_would_rescue_it():
+    # front_slot moves 1->2 at the flagged row -- a continuation chain never reverts
+    # to an earlier contract, so this can only be the price selector's gap-fill firing
+    # on a missing front-month print, a genuine cross-contract return regardless of
+    # what the darkness check says. Slot 1 here satisfies every darkness condition
+    # (a dark run from an expiry through the panel's previous row, trading again at
+    # the flagged row) on its own, so restoring ret1 would prove the direction check
+    # is not doing any work; leaving it null proves it is.
+    symbol_data = pl.DataFrame({
+        "date_": [date(2020, 1, 15), date(2020, 1, 17), date(2020, 1, 20)],
+        "front_slot": [1, 1, 2],
+        "shift": [0, 0, 0],
+        "ret1": [0.01, 0.02, 0.03],
+        "ret1_adjusted": [0.01, 0.02, None],
+    })
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1"],
+        "date_": [date(2020, 1, 10), date(2020, 1, 20)],
+        "n_trades": [5, 10],
+    })
+    out = rescue_ret1_adjusted(symbol_data, "X", [date(2020, 1, 16)], counts)
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02, None]
 
 
 def test_rescue_is_a_no_op_when_nothing_was_flagged():

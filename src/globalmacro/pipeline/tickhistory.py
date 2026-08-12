@@ -535,25 +535,39 @@ def rescue_ret1_adjusted(
     so this function's idea of "what got nulled" cannot drift from what the guard
     actually nulled. Column order and dtype are preserved: the debug table this feeds
     depends on both staying stable.
+
+    Only a forward slot move (front_slot 2 -> 1, the price selector rolling back into
+    the nearer contract) is ever a candidate: a continuation chain never reverts to an
+    earlier contract, so a backward move (1 -> 2) can only be the price selector's
+    gap-fill firing when the front month failed to print -- it is a genuine
+    cross-contract return by construction and `is_rescuable_mask`'s darkness reading
+    is never consulted for it. Measured on the shipped panels: every backward-moved
+    cell that reaches this guard has a null settlement_c1 and none sits in the
+    contract's own expiry month, which is the gap-fill signature, not a roll's.
     """
     symbol_data = symbol_data.with_columns([
         provenance_break_mask(symbol_data).alias("_provenance_break"),
         pl.col("date_").shift(1).alias("_prev_row_date"),
+        (
+            (pl.col("front_slot") == 1) & (pl.col("front_slot").shift(1) == 2)
+        ).alias("_rolled_forward"),
     ])
     flagged = symbol_data.filter(pl.col("_provenance_break")).select([
         pl.lit(ric_root).alias("symbol"),
         pl.col("date_"),
         pl.col("_prev_row_date").alias("prev_row_date"),
         pl.lit(expiries, dtype=pl.List(pl.Date)).alias("expiries"),
+        pl.col("_rolled_forward"),
     ])
-    rescued_dates = flagged.filter(is_rescuable_mask(flagged, counts))["date_"].to_list()
+    rescuable = flagged["_rolled_forward"] & is_rescuable_mask(flagged, counts)
+    rescued_dates = flagged.filter(rescuable)["date_"].to_list()
     symbol_data = symbol_data.with_columns(
         pl.when(pl.col("_provenance_break") & pl.col("date_").is_in(rescued_dates))
         .then(pl.col("ret1"))
         .otherwise(pl.col("ret1_adjusted"))
         .alias("ret1_adjusted")
     )
-    return symbol_data.drop(["_provenance_break", "_prev_row_date"])
+    return symbol_data.drop(["_provenance_break", "_prev_row_date", "_rolled_forward"])
 
 
 def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:

@@ -187,6 +187,19 @@ def is_rescuable_mask(flagged: pl.DataFrame, counts: pl.DataFrame) -> pl.Series:
     fall strictly after that date would decline the ordinary case, not just a rare
     one.
 
+    That last trade is sought no later than `prev_row_date`, never later than
+    `date_` itself -- `counts` is built from the raw tick record, which carries every
+    calendar day a RIC printed including weekends and holidays the panel calendar
+    skips, while `prev_row_date` is a panel row and so is always a weekday. A RIC
+    that trades on the weekend sitting between `prev_row_date` and `date_` (measured
+    directly on `G`: `LGOc1` prints 6 trades on Sunday 2004-01-18, ICE Gas Oil's own
+    Sunday-evening session) would otherwise become "the last trade before the flagged
+    row" while itself falling after `prev_row_date` -- an inverted window no expiry
+    can ever land inside, on a RIC the panel never asked about the weekend at all.
+    Capping the search at `prev_row_date` reads exactly the stretch the panel
+    actually spans and ignores trading in the calendar gap on either side of it,
+    which the return computation itself never touches.
+
     A cell not present in `counts` for a given ric at all (never printed, or printed
     only after the window in question) fails condition 2 or 1 respectively and is
     declined, not treated as evidence of anything.
@@ -208,7 +221,8 @@ def is_rescuable_mask(flagged: pl.DataFrame, counts: pl.DataFrame) -> pl.Series:
         days = trade_dates.get(f"{symbol}c1", [])
         i = bisect.bisect_left(days, date_)
         traded_at_flagged_row = i < len(days) and days[i] == date_
-        last_trade_before = days[i - 1] if i > 0 else None
+        j = bisect.bisect_right(days, prev_row_date)
+        last_trade_before = days[j - 1] if j > 0 else None
         rescued.append(
             traded_at_flagged_row
             and last_trade_before is not None
