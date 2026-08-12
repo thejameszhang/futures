@@ -4,6 +4,7 @@ import polars as pl
 import pytest
 
 from globalmacro.pipeline.tickhistory import (
+    apply_provenance_guard,
     attach_front_slot,
     attach_traditional_front_slot,
 )
@@ -100,6 +101,66 @@ def test_traditional_front_slot_domain_is_exactly_one_through_four():
     out = attach_traditional_front_slot(df)
     assert set(out["front_slot"].to_list()) == {1, 2, 3, 4}
     assert out["front_slot"].null_count() == 0
+
+
+# ---------------------------------------------------------------------------
+# apply_provenance_guard: null a finalised ret1_adjusted cell whenever its two ends
+# came from different contract slots, scoped so legitimate rolls survive. Unscoped,
+# this mask nulls the sync panels' roll returns wholesale -- rollback_c2_to_c1
+# deliberately divides settlement_c1(t) by settlement_c2(t-1), so disagreeing slots
+# are its normal condition, not a defect. Each clause in the mask gets its own test
+# below that fails when that clause alone is removed, not just a test the whole
+# guard happens to pass -- a clause nothing distinguishes from "always true" is
+# indistinguishable from a clause that was never checked in.
+# ---------------------------------------------------------------------------
+
+
+def _guard_frame(shift, slots, ret1, ret1_adjusted=None):
+    return pl.DataFrame({
+        "shift": shift,
+        "front_slot": slots,
+        "ret1": ret1,
+        "ret1_adjusted": ret1 if ret1_adjusted is None else ret1_adjusted,
+    })
+
+
+def test_nulls_a_return_whose_ends_came_from_different_slots():
+    out = apply_provenance_guard(_guard_frame([0, 0], [1, 2], [0.01, 0.02]))
+    assert out["ret1_adjusted"].to_list() == [0.01, None]
+
+
+def test_leaves_a_backward_roll_untouched():
+    out = apply_provenance_guard(_guard_frame([0, -1], [1, 2], [0.01, 0.02]))
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+def test_leaves_a_forward_roll_untouched():
+    out = apply_provenance_guard(_guard_frame([0, 1], [1, 2], [0.01, 0.02]))
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+def test_ignores_rows_where_ret1_was_not_the_shipped_value():
+    out = apply_provenance_guard(_guard_frame([0, 0], [1, 2], [0.01, None]))
+    assert out["ret1_adjusted"].to_list() == [0.01, None]
+
+
+def test_leaves_a_same_slot_return_untouched():
+    # front_slot agrees at both ends and this isn't a roll, so there is nothing
+    # cross-contract here. Drop the front_slot comparison from the mask and only
+    # "not a roll, ret1 non-null" survive, which would null this row too.
+    out = apply_provenance_guard(_guard_frame([0, 0], [1, 1], [0.01, 0.02]))
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+def test_a_backfilled_return_survives_when_ret1_itself_was_never_shipped():
+    # Mirrors the expiry-month rows where the second slot is dark: front_slot
+    # targets 2, but the coalesce actually ships ret_c1, so ret1 itself is null.
+    # front_slot no longer describes the value sitting in ret1_adjusted, and the
+    # guard has to stay off it -- drop the ret1-not-null clause and it would null
+    # a perfectly good backfilled return instead.
+    frame = _guard_frame([0, 0], [1, 2], [0.01, None], ret1_adjusted=[0.01, 0.05])
+    out = apply_provenance_guard(frame)
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.05]
 
 
 # ---------------------------------------------------------------------------

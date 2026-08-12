@@ -364,6 +364,53 @@ def attach_traditional_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def apply_provenance_guard(symbol_data: pl.DataFrame) -> pl.DataFrame:
+    """Null a finalised ret1_adjusted cell wherever its two ends came from different
+    contract slots. Applied after every coalesce that can build ret1_adjusted --
+    including the edge-case rollback adjustment that runs after the main one -- so a
+    cell this guard suppresses cannot be silently refilled by a later fallback.
+
+    A row-level precondition, not an identity re-derivation. A guard that instead
+    re-derived which contract ret1_adjusted's own formula would have tracked and
+    compared that to the price actually used would stay silent here: the
+    re-derivation runs against the same formula the backfill already passed through,
+    so on a same-day substitution it agrees with itself. front_slot is recorded
+    once, at the moment the price is chosen, and a later fallback cannot move it.
+
+    Scoped away from shift in {1, -1}: those rows are rolls, where the two ends
+    legitimately come from different slots -- rollback_c2_to_c1 deliberately divides
+    settlement_c1(t) by settlement_c2(t-1), so a slot mismatch there is the roll
+    working as intended, not a defect. Leaving the mask unscoped nulls the sync
+    panels' roll returns wholesale (34,066 cells instead of 927).
+
+    ret1 IS NOT NULL is not a restatement of "coalesce takes ret1 first" -- it keeps
+    the guard off rows where front_slot names the slot the pipeline meant to read
+    rather than the one ret1_adjusted actually shipped. In the expiry month with the
+    second slot dark, front_slot reads 2 while the coalesce falls through to ret_c1;
+    every one of those rows has ret1 null, so this clause excludes them by
+    construction. Their returns are correct -- both ends sit on the first slot -- and
+    must not be nulled on the strength of a slot label that no longer describes what
+    is in the cell.
+    """
+    front_slot_moved = (
+        # A plain != is safe here, not the null-safe ne_missing this codebase
+        # otherwise reaches for on a slot comparison: front_slot is populated on
+        # every row this runs against, on both the traditional and non-traditional
+        # branches, so the only null .shift(1) can introduce is a symbol's first
+        # row -- and fill_null(False) below keeps that row from ever matching.
+        pl.col("front_slot") != pl.col("front_slot").shift(1)
+    )
+    provenance_break = (
+        (~pl.col("shift").is_in([1, -1]))
+        & front_slot_moved
+        & pl.col("ret1").is_not_null()
+    )
+    return symbol_data.with_columns(
+        pl.when(provenance_break.fill_null(False)).then(None)
+        .otherwise(pl.col("ret1_adjusted")).alias("ret1_adjusted")
+    )
+
+
 def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
     """Process a future's data and return the returns series."""
     # Self-provision the debug output dirs (regenerable; moved out by the reorg),
@@ -785,6 +832,8 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
                 (pl.col("date_").shift(1) == pl.col("lasttrddate").shift(1))
             ).then(pl.coalesce(pl.col("rollback_c2_to_c1"), pl.col("ret1_adjusted"))).otherwise(pl.col("ret1_adjusted")).alias("ret1_adjusted"),
         ]).sort("date_")
+
+    symbol_data = apply_provenance_guard(symbol_data)
 
     if ASSET_CLASS != AssetClass.TRADITIONAL:
         symbol_data.write_csv(TICKHISTORY_PATH / "debug" / "tables" / f"{FUTURE.symbol}.csv")
