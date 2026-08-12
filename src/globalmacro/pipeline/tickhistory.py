@@ -383,14 +383,31 @@ def apply_provenance_guard(symbol_data: pl.DataFrame) -> pl.DataFrame:
     working as intended, not a defect. Leaving the mask unscoped nulls the sync
     panels' roll returns wholesale (34,066 cells instead of 927).
 
-    ret1 IS NOT NULL is not a restatement of "coalesce takes ret1 first" -- it keeps
-    the guard off rows where front_slot names the slot the pipeline meant to read
-    rather than the one ret1_adjusted actually shipped. In the expiry month with the
-    second slot dark, front_slot reads 2 while the coalesce falls through to ret_c1;
-    every one of those rows has ret1 null, so this clause excludes them by
-    construction. Their returns are correct -- both ends sit on the first slot -- and
-    must not be nulled on the strength of a slot label that no longer describes what
-    is in the cell.
+    ret1 IS NOT NULL is a precondition, not a rescue for one particular row shape:
+    front_slot records the slot the price chain most recently selected, and this
+    clause restricts the guard to cells where ret1 is the value the coalesce actually
+    shipped into ret1_adjusted, so a slot label can never be read against a price it
+    does not describe. On the data this branch ships today the clause is a verified
+    no-op -- the rows it excludes already carry a null ret1_adjusted, so nothing it
+    protects is currently reaching a shipped cell. In particular, the expiry-month
+    rows where the second slot is dark (front_slot reads 2, ret1 is null, the
+    coalesce falls through to ret_c1) are already out of scope before this clause is
+    ever consulted: the transition into the expiry month is a roll and is removed by
+    the shift scope, and every row inside the expiry month keeps front_slot at 2 on
+    both ends and is removed by the slot comparison above. The clause stays in place
+    because the traditional branch's coalesce is not indexed by front_month the way
+    attach_front_slot's is, so a future change to it could produce a row where
+    front_slot and ret1_adjusted disagree in exactly the shape this clause guards
+    against.
+
+    Assumes symbol_data is already sorted by date_: front_slot.shift(1) walks
+    physical row order, not date_ itself. The non-traditional branch guarantees this
+    with an explicit .sort("date_") right before ret1_adjusted is finalised; the
+    traditional branch never re-sorts after computing front_slot, so it is trusting
+    whatever order upstream joins already left it in. This is not a new dependency --
+    ret1 itself is a lag-1 return over the same physical order
+    (front_month_settlement.shift(1)), so a frame that broke this guard's ordering
+    would already have broken ret1 first.
     """
     front_slot_moved = (
         # A plain != is safe here, not the null-safe ne_missing this codebase

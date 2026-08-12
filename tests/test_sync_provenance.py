@@ -14,14 +14,19 @@ from scripts import build_trade_presence
 
 
 def test_front_slot_records_which_slot_supplied_the_price():
+    # Row 4 carries a null expiring_this_month (a join miss upstream) -- the guard's
+    # `!=` comparison on front_slot is only safe because front_slot is never null on
+    # either producer, so that property is pinned here alongside the traditional
+    # producer's own null_count() == 0 assertion.
     df = pl.DataFrame({
-        "expiring_this_month": [0, 1, 0],
-        "settlement_c1": [100.0, 200.0, None],
-        "settlement_c2": [101.0, 201.0, 301.0],
+        "expiring_this_month": [0, 1, 0, None],
+        "settlement_c1": [100.0, 200.0, None, 400.0],
+        "settlement_c2": [101.0, 201.0, 301.0, 401.0],
     })
     out = attach_front_slot(df)
-    assert out["front_month_settlement"].to_list() == [100.0, 201.0, 301.0]
-    assert out["front_slot"].to_list() == [1, 2, 2]
+    assert out["front_month_settlement"].to_list() == [100.0, 201.0, 301.0, 400.0]
+    assert out["front_slot"].to_list() == [1, 2, 2, 1]
+    assert out["front_slot"].null_count() == 0
 
 
 def test_front_slot_is_not_recoverable_from_value_when_slots_are_equal():
@@ -153,14 +158,38 @@ def test_leaves_a_same_slot_return_untouched():
 
 
 def test_a_backfilled_return_survives_when_ret1_itself_was_never_shipped():
-    # Mirrors the expiry-month rows where the second slot is dark: front_slot
-    # targets 2, but the coalesce actually ships ret_c1, so ret1 itself is null.
-    # front_slot no longer describes the value sitting in ret1_adjusted, and the
-    # guard has to stay off it -- drop the ret1-not-null clause and it would null
-    # a perfectly good backfilled return instead.
+    # A synthetic shape, not one real data produces -- the rows that look like this
+    # (front_slot moved, not a roll, ret1 null) are already excluded by the shift
+    # scope or the slot comparison before this clause ever runs. It exists to pin the
+    # ret1-not-null clause's precondition directly: front_slot only describes the
+    # price sitting in ret1_adjusted when ret1_adjusted is ret1 itself. Drop the
+    # clause and this row would be nulled even though its two ends never disagreed.
     frame = _guard_frame([0, 0], [1, 2], [0.01, None], ret1_adjusted=[0.01, 0.05])
     out = apply_provenance_guard(frame)
     assert out["ret1_adjusted"].to_list() == [0.01, 0.05]
+
+
+def test_guard_is_idempotent():
+    # apply_provenance_guard is called once per symbol, but nothing about its own
+    # code path relies on that -- pin the fixed point. Two consecutively flagged
+    # rows (front_slot moves at both) are needed to discriminate this from a guard
+    # that substitutes a neighbouring value instead of nulling outright: with only
+    # one flagged row, that kind of mutant would already be a fixed point too, since
+    # its untouched neighbour never changes between passes.
+    frame = _guard_frame([0, 0, 0], [1, 2, 3], [0.01, 0.02, 0.03])
+    once = apply_provenance_guard(frame)
+    twice = apply_provenance_guard(once)
+    assert twice["ret1_adjusted"].to_list() == once["ret1_adjusted"].to_list()
+
+
+def test_guard_preserves_column_order_and_dtypes():
+    # Column order matters downstream: the debug CSV's header, and the code that
+    # reads it back, both depend on ret1_adjusted being replaced in place rather
+    # than dropped and re-appended.
+    frame = _guard_frame([0, 0], [1, 2], [0.01, 0.02])
+    out = apply_provenance_guard(frame)
+    assert out.columns == frame.columns
+    assert out.schema == frame.schema
 
 
 # ---------------------------------------------------------------------------
