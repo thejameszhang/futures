@@ -45,6 +45,13 @@ scripts/gate_tier2_asset.py
 src/globalmacro/validation/asset_quality.py
 tests/test_asset_quality.py
 tests/test_gate_tier2_asset.py
+# Cross-contract verification tooling -- confirms the fix on our end, but is not
+# part of building the dataset, so it stays local rather than shipping to other
+# researchers. The pipeline never imports either.
+scripts/detect_sync_cross_contract.py
+tests/test_detect_sync_cross_contract.py
+scripts/gate_traditional_front_slot.py
+tests/test_gate_traditional_front_slot.py
 .DS_Store
 .env
 .claude/
