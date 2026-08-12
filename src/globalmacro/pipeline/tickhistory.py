@@ -17,6 +17,21 @@ from globalmacro.utils.paths import (
 )
 from globalmacro.utils.trade_presence import is_rescuable_mask, trade_counts
 
+# clscode 290 (ER2) stopped backing RL after this handoff; its later Datastream rows are
+# stale and must not enter any RL input. Every loader that reads a clscode's dates --
+# settlement prices, the expiry calendar, and the expiry ladder the rescue rule rolls
+# against -- applies the same cutoff so the three cannot disagree about which expiries RL
+# actually had.
+_STALE_HANDOFF_CLSCODE = 290
+_STALE_HANDOFF_CUTOFF = date(2003, 12, 22)
+
+
+def _keeps_after_stale_handoff(date_col: str) -> pl.Expr:
+    """A keep-mask: True for every row except the stale post-handoff clscode-290 ones,
+    comparing `date_col`. The same expression drives `.filter()` on the settlement,
+    expiry-calendar, and expiry-ladder inputs so they cannot disagree about RL."""
+    return (pl.col("clscode") != _STALE_HANDOFF_CLSCODE) | (pl.col(date_col) < _STALE_HANDOFF_CUTOFF)
+
 
 def load_trades_data(path: str) -> pl.DataFrame:
     """
@@ -131,7 +146,7 @@ def load_settlement_prices() -> pl.DataFrame:
         pl.scan_parquet(FUTURES_PATH / f"datastream_futures_settlement_{cs_or_ct}.parquet")
         .filter(pl.col("date") >= pl.date(1996, 1, 4))
         .select(["clscode", "date", *settlement_cols])
-        .filter((pl.col("clscode") != 290) | (pl.col("date") < date(2003, 12, 22)))
+        .filter(_keeps_after_stale_handoff("date"))
         # See load_open_prices above: same zero-price trap, same per-column null (not a
         # row-drop), one column per contract order.
         .with_columns([pl.when(pl.col(c) == 0.0).then(None).otherwise(pl.col(c)).alias(c) for c in settlement_cols])
@@ -142,7 +157,7 @@ def load_expiry_dates() -> pl.DataFrame:
     """Load expiry dates from the LSEG Datastream."""
     return (
         pl.scan_csv(FUTURES_PATH / "dsfutcontrinfo.csv", ignore_errors=True, schema_overrides={"lasttrddate": pl.Date, "startdate": pl.Date})
-        .filter((pl.col("clscode") != 290) | (pl.col("lasttrddate") < date(2003, 12, 22)))
+        .filter(_keeps_after_stale_handoff("lasttrddate"))
         .filter(pl.col("lasttrddate").is_not_null())
         .select(['clscode', 'lasttrddate', 'startdate'])
         .collect()
@@ -186,7 +201,13 @@ def ladder_expiries_for(clscodes: list[int], ladder: pl.DataFrame) -> list[date]
     rows = ladder.filter(pl.col("clscode").is_in(clscodes))
     expiries: set[date] = set()
     for i in range(1, 6):
-        expiries.update(rows[f"lasttrddate_{i}"].drop_nulls().to_list())
+        col = f"lasttrddate_{i}"
+        # Same stale-handoff cutoff the price and expiry-calendar loaders apply: a
+        # clscode-290 date from after RL moved off it is stale, and the rescue rule must
+        # not roll against an expiry the price/expiry inputs already excluded. Applied
+        # per ladder column because each row carries five.
+        kept = rows.filter(_keeps_after_stale_handoff(col))[col].drop_nulls().to_list()
+        expiries.update(kept)
     return sorted(expiries)
 
 
