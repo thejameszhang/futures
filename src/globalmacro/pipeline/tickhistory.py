@@ -15,6 +15,7 @@ from globalmacro.utils.paths import (
     PROJECT_ROOT,
     TICKHISTORY_PATH,
 )
+from globalmacro.utils.trade_presence import is_rescuable_mask, trade_counts
 
 
 def load_trades_data(path: str) -> pl.DataFrame:
@@ -157,6 +158,90 @@ def count_expiries_between(row_date: date, row_trad_last: date, expiry_list: lis
         if d >= row_date and d <= row_trad_last:
             cnt += 1
     return cnt
+
+
+def load_expiry_ladder() -> pl.DataFrame:
+    """Load the rolling expiry ladder from the LSEG Datastream settlement file --
+    `lasttrddate_1..lasttrddate_5`, never `dsfutcontrinfo.csv`. `dsfutcontrinfo.csv`
+    lists months a contract's cycle allows, not months the ladder actually rolled
+    through; the two differ for `GC`. The rescue rule needs the ladder the tick data
+    itself rolled against, not a static contract-info table.
+    """
+    cs_or_ct = "CS" if ASSET_CLASS == AssetClass.TRADITIONAL else "CT"
+    lasttrddate_cols = [f"lasttrddate_{i}" for i in range(1, 6)]
+    return (
+        pl.scan_parquet(FUTURES_PATH / f"datastream_futures_settlement_{cs_or_ct}.parquet")
+        .select(["clscode", *lasttrddate_cols])
+        .collect()
+    )
+
+
+def ladder_expiries_for(clscodes: list[int], ladder: pl.DataFrame) -> list[date]:
+    """The full expiry list one or more clscodes rolled through, read off the ladder's
+    own rolling `lasttrddate_1..5` columns rather than a static contract-info table.
+    Each column is a snapshot of the next N expiries as of some date, so the union of
+    all five across every row is the complete history, not just what was upcoming on
+    any single date.
+    """
+    rows = ladder.filter(pl.col("clscode").is_in(clscodes))
+    expiries: set[date] = set()
+    for i in range(1, 6):
+        expiries.update(rows[f"lasttrddate_{i}"].drop_nulls().to_list())
+    return sorted(expiries)
+
+
+def build_config(tier: int, asset_class: AssetClass, config_path: str | None = None) -> list[Future]:
+    """The list of `Future`s one (tier, asset class) run actually processes.
+
+    A two-RIC future is split into a historical leg (renamed to `ric[0]`, the panel
+    column becoming the RIC itself) and an active leg (`ric[1]`) -- mirroring how a
+    splice's older data and current data are ingested as two separate series.
+    `traditional` carries one more restriction on top of the asset-class match: only
+    futures with a trading-cycle `ct` set enter it.
+    """
+    path = config_path if config_path is not None else str(PROJECT_ROOT / f"tier{tier}.yaml")
+    config: list[Future] = []
+    for future in load_config(path):
+        if future.ric is not None and asset_class in future.asset_class:
+            if len(future.ric) > 1:
+                historical_future = copy.deepcopy(future)
+                historical_future.symbol = f"{future.ric[0]}"
+                historical_future.ric = [future.ric[0]]
+                config.append(historical_future)
+
+                active_future = copy.deepcopy(future)
+                active_future.ric = [future.ric[1]]
+                config.append(active_future)
+            else:
+                config.append(future)
+
+    if asset_class == AssetClass.TRADITIONAL:
+        config = list(filter(lambda f: f.ct is not None, config))
+    return config
+
+
+def clscodes_for(FUTURE: Future) -> list[int]:
+    """The Datastream clscode(s) that back one TickHistory future.
+
+    Most futures map one to one; a handful span an exchange or ticker change and are
+    stitched from two Datastream series -- kept as one lookup so every caller that
+    needs a future's clscodes (settlement prices, the expiry calendar, the expiry
+    ladder) agrees on the same mapping instead of re-deriving it.
+    """
+    if FUTURE.symbol == "G":
+        return [1181, 1176]
+    if FUTURE.symbol == "BRN":
+        return [1175, 1970]
+    if FUTURE.symbol == "160120006":
+        return [3729, 1051]
+    if FUTURE.symbol == "164120019":
+        return [1622, 4648]
+    # TODO: check if we can get earlier data for this
+    # if FUTURE.symbol == "MFS":
+    #     return [244, 3930]
+    if FUTURE.symbol == "RL":
+        return [290, 3590]
+    return [FUTURE.clscode]
 
 
 def compute_vwap(time_filtered_data: pl.DataFrame, datetime_column: str) -> pl.DataFrame:
@@ -364,6 +449,29 @@ def attach_traditional_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def provenance_break_mask(symbol_data: pl.DataFrame) -> pl.Series:
+    """The row-level condition `apply_provenance_guard` nulls on, exposed on its own so
+    the rescue rule can identify exactly the cells the guard flagged without
+    re-deriving the condition a second time and risking it drifting out of sync with
+    what the guard actually does. See `apply_provenance_guard` for why each clause
+    is there; this only extracts the boolean, it does not change it.
+    """
+    front_slot_moved = (
+        # A plain != is safe here, not the null-safe ne_missing this codebase
+        # otherwise reaches for on a slot comparison: front_slot is populated on
+        # every row this runs against, on both the traditional and non-traditional
+        # branches, so the only null .shift(1) can introduce is a symbol's first
+        # row -- and fill_null(False) below keeps that row from ever matching.
+        pl.col("front_slot") != pl.col("front_slot").shift(1)
+    )
+    provenance_break = (
+        (~pl.col("shift").is_in([1, -1]))
+        & front_slot_moved
+        & pl.col("ret1").is_not_null()
+    )
+    return symbol_data.select(provenance_break.fill_null(False).alias("break")).to_series()
+
+
 def apply_provenance_guard(symbol_data: pl.DataFrame) -> pl.DataFrame:
     """Null a finalised ret1_adjusted cell wherever its two ends came from different
     contract slots. Applied after every coalesce that can build ret1_adjusted --
@@ -409,23 +517,43 @@ def apply_provenance_guard(symbol_data: pl.DataFrame) -> pl.DataFrame:
     (front_month_settlement.shift(1)), so a frame that broke this guard's ordering
     would already have broken ret1 first.
     """
-    front_slot_moved = (
-        # A plain != is safe here, not the null-safe ne_missing this codebase
-        # otherwise reaches for on a slot comparison: front_slot is populated on
-        # every row this runs against, on both the traditional and non-traditional
-        # branches, so the only null .shift(1) can introduce is a symbol's first
-        # row -- and fill_null(False) below keeps that row from ever matching.
-        pl.col("front_slot") != pl.col("front_slot").shift(1)
-    )
-    provenance_break = (
-        (~pl.col("shift").is_in([1, -1]))
-        & front_slot_moved
-        & pl.col("ret1").is_not_null()
-    )
+    break_ = provenance_break_mask(symbol_data)
     return symbol_data.with_columns(
-        pl.when(provenance_break.fill_null(False)).then(None)
-        .otherwise(pl.col("ret1_adjusted")).alias("ret1_adjusted")
+        pl.when(break_).then(None).otherwise(pl.col("ret1_adjusted")).alias("ret1_adjusted")
     )
+
+
+def rescue_ret1_adjusted(
+    symbol_data: pl.DataFrame, ric_root: str, expiries: list[date], counts: pl.DataFrame
+) -> pl.DataFrame:
+    """Restore ret1_adjusted on cells `apply_provenance_guard` nulled but that were
+    actually a genuine roll: slot 1 dark from a ladder expiry through the panel's
+    previous row, then trading again at the flagged row.
+
+    Recomputes which cells the guard flagged from `ret1`/`shift`/`front_slot` (never
+    touched by the guard) rather than trusting a mask captured before the guard ran,
+    so this function's idea of "what got nulled" cannot drift from what the guard
+    actually nulled. Column order and dtype are preserved: the debug table this feeds
+    depends on both staying stable.
+    """
+    symbol_data = symbol_data.with_columns([
+        provenance_break_mask(symbol_data).alias("_provenance_break"),
+        pl.col("date_").shift(1).alias("_prev_row_date"),
+    ])
+    flagged = symbol_data.filter(pl.col("_provenance_break")).select([
+        pl.lit(ric_root).alias("symbol"),
+        pl.col("date_"),
+        pl.col("_prev_row_date").alias("prev_row_date"),
+        pl.lit(expiries, dtype=pl.List(pl.Date)).alias("expiries"),
+    ])
+    rescued_dates = flagged.filter(is_rescuable_mask(flagged, counts))["date_"].to_list()
+    symbol_data = symbol_data.with_columns(
+        pl.when(pl.col("_provenance_break") & pl.col("date_").is_in(rescued_dates))
+        .then(pl.col("ret1"))
+        .otherwise(pl.col("ret1_adjusted"))
+        .alias("ret1_adjusted")
+    )
+    return symbol_data.drop(["_provenance_break", "_prev_row_date"])
 
 
 def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
@@ -449,21 +577,7 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
         SETTLEMENT_END = FUTURE.settlement_end
 
     # Mapping one future on TickHistory to multiple futures (clscodes) in Datastream
-    if FUTURE.symbol == "G":
-        clscodes = [1181, 1176]
-    elif FUTURE.symbol == "BRN":
-        clscodes = [1175, 1970]
-    elif FUTURE.symbol == "160120006":
-        clscodes = [3729, 1051]
-    elif FUTURE.symbol == "164120019":
-        clscodes = [1622, 4648]
-    # TODO: check if we can get earlier data for this
-    # elif FUTURE.symbol == "MFS":
-    #     clscodes = [244, 3930]
-    elif FUTURE.symbol == "RL":
-        clscodes = [290, 3590]
-    else:
-        clscodes = [FUTURE.clscode]
+    clscodes = clscodes_for(FUTURE)
 
     assert FUTURE.ric is not None
     FUTURE_RICS = [f"{FUTURE.ric[0]}c1", f"{FUTURE.ric[0]}c2", f"{FUTURE.ric[0]}c3", f"{FUTURE.ric[0]}c4"]
@@ -852,6 +966,26 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
 
     symbol_data = apply_provenance_guard(symbol_data)
 
+    # The rescue rule needs a tick-derived trade-count artifact that only exists for
+    # the (tier, asset class, sync target) triples it has been built for -- absent for
+    # every async run (sync_target == "none") and for any sync run built before its
+    # own artifact. trade_counts raises FileNotFoundError rather than returning an
+    # empty frame in that case; wiring it in unconditionally would abort those runs
+    # instead of leaving the guard's null in place, so its absence is caught here and
+    # logged loudly rather than propagated.
+    try:
+        counts = trade_counts(args.tier, ASSET_CLASS.value, sync_target)
+    except FileNotFoundError as exc:
+        print(
+            f"WARNING: no trade-presence artifact for {FUTURE.symbol} "
+            f"(tier {args.tier}, {ASSET_CLASS.value}, {sync_target}) -- rescuing nothing: {exc}",
+            flush=True,
+        )
+    else:
+        symbol_data = rescue_ret1_adjusted(
+            symbol_data, FUTURE.ric[0], ladder_expiries_for(clscodes, EXPIRY_LADDER), counts
+        )
+
     if ASSET_CLASS != AssetClass.TRADITIONAL:
         symbol_data.write_csv(TICKHISTORY_PATH / "debug" / "tables" / f"{FUTURE.symbol}.csv")
     else:
@@ -902,23 +1036,7 @@ if __name__ == "__main__":
     if ASSET_CLASS is None:
         raise ValueError(f"Invalid asset class: {args.asset_class}")
 
-    CONFIG = []
-    for future in load_config(PROJECT_ROOT / f"tier{args.tier}.yaml"):
-        if future.ric is not None and ASSET_CLASS in future.asset_class:
-            if len(future.ric) > 1:
-                historical_future = copy.deepcopy(future)
-                historical_future.symbol = f"{future.ric[0]}"
-                historical_future.ric = [future.ric[0]]
-                CONFIG.append(historical_future)
-
-                active_future = copy.deepcopy(future)
-                active_future.ric = [future.ric[1]]
-                CONFIG.append(active_future)
-            else:
-                CONFIG.append(future)
-
-    if ASSET_CLASS == AssetClass.TRADITIONAL:
-        CONFIG = list(filter(lambda f: f.ct is not None, CONFIG))
+    CONFIG = build_config(args.tier, ASSET_CLASS)
 
     CLSCODES = [f.clscode for f in CONFIG]
     CALCSERIESNAMES = [f.calcseriesname for f in CONFIG]
@@ -928,6 +1046,7 @@ if __name__ == "__main__":
     US_EXCHANGES = [9051, 1022, 2709, 9144, 1012, 9044, 9250, 9371, 9120]
     ALL_RICS = []
     for future in CONFIG:
+        assert future.ric is not None  # build_config only keeps futures with a ric
         ALL_RICS.extend([f"{future.ric[0]}c1", f"{future.ric[0]}c2", f"{future.ric[0]}c3", f"{future.ric[0]}c4"])
 
     # Processing US equity indices and Non-US equities separately due to memory constraints
@@ -937,6 +1056,7 @@ if __name__ == "__main__":
     OPEN_PRICES = load_open_prices()
     SETTLEMENT_PRICES = load_settlement_prices()
     LSEG_DATA = load_expiry_dates()
+    EXPIRY_LADDER = load_expiry_ladder()
 
     main()
 

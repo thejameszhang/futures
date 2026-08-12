@@ -7,9 +7,18 @@ from globalmacro.pipeline.tickhistory import (
     apply_provenance_guard,
     attach_front_slot,
     attach_traditional_front_slot,
+    build_config,
+    clscodes_for,
+    ladder_expiries_for,
+    rescue_ret1_adjusted,
 )
 from globalmacro.utils import trade_presence
-from globalmacro.utils.trade_presence import configured_rics, count_trades_in_frame
+from globalmacro.utils.models import AssetClass, Future
+from globalmacro.utils.trade_presence import (
+    configured_rics,
+    count_trades_in_frame,
+    is_rescuable_mask,
+)
 from scripts import build_trade_presence
 
 
@@ -504,3 +513,250 @@ def test_cli_refuses_to_write_the_artifact_under_datasets(tmp_path, monkeypatch)
 
     with pytest.raises(SystemExit, match="refusing to write"):
         build_trade_presence.main(["--tier", "1", "--asset_class", "commodity", "--sync_target", "et"])
+
+
+# ---------------------------------------------------------------------------
+# is_rescuable_mask: a flagged cell is a genuine roll, not a real cross-contract
+# return, when slot 1 was dark on every day from a ladder expiry through the panel's
+# previous row and traded again at the flagged row. Darkness is read entirely off the
+# counts artifact (an absent row, never a zero); the panel supplies only the window's
+# right edge, which is the previous panel ROW, not the calendar day before -- weekends
+# and holidays sit between them, and an expiry landing in that gap must not rescue.
+# ---------------------------------------------------------------------------
+
+
+def test_rescues_a_genuine_roll():
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1"],
+        "date_": [date(2020, 1, 15), date(2020, 1, 20)],
+        "n_trades": [10, 12],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [True]
+
+
+def test_declines_when_no_expiry_falls_inside_the_dark_run():
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1"],
+        "date_": [date(2020, 1, 15), date(2020, 1, 20)],
+        "n_trades": [10, 12],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 3, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [False]
+
+
+def test_declines_when_the_expiry_falls_after_the_panel_s_previous_row():
+    # Slot 1 last traded 01-15; the panel's previous row is 01-17; the flagged cell is
+    # 01-20. The expiry lands 01-19 -- inside the loose calendar window (01-15, 01-20)
+    # but outside the closed panel window [01-16, 01-17]. The right edge has to be the
+    # panel's own previous row: a window that instead runs to date_ minus one calendar
+    # day reaches across whatever weekend or holiday separates the two rows and rescues
+    # a return an expiry sitting in that gap should not touch. This is the one case
+    # that tells the two readings apart -- every other test here passes under either.
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1"],
+        "date_": [date(2020, 1, 15), date(2020, 1, 20)],
+        "n_trades": [10, 12],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 19)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [False]
+
+
+def test_declines_when_slot_one_traded_at_t_minus_1():
+    # Darkness is an absent row, never a zero: here c1 has a row at t-1 (it traded),
+    # so the dark run ending at the panel's previous row is empty and no expiry can
+    # fall inside it, regardless of where the expiry actually sits.
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1", "Xc1"],
+        "date_": [date(2020, 1, 15), date(2020, 1, 17), date(2020, 1, 20)],
+        "n_trades": [10, 8, 12],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [False]
+
+
+def test_declines_when_the_ric_never_appears_in_counts_at_all():
+    # No prior trade to anchor a dark run on means there is no window to test an
+    # expiry against -- absence of the artifact's evidence must not be read as "always
+    # dark", which is the wrong direction (over-rescue) for a rule with a measured
+    # false-positive target of zero.
+    counts = pl.DataFrame({
+        "ric": ["Yc1"], "date_": [date(2020, 1, 15)], "n_trades": [5],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [False]
+
+
+def test_declines_when_slot_one_does_not_trade_at_the_flagged_row():
+    # Trading resuming at t is the other half of the rule alongside the dark run --
+    # a row that is still dark at t is not yet a roll back into slot 1.
+    counts = pl.DataFrame({
+        "ric": ["Xc1"], "date_": [date(2020, 1, 15)], "n_trades": [10],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [False]
+
+
+def test_declines_when_the_flagged_row_is_the_rics_first_ever_trade():
+    # The only trade this ric has ever printed is the flagged row itself -- there is
+    # no earlier trade to anchor a dark run on, so there is no window to test an
+    # expiry against, the same as when the ric is absent from counts altogether. This
+    # also has to not raise: with no earlier trade, "the trade before the flagged row"
+    # is undefined, not some sentinel date an unguarded comparison could silently
+    # accept.
+    counts = pl.DataFrame({"ric": ["Xc1"], "date_": [date(2020, 1, 20)], "n_trades": [12]})
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [False]
+
+
+def test_rescues_multiple_flagged_rows_independently():
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1", "Yc1", "Yc1"],
+        "date_": [date(2020, 1, 15), date(2020, 1, 20), date(2020, 1, 15), date(2020, 1, 20)],
+        "n_trades": [10, 12, 7, 9],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X", "Y"],
+        "date_": [date(2020, 1, 20), date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17), date(2020, 1, 17)],
+        "expiries": [[date(2020, 1, 16)], [date(2020, 3, 1)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [True, False]
+
+
+# ---------------------------------------------------------------------------
+# rescue_ret1_adjusted: wires is_rescuable_mask into a symbol's own debug frame.
+# Recomputes which rows the guard flagged from ret1/shift/front_slot itself, then
+# restores ret1 into ret1_adjusted only for the rows the rescue rule actually clears
+# -- a real cross-contract break next to a rescued one must not leak the restore.
+# ---------------------------------------------------------------------------
+
+
+def test_rescue_restores_only_the_rescuable_flagged_row():
+    # Three rows: 01-15 is an ordinary day (never flagged); 01-17 is flagged (slot
+    # moved 1->2, not a roll) but slot 1 never trades again at 01-17 in counts, so it
+    # stays null; 01-20 is flagged (slot moved 2->1) and slot 1's dark run (last trade
+    # 01-10, an expiry at 01-16) resolves inside [first dark day, 01-17], so it gets
+    # its ret1 restored.
+    symbol_data = pl.DataFrame({
+        "date_": [date(2020, 1, 15), date(2020, 1, 17), date(2020, 1, 20)],
+        "front_slot": [1, 2, 1],
+        "shift": [0, 0, 0],
+        "ret1": [0.01, 0.02, 0.03],
+        "ret1_adjusted": [0.01, None, None],
+    })
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1"],
+        "date_": [date(2020, 1, 10), date(2020, 1, 20)],
+        "n_trades": [5, 10],
+    })
+    out = rescue_ret1_adjusted(symbol_data, "X", [date(2020, 1, 16)], counts)
+    assert out["ret1_adjusted"].to_list() == [0.01, None, 0.03]
+    assert out.columns == symbol_data.columns
+    assert out.schema == symbol_data.schema
+
+
+def test_rescue_is_a_no_op_when_nothing_was_flagged():
+    symbol_data = pl.DataFrame({
+        "date_": [date(2020, 1, 15), date(2020, 1, 16)],
+        "front_slot": [1, 1],
+        "shift": [0, 0],
+        "ret1": [0.01, 0.02],
+        "ret1_adjusted": [0.01, 0.02],
+    })
+    counts = pl.DataFrame({"ric": [], "date_": [], "n_trades": []}, schema={
+        "ric": pl.String, "date_": pl.Date, "n_trades": pl.UInt32,
+    })
+    out = rescue_ret1_adjusted(symbol_data, "X", [], counts)
+    assert out["ret1_adjusted"].to_list() == [0.01, 0.02]
+
+
+# ---------------------------------------------------------------------------
+# ladder_expiries_for: the union of a clscode's own rolling lasttrddate_1..5 columns,
+# never dsfutcontrinfo.csv -- each row is only a snapshot of the next few expiries as
+# of some date, so the full history has to come from every row, not the latest one.
+# ---------------------------------------------------------------------------
+
+
+def test_ladder_expiries_for_unions_every_rung_across_every_row():
+    ladder = pl.DataFrame({
+        "clscode": [1, 1, 2],
+        "lasttrddate_1": [date(2020, 1, 15), date(2020, 2, 15), date(2020, 6, 1)],
+        "lasttrddate_2": [date(2020, 2, 15), date(2020, 3, 15), None],
+        "lasttrddate_3": [None, None, None],
+        "lasttrddate_4": [None, None, None],
+        "lasttrddate_5": [None, None, None],
+    })
+    assert ladder_expiries_for([1], ladder) == [date(2020, 1, 15), date(2020, 2, 15), date(2020, 3, 15)]
+
+
+def test_ladder_expiries_for_combines_multiple_clscodes():
+    ladder = pl.DataFrame({
+        "clscode": [1, 2],
+        "lasttrddate_1": [date(2020, 1, 15), date(2020, 6, 1)],
+        "lasttrddate_2": [None, None],
+        "lasttrddate_3": [None, None],
+        "lasttrddate_4": [None, None],
+        "lasttrddate_5": [None, None],
+    })
+    assert ladder_expiries_for([1, 2], ladder) == [date(2020, 1, 15), date(2020, 6, 1)]
+
+
+# ---------------------------------------------------------------------------
+# clscodes_for / build_config: small pure lookups the rescue's expiry ladder and the
+# offline measurement script both depend on -- a regression here silently changes
+# which contracts the ladder is built from, or which futures a panel measures at all.
+# ---------------------------------------------------------------------------
+
+
+def _minimal_future(symbol, asset_class, ric=None, ct=None, clscode=1):
+    return Future(
+        symbol=symbol, contrcode=1, exchange=1, exchange_name="Test Exchange",
+        clscode=clscode, calcseriesname="TEST", name="Test Future",
+        asset_class=[AssetClass(asset_class)], ric=ric, ct=ct,
+    )
+
+
+def test_clscodes_for_uses_the_symbol_specific_mapping():
+    assert clscodes_for(_minimal_future("BRN", "commodity")) == [1175, 1970]
+    assert clscodes_for(_minimal_future("G", "commodity")) == [1181, 1176]
+
+
+def test_clscodes_for_falls_back_to_the_futures_own_clscode():
+    assert clscodes_for(_minimal_future("CL", "commodity", clscode=42)) == [42]
+
+
+def test_build_config_splits_a_two_ric_future_into_historical_and_active_legs(tmp_path):
+    path = _write_tier_config(tmp_path, {"CL": "asset_class: commodity\nric: [CLOLD, CLNEW]\n"})
+    config = build_config(1, AssetClass.COMMODITY, config_path=str(path))
+    assert [(f.symbol, f.ric) for f in config] == [("CLOLD", ["CLOLD"]), ("CL", ["CLNEW"])]
+
+
+def test_build_config_for_traditional_requires_a_trading_cycle(tmp_path):
+    path = _write_tier_config(tmp_path, {
+        "CL": "asset_class: traditional\nric: CLX\n",
+        "GC": "asset_class: traditional\nric: GCX\nct: [3, 6, 9, 12]\n",
+    })
+    config = build_config(1, AssetClass.TRADITIONAL, config_path=str(path))
+    assert [f.symbol for f in config] == ["GC"]

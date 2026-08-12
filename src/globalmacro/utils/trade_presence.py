@@ -12,6 +12,8 @@ same way the ingestion stage counts them.
 
 from __future__ import annotations
 
+import bisect
+from datetime import date
 from pathlib import Path
 
 import polars as pl
@@ -146,3 +148,62 @@ def trade_counts(tier: int, asset_class: str, sync_target: str) -> pl.DataFrame:
             f"--tier {tier} --asset_class {asset_class} --sync_target {sync_target}"
         )
     return pl.read_parquet(path)
+
+
+def is_rescuable_mask(flagged: pl.DataFrame, counts: pl.DataFrame) -> pl.Series:
+    """Which provenance-guard-nulled cells are actually a genuine roll, not a real
+    cross-contract return: slot 1 dark on every day from a ladder expiry through the
+    panel's previous row, and trading again at the flagged row.
+
+    `flagged` carries one row per nulled cell -- `symbol` (the ric root, `<symbol>c1`
+    resolves the RIC to look up in `counts`), `date_` (the flagged row), `prev_row_date`
+    (the panel's own previous row, not `date_` minus one calendar day), and `expiries`
+    (that symbol's full ladder expiry list, as a list of dates, constant across a
+    symbol's own rows). `counts` is the per-RIC per-day trade-count artifact for the
+    matching (tier, asset class, sync target) triple.
+
+    Darkness is read entirely off `counts`: it records every day a RIC actually
+    printed a trade, so the absence of a row for `<symbol>c1` across a span of
+    calendar days already means every day in that span was dark, panel row or not --
+    the panel axis is never consulted for that. It supplies exactly one thing: the
+    window's right edge. That edge is closed at `prev_row_date`, not at `date_` minus
+    one calendar day -- weekends and holidays sit between the two, and an expiry
+    landing there must not rescue a return that spans them for an unrelated reason.
+
+    Three conditions all have to hold, none of them a proxy for the others:
+      1. slot 1 traded at the flagged row itself (a roll back into it, not a row
+         still inside the dark run);
+      2. slot 1 has at least one earlier trade to anchor the window on -- with no
+         prior trade at all there is no dark run to test an expiry against, and
+         reading that absence as "always dark" would only ever over-rescue;
+      3. some expiry in the ladder falls strictly after slot 1's last trade before
+         the flagged row, and no later than `prev_row_date`.
+
+    A cell not present in `counts` for a given ric at all (never printed, or printed
+    only after the window in question) fails condition 2 or 1 respectively and is
+    declined, not treated as evidence of anything.
+    """
+    trade_dates: dict[str, list[date]] = {}
+    for ric, day in zip(counts["ric"].to_list(), counts["date_"].to_list(), strict=True):
+        trade_dates.setdefault(ric, []).append(day)
+    for days in trade_dates.values():
+        days.sort()
+
+    rescued: list[bool] = []
+    for symbol, date_, prev_row_date, expiries in zip(
+        flagged["symbol"].to_list(),
+        flagged["date_"].to_list(),
+        flagged["prev_row_date"].to_list(),
+        flagged["expiries"].to_list(),
+        strict=True,
+    ):
+        days = trade_dates.get(f"{symbol}c1", [])
+        i = bisect.bisect_left(days, date_)
+        traded_at_flagged_row = i < len(days) and days[i] == date_
+        last_trade_before = days[i - 1] if i > 0 else None
+        rescued.append(
+            traded_at_flagged_row
+            and last_trade_before is not None
+            and any(last_trade_before < expiry <= prev_row_date for expiry in expiries)
+        )
+    return pl.Series("rescued", rescued, dtype=pl.Boolean)
