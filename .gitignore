@@ -32,6 +32,10 @@ src/globalmacro/validation/datastream_comparison/
 src/analysis/validation/
 # confidential external validation plugin — never commit
 src/globalmacro/validation/external_comparison.py
+# reads the confidential external reference panel via external_comparison.py's
+# machinery -- same reasoning, never commit
+src/globalmacro/validation/provenance_gate.py
+tests/test_provenance_gate.py
 # Tier 2 onboarding gate -- the owner's local harness for accepting a new
 # Tier 2 asset (spikes, gaps, coverage, splice integrity). Deliberately
 # local-only: not for other researchers to add assets with, and not
