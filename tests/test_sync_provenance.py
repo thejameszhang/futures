@@ -538,6 +538,23 @@ def test_rescues_a_genuine_roll():
     assert is_rescuable_mask(flagged, counts).to_list() == [True]
 
 
+def test_rescues_when_the_last_trade_lands_exactly_on_the_expiry_day():
+    # A contract's own expiry is routinely also its last real day of trading (BRN,
+    # 1996-01-16: LCOc1 prints 330 trades on the ladder's own expiry date, then goes
+    # dark). The window's left edge has to be closed at that date, not open, or this
+    # -- the ordinary case, not an edge case -- would never rescue.
+    counts = pl.DataFrame({
+        "ric": ["Xc1", "Xc1"],
+        "date_": [date(2020, 1, 16), date(2020, 1, 20)],
+        "n_trades": [10, 12],
+    })
+    flagged = pl.DataFrame({
+        "symbol": ["X"], "date_": [date(2020, 1, 20)],
+        "prev_row_date": [date(2020, 1, 17)], "expiries": [[date(2020, 1, 16)]],
+    })
+    assert is_rescuable_mask(flagged, counts).to_list() == [True]
+
+
 def test_declines_when_no_expiry_falls_inside_the_dark_run():
     counts = pl.DataFrame({
         "ric": ["Xc1", "Xc1"],

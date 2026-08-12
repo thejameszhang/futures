@@ -176,8 +176,16 @@ def is_rescuable_mask(flagged: pl.DataFrame, counts: pl.DataFrame) -> pl.Series:
       2. slot 1 has at least one earlier trade to anchor the window on -- with no
          prior trade at all there is no dark run to test an expiry against, and
          reading that absence as "always dark" would only ever over-rescue;
-      3. some expiry in the ladder falls strictly after slot 1's last trade before
+      3. some expiry in the ladder falls no earlier than slot 1's last trade before
          the flagged row, and no later than `prev_row_date`.
+
+    The left edge of that window is closed, not open: a contract's own expiry is
+    routinely also its last day of real trading (measured directly on `BRN` --
+    `LCOc1` prints 330 trades on 1996-01-16, exactly the ladder's expiry for that
+    contract, then goes dark for three sessions), so "last trade before the flagged
+    row" and "the expiry" legitimately land on the same date. Requiring the expiry to
+    fall strictly after that date would decline the ordinary case, not just a rare
+    one.
 
     A cell not present in `counts` for a given ric at all (never printed, or printed
     only after the window in question) fails condition 2 or 1 respectively and is
@@ -204,6 +212,6 @@ def is_rescuable_mask(flagged: pl.DataFrame, counts: pl.DataFrame) -> pl.Series:
         rescued.append(
             traded_at_flagged_row
             and last_trade_before is not None
-            and any(last_trade_before < expiry <= prev_row_date for expiry in expiries)
+            and any(last_trade_before <= expiry <= prev_row_date for expiry in expiries)
         )
     return pl.Series("rescued", rescued, dtype=pl.Boolean)
