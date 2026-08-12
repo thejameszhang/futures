@@ -49,10 +49,12 @@ def test_donor_never_fills_a_null_inside_primarys_own_live_range():
 
 
 def test_the_cutoff_date_itself_keeps_primarys_own_value():
-    # The cutoff is primary's OWN first valid date -- primary already has a value
-    # there, so this pins date < cutoff (strict), not <=, as the boundary: getting
-    # the comparison direction wrong would silently swap in the donor's value here
-    # even though primary was never null on this date.
+    # The cutoff is primary's OWN first valid date, so primary is non-null there and
+    # coalesce keeps it whether the boundary is strict or inclusive -- the two are
+    # indistinguishable at the cutoff by construction. This pins the property that
+    # matters: the cutoff date keeps primary's own value. The strict bound only bites
+    # where primary is null, which is necessarily earlier than its first valid date and
+    # is covered by the pre-inception cases.
     df = _frame([date(2020, 1, 1)], [1.0], [99.0])
     out = df.with_columns(coalesce_before_cutoff(df, "active", "historic").alias("active"))
     assert out["active"].to_list() == [1.0]
