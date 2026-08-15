@@ -40,13 +40,23 @@ def test_currency_map_covers_every_published_symbol():
     assert ccy["6E"] == "USD" and ccy["XAE"] == "USD" and ccy["FDAX"] == "EUR"
 
 
-def test_save_usd_datasets_uses_async_vs_sync_fx(tmp_path):
+def test_save_usd_datasets_uses_async_vs_sync_fx(tmp_path, monkeypatch):
+    import globalmacro.build as build_module
+
     d = [date(2020, 1, 1), date(2020, 1, 2)]
     def panel():
         return pl.DataFrame({"date": d, "ES": [None, 0.01], "FGBL": [None, 0.01]})
     fx_async = pl.DataFrame({"date": d, "EUR": [1.10, 1.20]})   # +9.1%
     fx_sync = pl.DataFrame({"date": d, "EUR": [1.10, 1.15]})    # +4.5%
     ccy = {"ES": "USD", "FGBL": "EUR"}
+    # save_usd_datasets now builds its own sync observation mask (both symbols here go
+    # through the sync leg too), so it needs coverage for them or it raises loud.
+    _write_observation_panel(tmp_path, {
+        "symbol": ["ES", "ES", "FGBL", "FGBL"],
+        "date": [d[0], d[1], d[0], d[1]],
+        "observed": [True, True, True, True],
+    })
+    monkeypatch.setattr(build_module, "TICKHISTORY_PATH", tmp_path)
     save_usd_datasets(panel(), panel(), panel(), panel(), ccy, fx_async, fx_sync, out_root=tmp_path)
     for rel in ["tier1/async/async_daily_usd.csv", "tier1/sync/sync_daily_usd.csv",
                 "tier1/async/async_monthly_usd.csv", "tier2/async/async_daily_usd.csv",
@@ -74,6 +84,14 @@ def _write_settlement_parquet(root, ct, rows):
         schema_overrides={f"settlement_{slot}": pl.Float64 for slot in range(1, 6)},
     )
     frame.write_parquet(root / f"datastream_futures_settlement_{ct}.parquet")
+
+
+def _write_observation_panel(root, rows):
+    """rows: a symbol/date/observed dict, written as a tier-1 sync observation parquet --
+    the shape load_sync_observation_panel scans under TICKHISTORY_PATH/observations."""
+    obs = root / "observations"
+    obs.mkdir(exist_ok=True)
+    pl.DataFrame(rows).write_parquet(obs / "tier1_test_et.parquet")
 
 
 def test_load_traded_panel_reads_every_settlement_slot_and_both_cycles(tmp_path, monkeypatch):
@@ -176,11 +194,13 @@ def test_load_traded_panel_raises_before_logging_a_success_line(tmp_path, monkey
     assert not any("dates x" in r.message for r in caplog.records)
 
 
-def test_save_usd_datasets_gives_the_traded_mask_to_async_but_not_sync(tmp_path, monkeypatch):
-    """The mask is built from Datastream settlement dates, which are the async panel's own
-    observation dates. The sync panels are sampled from LSEG tick data at 09:31 ET, so those
-    dates are not their observations and handing them the mask would be wrong, not merely
-    useless. Kills passing `traded_async` to the sync call sites."""
+def test_save_usd_datasets_gives_async_and_sync_their_own_traded_masks(tmp_path, monkeypatch):
+    """The async mask is built from Datastream settlement dates, which are the async panel's
+    own observation dates -- so `daily()` for the async legs must receive exactly the
+    `traded_async` object the caller passed in. The sync panels are sampled from LSEG tick
+    data at 09:31 ET, a different calendar, so each sync leg must instead receive the mask
+    `load_sync_observation_panel` builds for it -- never `traded_async`, and never nothing.
+    Kills both re-pointing sync at `traded_async` and dropping the sync mask back to None."""
     import globalmacro.build as build_module
     from globalmacro.pipeline import to_usd
 
@@ -188,19 +208,39 @@ def test_save_usd_datasets_gives_the_traded_mask_to_async_but_not_sync(tmp_path,
     real = to_usd.usd_panel
 
     def spy(local, ccy, fx, traded=None):
-        seen.append(traded is not None)
+        seen.append(traded)
         return real(local, ccy, fx, traded)
 
     d = [date(2020, 1, 1), date(2020, 1, 2)]
     panel = pl.DataFrame({"date": d, "FGBL": [None, 0.01]})
     fx = pl.DataFrame({"date": d, "EUR": [1.10, 1.20]})
-    mask = pl.DataFrame({"date": d, "FGBL": [True, True]})
+    traded_async = pl.DataFrame({"date": d, "FGBL": [True, True]})
+    # Deliberately NOT equal to traded_async, so a regression that reuses the async mask
+    # for sync is caught by value, not only by object identity.
+    _write_observation_panel(tmp_path, {
+        "symbol": ["FGBL", "FGBL"],
+        "date": d,
+        "observed": [True, False],
+    })
+    monkeypatch.setattr(build_module, "TICKHISTORY_PATH", tmp_path)
     monkeypatch.setattr(build_module, "usd_panel", spy)
     build_module.save_usd_datasets(
         panel, panel, panel, panel, {"FGBL": "EUR"}, fx, fx,
-        out_root=tmp_path, traded_async=mask)
+        out_root=tmp_path, traded_async=traded_async)
+
     # call order in save_usd_datasets: tier1 async, tier1 sync, tier2 async, tier2 sync
-    assert seen == [True, False, True, False]
+    assert len(seen) == 4
+    async_calls, sync_calls = [seen[0], seen[2]], [seen[1], seen[3]]
+
+    for m in async_calls:
+        assert m is traded_async, "async daily() calls must receive the traded_async object itself"
+
+    expected_sync_t1 = build_module.load_sync_observation_panel(1, "et", ["FGBL"])
+    expected_sync_t2 = build_module.load_sync_observation_panel(2, "et", ["FGBL"])
+    for m, expected in zip(sync_calls, [expected_sync_t1, expected_sync_t2], strict=True):
+        assert m is not None, "sync daily() calls must not fall back to no mask"
+        assert m is not traded_async, "sync daily() calls must not receive the async mask"
+        assert m.equals(expected), "sync daily() calls must receive load_sync_observation_panel's own mask"
 
 
 def test_build_main_wires_the_traded_mask_into_save_usd_datasets():
@@ -232,3 +272,36 @@ def test_build_main_wires_the_traded_mask_into_save_usd_datasets():
     assert any(isinstance(a.value, ast.Call)
                and getattr(a.value.func, "id", None) == "load_traded_panel"
                for a in bound), f"{kw.value.id} is not bound to load_traded_panel(...)"
+
+
+def test_build_main_and_save_usd_datasets_wire_splice_cutoffs_through():
+    """The sync observation mask's donor-fold only fires when `splice_cutoffs` reaches it, and
+    that value is threaded main -> save_usd_datasets -> BOTH sync `load_sync_observation_panel`
+    calls. None of it can be exercised end to end from a test (main rebuilds the whole tree),
+    and every unit test passes `splice_cutoffs` explicitly, so a dropped forwarding is a silent
+    no-op: the fold quietly stops, the shipped mask reverts to nullity inference, and no
+    behavioural test notices. Assert the wiring structurally, at both hops.
+    """
+    import ast
+    import inspect
+
+    import globalmacro.build as build_module
+
+    tree = ast.parse(inspect.getsource(build_module))
+
+    # Hop 1: main -> save_usd_datasets(..., splice_cutoffs=...)
+    main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    save = next(c for c in ast.walk(main)
+                if isinstance(c, ast.Call) and getattr(c.func, "id", None) == "save_usd_datasets")
+    assert any(k.arg == "splice_cutoffs" for k in save.keywords), \
+        "main does not pass splice_cutoffs to save_usd_datasets"
+
+    # Hop 2: save_usd_datasets -> BOTH sync load_sync_observation_panel calls forward it.
+    sud = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "save_usd_datasets")
+    obs_calls = [c for c in ast.walk(sud)
+                 if isinstance(c, ast.Call)
+                 and getattr(c.func, "id", None) == "load_sync_observation_panel"]
+    assert len(obs_calls) == 2, "expected exactly the tier1 and tier2 sync mask calls"
+    for call in obs_calls:
+        assert any(k.arg == "splice_cutoffs" for k in call.keywords), \
+            "a sync load_sync_observation_panel call does not forward splice_cutoffs"

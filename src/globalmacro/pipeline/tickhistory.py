@@ -470,6 +470,13 @@ def attach_traditional_front_slot(daily_vwaps: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def observation_flag(symbol_data: pl.DataFrame) -> pl.Series:
+    """Whether a front-month price existed, independent of whether a return survived. The
+    USD FX leg needs real observation dates, which a return panel cannot supply once the
+    provenance guard nulls observed cells."""
+    return symbol_data.select(pl.col("front_month_settlement").is_not_null().alias("observed")).to_series()
+
+
 def provenance_break_mask(symbol_data: pl.DataFrame) -> pl.Series:
     """The row-level condition `apply_provenance_guard` nulls on, exposed on its own so
     the rescue rule can identify exactly the cells the guard flagged without
@@ -589,6 +596,79 @@ def rescue_ret1_adjusted(
         .alias("ret1_adjusted")
     )
     return symbol_data.drop(["_provenance_break", "_prev_row_date", "_rolled_forward"])
+
+
+def attach_trade_presence_flags(symbol_data: pl.DataFrame, ric_root: str, counts: pl.DataFrame) -> pl.DataFrame:
+    """Attach c1_traded/c2_traded, the trade-presence signal repair_stale_relabel
+    reads, from the same per-RIC trade-count artifact the rescue rule reads.
+
+    Absence of a (ric, date) row in counts is the "did not trade" signal -- counts
+    never emits a zero-trade row -- so this is membership in the artifact's date set
+    for that RIC, not a comparison against a count value.
+    """
+    c1_dates = counts.filter(pl.col("ric") == f"{ric_root}c1")["date_"]
+    c2_dates = counts.filter(pl.col("ric") == f"{ric_root}c2")["date_"]
+    # implode(): is_in against a bare Series of the same dtype is ambiguous to polars
+    # (elementwise compare vs. membership test) and deprecated; imploding it into a
+    # single-list Series keeps this a membership test unambiguously.
+    return symbol_data.with_columns([
+        pl.col("date_").is_in(c1_dates.implode()).alias("c1_traded"),
+        pl.col("date_").is_in(c2_dates.implode()).alias("c2_traded"),
+    ])
+
+
+def repair_stale_relabel(symbol_data: pl.DataFrame) -> pl.DataFrame:
+    """Recompute a shift == -1 relabel cell to ret_c2 when settlement_c1(t) is a
+    lingering stale print rather than a genuine relabel.
+
+    rollback_c2_to_c1 divides by settlement_c1(t), which the pipeline's own
+    last-trade fallback can carry forward one day past a RIC's last real print. That
+    shape reads as: c1 recorded no trade on the relabel day (c1_traded is False)
+    while settlement_c1 is still non-null there and goes null again the next row.
+    When that happens and slot 2 actually traded (c2_traded and ret_c2 both present),
+    ret_c2 -- the deferred contract's own same-contract return -- is the value a live
+    relabel would have produced; substitute it in. A row failing any clause (a live
+    relabel, or a relabel where slot 2 is itself dark) ships unchanged.
+
+    Assumes symbol_data is sorted by date_, matching every other roll-branch
+    computation in this module: settlement_c1.shift(-1) reads the panel's next
+    physical row, not the next calendar day.
+    """
+    stale_c1 = (
+        ~pl.col("c1_traded")
+        & pl.col("settlement_c1").is_not_null()
+        & pl.col("settlement_c1").shift(-1).is_null()
+    )
+    recoverable = stale_c1 & pl.col("c2_traded") & pl.col("ret_c2").is_not_null()
+    fire = (pl.col("shift") == -1) & recoverable
+    return symbol_data.with_columns(
+        pl.when(fire).then(pl.col("ret_c2")).otherwise(pl.col("ret1_adjusted")).alias("ret1_adjusted")
+    )
+
+
+def apply_stale_relabel_repair(
+    symbol_data: pl.DataFrame, ric_root: str, counts: pl.DataFrame, asset_class: AssetClass
+) -> pl.DataFrame:
+    """Run repair_stale_relabel, scoped to non-traditional asset classes.
+
+    repair_stale_relabel always substitutes ret_c2 -- settlement_c2(t) over
+    settlement_c2(t-1) -- for a stale relabel cell, which is the live-contract's own
+    return only when the relabel roll itself is priced off settlement_c1/settlement_c2.
+    That holds for every non-traditional shift == -1 roll. It does not hold for every
+    traditional one: the traditional branch's shift == -1 roll is front_month-indexed
+    (rollback_c2_to_c1 / rollback_c3_to_c2 / rollback_c4_to_c3), so ret_c2 matches the
+    roll's own contract pair only when front_month == 1 -- for front_month in {2, 3}
+    it is an unrelated contract's return, and substituting it would overwrite a correct
+    rollback with a wrong one. The front_month == 1 case has not been independently
+    checked against the trade-count artifact the way the non-traditional population
+    has, so every traditional frame skips the repair entirely and keeps the roll
+    branch's own value, right or wrong alike.
+    """
+    if asset_class == AssetClass.TRADITIONAL:
+        return symbol_data
+    return repair_stale_relabel(attach_trade_presence_flags(symbol_data, ric_root, counts)).drop(
+        ["c1_traded", "c2_traded"]
+    )
 
 
 def substitute_backward_cross_contract_returns(symbol_data: pl.DataFrame) -> pl.DataFrame:
@@ -1065,6 +1145,12 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
             symbol_data, FUTURE.ric[0], ladder_expiries_for(clscodes, EXPIRY_LADDER), counts
         )
 
+        # A relabel roll (shift == -1) never enters apply_provenance_guard's scope,
+        # so it needs its own stale-print check against the same trade-count
+        # artifact rather than the guard's null -- see apply_stale_relabel_repair
+        # for why that check is scoped to non-traditional asset classes only.
+        symbol_data = apply_stale_relabel_repair(symbol_data, FUTURE.ric[0], counts, ASSET_CLASS)
+
     # Backward breaks are never rescued above, so this only ever touches cells the
     # guard nulled and rescue left untouched.
     symbol_data = substitute_backward_cross_contract_returns(symbol_data)
@@ -1075,7 +1161,8 @@ def process_future(FUTURE: Future, sync_target: str = "et") -> pl.DataFrame:
         symbol_data.write_csv(TICKHISTORY_PATH / "debug" / "tables" / f"TRADITIONAL_{FUTURE.symbol}.csv")
 
     returns_series = symbol_data.select(["date_", "ret1_adjusted"]).with_columns([
-        pl.lit(FUTURE.symbol).alias("symbol")
+        pl.lit(FUTURE.symbol).alias("symbol"),
+        observation_flag(symbol_data).alias("observed"),
     ]).sort("date_")
     return returns_series
 
@@ -1093,6 +1180,13 @@ def main():
         .sort("date_")
         .with_columns(pl.col("date_").alias("date"))
     )
+
+    observations_dir = TICKHISTORY_PATH / "observations"
+    os.makedirs(observations_dir, exist_ok=True)
+    all_returns.select(pl.col("symbol"), pl.col("date_").alias("date"), pl.col("observed")).write_parquet(
+        observations_dir / f"tier{args.tier}_{ASSET_CLASS.value}_{SYNC_TARGET}.parquet"
+    )
+
     if SYNC_TARGET == "london":
         output_subdir = "sync_london"
     elif SYNC_TARGET == "et":

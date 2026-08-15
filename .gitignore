@@ -52,6 +52,14 @@ scripts/detect_sync_cross_contract.py
 tests/test_detect_sync_cross_contract.py
 scripts/gate_traditional_front_slot.py
 tests/test_gate_traditional_front_slot.py
+# Pins the sync relabel-day stale-print discrimination rule and population against the
+# shipped debug tables -- confirms the rule on our end, not part of building the
+# dataset. The pipeline never imports it.
+scripts/measure_mechanism_b.py
+# Measures whether a roll splitting the bad-slot-2 expiry-roll guard's {t, t+1} pair
+# leaks the bad print into a cell the guard never fires on -- confirms the guard's
+# scope on our end, not part of building the dataset. The pipeline never imports it.
+scripts/measure_p2_roll_boundary.py
 .DS_Store
 .env
 .claude/

@@ -215,3 +215,61 @@ def test_trad_ct_loop_never_refills_a_live_range_null_either(tmp_path, monkeypat
     out = build_module.build_synced_dataset(tier=1)
     row = out.filter(pl.col("date").is_in(_DATES)).sort("date")
     assert row["GE"].to_list() == [0.10, 0.01, 0.02, None]
+
+
+# ---------------------------------------------------------------------------
+# splice_cutoffs: the out-param the sync observation mask needs to gate its own
+# donor fold (see load_sync_observation_panel) -- must match the cutoff
+# coalesce_before_cutoff actually used, not a value re-derived after the splice
+# has already moved the column's own first-valid-date earlier.
+# ---------------------------------------------------------------------------
+
+
+def test_splice_cutoffs_records_the_same_cutoff_coalesce_before_cutoff_uses(tmp_path, monkeypatch):
+    datasets_root, data_root = tmp_path / "datasets", tmp_path / "data"
+    # 6E's own first observation is 01-02 -- that is the cutoff coalesce_before_cutoff
+    # computes for this pair (DM's own value never enters the comparison).
+    _minimal_fixture_tree(datasets_root, data_root, currency_extra={
+        "6E": [None, 0.01, 0.02, None],
+        "DM": [0.10, 0.11, 0.12, 0.13],
+    })
+    monkeypatch.setattr(build_module, "DATASETS_ROOT", datasets_root)
+    monkeypatch.setattr(build_module, "DATA_ROOT", data_root)
+
+    splice_cutoffs: dict = {}
+    build_module.build_synced_dataset(tier=1, splice_cutoffs=splice_cutoffs)
+    assert splice_cutoffs["6E"] == date(2020, 1, 2)
+
+
+def test_splice_cutoffs_still_records_a_cutoff_when_the_donor_is_absent(tmp_path, monkeypatch):
+    # FTI<-EOE, with EOE never present anywhere in the fixture tree (the real shape a
+    # donor that never reaches this frame takes -- e.g. FXS30's donor OMX, dropped
+    # earlier in build_synced_dataset before the SPLICING_MAP loop ever sees it). The
+    # SPLICING_MAP loop skips the actual coalesce ("historic not found"), but the sync
+    # observation mask still needs FTI's own cutoff to gate a donor fold by symbol name.
+    datasets_root, data_root = tmp_path / "datasets", tmp_path / "data"
+    _minimal_fixture_tree(datasets_root, data_root, nonus_equity_extra={
+        "FTI": [None, 0.05, None, None],
+    })
+    monkeypatch.setattr(build_module, "DATASETS_ROOT", datasets_root)
+    monkeypatch.setattr(build_module, "DATA_ROOT", data_root)
+
+    splice_cutoffs: dict = {}
+    out = build_module.build_synced_dataset(tier=1, splice_cutoffs=splice_cutoffs)
+    assert "EOE" not in out.columns, "fixture must actually exercise the donor-absent path"
+    assert splice_cutoffs["FTI"] == date(2020, 1, 2)
+
+
+def test_no_splice_cutoffs_argument_never_touches_the_dict(tmp_path, monkeypatch):
+    # Default None: build_synced_dataset must not require the caller to pass one.
+    datasets_root, data_root = tmp_path / "datasets", tmp_path / "data"
+    _minimal_fixture_tree(datasets_root, data_root, currency_extra={
+        "6E": [None, 0.01, 0.02, None],
+        "DM": [0.10, 0.11, 0.12, 0.13],
+    })
+    monkeypatch.setattr(build_module, "DATASETS_ROOT", datasets_root)
+    monkeypatch.setattr(build_module, "DATA_ROOT", data_root)
+
+    out = build_module.build_synced_dataset(tier=1)
+    row = out.filter(pl.col("date").is_in(_DATES)).sort("date")
+    assert row["6E"].to_list() == [0.10, 0.01, 0.02, None]
