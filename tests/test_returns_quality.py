@@ -192,6 +192,27 @@ def test_a_splice_chain_folds_every_hop_gated_by_that_hops_own_cutoff(tmp_path, 
     assert rows[date(2020, 1, 1)] is True, "RL's observation (< cutoff[TF]) must fold into RTY transitively"
 
 
+def test_a_recorded_none_cutoff_folds_the_donor_into_every_row(tmp_path, monkeypatch):
+    # An active whose own return is entirely null gets its WHOLE column backfilled from its
+    # donor -- coalesce_before_cutoff with a None cutoff fills the donor on every row -- and
+    # build_synced_dataset records splice_cutoffs[active] = None for it. A recorded None must
+    # therefore mean "no date gate" (fold the donor everywhere), NOT "fold nothing": the
+    # latter would leave the mask empty on exactly the dates the value came from the donor,
+    # the very defect the fold exists to close. Distinct from an ABSENT key (a hop that was
+    # never a synced column), where the value never draws from the donor and the fold stops.
+    _write_observation_panel(tmp_path, {
+        "symbol": ["BDL", "BDL"],
+        "date": [date(2020, 1, 1), date(2020, 1, 9)],
+        "observed": [True, True],
+    })
+    monkeypatch.setattr(build, "TICKHISTORY_PATH", tmp_path)
+
+    panel = load_sync_observation_panel(1, "et", ["FGBL"], splice_cutoffs={"FGBL": None}).sort("date")
+    rows = dict(zip(panel["date"].to_list(), panel["FGBL"].to_list(), strict=True))
+    assert rows[date(2020, 1, 1)] is True
+    assert rows[date(2020, 1, 9)] is True, "a recorded None cutoff must fold the donor with NO date gate"
+
+
 def test_sync_daily_usd_wiring_narrows_fx_leg_around_a_masked_observation(tmp_path, monkeypatch):
     # BRN's return is null on the middle day -- exactly the cell the provenance guard can
     # null while the front month still priced -- but the tick pipeline still marks it

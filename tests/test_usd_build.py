@@ -272,3 +272,36 @@ def test_build_main_wires_the_traded_mask_into_save_usd_datasets():
     assert any(isinstance(a.value, ast.Call)
                and getattr(a.value.func, "id", None) == "load_traded_panel"
                for a in bound), f"{kw.value.id} is not bound to load_traded_panel(...)"
+
+
+def test_build_main_and_save_usd_datasets_wire_splice_cutoffs_through():
+    """The sync observation mask's donor-fold only fires when `splice_cutoffs` reaches it, and
+    that value is threaded main -> save_usd_datasets -> BOTH sync `load_sync_observation_panel`
+    calls. None of it can be exercised end to end from a test (main rebuilds the whole tree),
+    and every unit test passes `splice_cutoffs` explicitly, so a dropped forwarding is a silent
+    no-op: the fold quietly stops, the shipped mask reverts to nullity inference, and no
+    behavioural test notices. Assert the wiring structurally, at both hops.
+    """
+    import ast
+    import inspect
+
+    import globalmacro.build as build_module
+
+    tree = ast.parse(inspect.getsource(build_module))
+
+    # Hop 1: main -> save_usd_datasets(..., splice_cutoffs=...)
+    main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    save = next(c for c in ast.walk(main)
+                if isinstance(c, ast.Call) and getattr(c.func, "id", None) == "save_usd_datasets")
+    assert any(k.arg == "splice_cutoffs" for k in save.keywords), \
+        "main does not pass splice_cutoffs to save_usd_datasets"
+
+    # Hop 2: save_usd_datasets -> BOTH sync load_sync_observation_panel calls forward it.
+    sud = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "save_usd_datasets")
+    obs_calls = [c for c in ast.walk(sud)
+                 if isinstance(c, ast.Call)
+                 and getattr(c.func, "id", None) == "load_sync_observation_panel"]
+    assert len(obs_calls) == 2, "expected exactly the tier1 and tier2 sync mask calls"
+    for call in obs_calls:
+        assert any(k.arg == "splice_cutoffs" for k in call.keywords), \
+            "a sync load_sync_observation_panel call does not forward splice_cutoffs"

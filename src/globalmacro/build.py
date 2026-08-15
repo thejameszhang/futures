@@ -487,9 +487,15 @@ def load_sync_observation_panel(
             while hop in SPLICING_MAP and hop not in seen:
                 seen.add(hop)
                 donor = SPLICING_MAP[hop]
-                hop_cutoff = splice_cutoffs.get(hop)
-                if hop_cutoff is None:
+                if hop not in splice_cutoffs:
+                    # This hop was never a synced column, so coalesce_before_cutoff never
+                    # ran for it and the active's value never draws from its donor here --
+                    # stop, rather than folding coverage the value assembly won't back.
                     break
+                # A recorded None cutoff means `active` was entirely null, so
+                # coalesce_before_cutoff filled the donor into EVERY row -- the mask must
+                # cover every row too (a None cutoff applies no date gate below).
+                hop_cutoff = splice_cutoffs[hop]
                 load_requests.append((donor, active, hop_cutoff))
                 hop = donor
 
