@@ -62,7 +62,7 @@ def pytest_collection_modifyitems(config, items):
 # ---------------------------------------------------------------------------
 # A safety net against a live network call, applied automatically to every test
 # under tests/. `tc.validate_credentials()` makes a real HTTPS request to
-# selectapi.datascope.refinitiv.com, with real DSS credentials in the request body.
+# selectapi.datascope.lseg.com, with real DSS credentials in the request body.
 #
 # Originally this lived only in tests/test_connect_report.py, guarding the
 # three `cli.main(["connect", ...])` tests there that rely on `checked and present`
@@ -117,4 +117,4 @@ def _no_live_lseg_network(request, monkeypatch):
     assert calls == [], (
         f"{request.node.name} reached tc.validate_credentials without installing "
         "its own mock first -- in production this is a live HTTPS request to "
-        "selectapi.datascope.refinitiv.com")
+        "selectapi.datascope.lseg.com")

@@ -119,7 +119,7 @@ def test_network_guard_stub_records_keyword_argument_calls(pytester):
             # DSS_PASSWORD from a repo .env, AND the copied conftest.py's guard is a
             # regressed or absent guard -- the call below reaches the REAL
             # validate_credentials and sends real credentials to
-            # selectapi.datascope.refinitiv.com. This happened once during this branch's
+            # selectapi.datascope.lseg.com. This happened once during this branch's
             # development (see cc4a8f8). Deleting DSS_USERNAME makes
             # credentials_present() short-circuit before any request is built, regardless
             # of whether the guard stub is present.
