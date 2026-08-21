@@ -15,7 +15,9 @@ import globalmacro.utils.paths  # noqa: F401  -- imported for its .env side effe
 
 ENV_USERNAME = "DSS_USERNAME"
 ENV_PASSWORD = "DSS_PASSWORD"
-TOKEN_URL = "https://selectapi.datascope.refinitiv.com/RestApi/v1/Authentication/RequestToken"
+# LSEG retired the datascope.refinitiv.com host -- it now refuses the connection
+# outright (reset before the TLS handshake). datascope.lseg.com is the live host.
+TOKEN_URL = "https://selectapi.datascope.lseg.com/RestApi/v1/Authentication/RequestToken"
 
 
 def credential_username() -> str | None:

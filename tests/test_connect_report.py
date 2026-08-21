@@ -8,7 +8,7 @@ None of them read/write DATASETS_ROOT, VALIDATION_OUTPUT, or TICKHISTORY_PATH --
 called for real. `tc.validate_credentials` is replaced by the repo-wide autouse
 `_no_live_lseg_network` fixture (tests/conftest.py) for every test in this file, so
 no test can reach the real function -- and therefore
-selectapi.datascope.refinitiv.com -- even if the `checked and present` gate in
+selectapi.datascope.lseg.com -- even if the `checked and present` gate in
 `cli.py` regresses; the two tests that legitimately want to drive it install their
 own stub, which simply overrides that fixture's for the duration of that test.
 DSS_USERNAME/DSS_PASSWORD are always set via monkeypatch.setenv/delenv, never
