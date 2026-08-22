@@ -4,9 +4,9 @@ table (graded) plus a single house-style comparison plot (diagnostic figure).
 
 `daily_fx_vs_spot` is the canonical gap-aware alignment of a currency future's daily
 return against the Compustat spot return over the SAME observation gap -- originally
-written (and G10-daily-corr->0.95 validated) in `scripts/compare_4pm_london_fx.py` as
-`compute_gap_aware_spot_return`; that script now imports this implementation instead of
-carrying its own copy.
+written (and G10-daily-corr->0.95 validated) as `compute_gap_aware_spot_return` in a
+local FX comparison script that now imports this implementation instead of carrying its
+own copy.
 
 `fx_futures_vs_spot_check` (registered in `validation/run.py`) is the promoted exercise:
 `run()` walks both modes ("et": the shipped 9:30-ET sync panel; "london": the
@@ -142,9 +142,9 @@ def _shipped_windows() -> dict[str, tuple[date, date]]:
     `null` in this file and therefore excluded from the window -- this is the SHIPPED
     window `_fx_vs_spot_panels` clips its plotted cumulative lines to.
 
-    `infer_schema_length=None` (full-file dtype scan, mirroring
-    `scripts/scan_currency_spikes.py`'s read of this same file): the default
-    100-row sample misinfers several sparse currency columns as strings.
+    `infer_schema_length=None` (full-file dtype scan, matching how the local
+    spike-scan tooling reads this same file): the default 100-row sample misinfers
+    several sparse currency columns as strings.
 
     A symbol absent from the file, or whose column is entirely null, is simply absent
     from the returned map -- `_fx_vs_spot_panels` falls back to no clip for it rather
