@@ -36,30 +36,17 @@ src/globalmacro/validation/external_comparison.py
 # machinery -- same reasoning, never commit
 src/globalmacro/validation/provenance_gate.py
 tests/test_provenance_gate.py
-# Tier 2 onboarding gate -- the owner's local harness for accepting a new
-# Tier 2 asset (spikes, gaps, coverage, splice integrity). Deliberately
-# local-only: not for other researchers to add assets with, and not
-# something we want to maintain as shared, reviewed infrastructure. Stays
-# on the owner's disk, untracked; contact the owner to add an asset.
-scripts/gate_tier2_asset.py
+# Local validation/verification tooling — the owner's harnesses (gates, reruns,
+# spike/coverage/integrity checks, cross-contract and roll-boundary measures) that
+# confirm fixes on our end but are NOT part of building the dataset. Deliberately
+# local-only, never shipped to other researchers; the pipeline never imports any of
+# it. The scripts and their tests live untracked here.
+scripts/misc/
+# The Tier-2 onboarding gate's src module + its test stay ignored in place (they
+# are not scripts): the owner's local harness for accepting a new Tier 2 asset
+# (spikes, gaps, coverage, splice integrity). Contact the owner to add an asset.
 src/globalmacro/validation/asset_quality.py
 tests/test_asset_quality.py
-tests/test_gate_tier2_asset.py
-# Cross-contract verification tooling -- confirms the fix on our end, but is not
-# part of building the dataset, so it stays local rather than shipping to other
-# researchers. The pipeline never imports either.
-scripts/detect_sync_cross_contract.py
-tests/test_detect_sync_cross_contract.py
-scripts/gate_traditional_front_slot.py
-tests/test_gate_traditional_front_slot.py
-# Pins the sync relabel-day stale-print discrimination rule and population against the
-# shipped debug tables -- confirms the rule on our end, not part of building the
-# dataset. The pipeline never imports it.
-scripts/measure_mechanism_b.py
-# Measures whether a roll splitting the bad-slot-2 expiry-roll guard's {t, t+1} pair
-# leaks the bad print into a cell the guard never fires on -- confirms the guard's
-# scope on our end, not part of building the dataset. The pipeline never imports it.
-scripts/measure_p2_roll_boundary.py
 .DS_Store
 .env
 .claude/
@@ -68,7 +55,8 @@ assetlist.pdf
 AGENTS.md
 CLAUDE.md
 /slurm/logs/
-reference/
+/reference/
+/papers/
 old-data/
 # methodology docs — intentionally untracked here, not an oversight. Their
 # history lives on the local productionize / docs branches. Ignoring a path

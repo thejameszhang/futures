@@ -74,7 +74,10 @@ venv = ".venv"
 # tracked tree also matches what `git diff --stat` can show: nothing here reaches
 # analysis/, so nothing here can affect it.
 include = ["src", "tests", "scripts"]
-# tests/test_verify_tickhistory_shards.py imports scripts/verify_tickhistory_shards.py
-# via a runtime sys.path.insert (scripts/ has no __init__.py and isn't an installed
-# package); tell pyright about that path so the import resolves statically too.
+# scripts/misc/ is untracked local validation/verification tooling (gitignored); it is
+# not shipped source, so keep it out of the type-check -- pytest (testpaths) and ruff
+# (gitignore) already skip it.
+exclude = ["scripts/misc"]
+# scripts/ has no __init__.py and isn't an installed package; expose it to pyright so a
+# `from scripts...` import resolves statically.
 extraPaths = ["scripts"]
